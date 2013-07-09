@@ -155,8 +155,16 @@
 (defn- exec-statements [stmts]
   (dorun (map (partial exec-raw cavmdb) stmts)))
 
+; TODO build a cohort table instead of fudging it here.
+; TODO look up N
+(defn- dataset-transform [ds]
+  (-> ds
+      (clojure.set/rename-keys {:FILE :name})
+      (#(assoc % :longlabel (% :name) :shortlabel (% :name) :cohort "Untitled1" :N 100))))
+
 (defn datasets []
-  (select experiments))
+  (->> (select experiments)
+       (map dataset-transform)))
 
 (defn select-probes []
   (select* probes))

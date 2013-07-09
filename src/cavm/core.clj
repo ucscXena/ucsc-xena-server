@@ -49,8 +49,19 @@
 
 (def port 7222)
 
+(defn wrap-access-control [handler]
+  (fn [request]
+    (let [response (handler request)]
+      (if (= nil response)
+        response              ; If we add headers to nil 404 become 200.
+        (-> response
+            (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
+            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api"))))))
+
+
 (server/load-views-ns 'cavm.views)
 
+(server/add-middleware wrap-access-control)
 
 (defn- serv []
   (server/start port {:mode :dev
