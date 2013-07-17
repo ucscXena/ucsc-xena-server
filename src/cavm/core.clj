@@ -1,6 +1,6 @@
 (ns cavm.core
   (:require [clojure.string :as string])
-  (:use cavm.h2)
+  (:use [cavm.h2 :only [create load-exp del-exp datasets]]) ; XXX use model instead?
   (:require [clojure.java.io :as io])
   (:use [clj-time.coerce :only (from-long)])
   (:require [noir.server :as server])
@@ -62,6 +62,12 @@
 (server/load-views-ns 'cavm.views)
 
 (server/add-middleware wrap-access-control)
+
+(defn- del-datasets [args]
+  (dorun (map del-exp args)))
+
+(defn- print-datasets []
+  (dorun (map println (datasets))))
 
 (defn- serv []
   (server/start port {:mode :dev
