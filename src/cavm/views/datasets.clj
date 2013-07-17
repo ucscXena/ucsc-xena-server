@@ -16,7 +16,7 @@
   (response/empty))
 
 (defn genes-decode [genes]
-  (map #(codec/url-decode %) (clojure.string/split genes #",")))
+  (map codec/url-decode (clojure.string/split genes #",")))
 
 (defpage [:get ["/datasets/:id" :id #".+"]] {:keys [id genes]}
   (response/json (d/dataset-by-genes id (genes-decode genes))))
