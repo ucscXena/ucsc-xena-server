@@ -4,15 +4,21 @@
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:use [clj-time.format :only (formatter unparse)])
-  (:use korma.core)
-  (:gen-class))
+  (:use korma.core))
 
-; H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
+;(def db {:classname "org.h2.Driver"
+;         :subprotocol "h2"
+;         :subname "file:///data/TCGA/craft/h2/cavm.h2"})
 
-(def db {:classname "org.h2.Driver"
-         :subprotocol "h2"
-         :subname "file:///data/TCGA/craft/h2/cavm.h2"})
+;
+; Table definitions.
+;
 
+(def float-size 4)
+(def bin-size 100)
+(def score-size (* float-size bin-size))
+
+; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
 (def probes-table ["CREATE TABLE IF NOT EXISTS `probes` (
                    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
                    `eid` INT NOT NULL,
@@ -24,10 +30,6 @@
                    `name` VARCHAR(255))"
                    "CREATE INDEX IF NOT EXISTS probe_name ON probes (eid, name)"
                    "CREATE INDEX IF NOT EXISTS probe_chrom ON probes (eid, chrom, bin)"])
-
-(def float-size 4)
-(def bin-size 100)
-(def score-size (* float-size bin-size))
 
 (def scores-table [(format "CREATE TABLE IF NOT EXISTS `scores` (
                   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -68,9 +70,12 @@
                         `i` INT NOT NULL,
                         PRIMARY KEY(`eid`, `sid`))"])
 
-(declare score-decode)
 
-(declare probes scores experiments samples)
+;
+; Table models
+;
+
+(declare probes scores experiments samples exp_samples)
 
 (defentity cohorts
   (has-many experiments {:fk :cid})
@@ -82,23 +87,31 @@
   (has-many probes))
 
 (defentity samples
+  (has-many exp_samples {:fk :sid})
   (belongs-to cohorts {:fk :cid}))
 
 (defentity exp_samples
+  (belongs-to samples {:fk :sid})
   (belongs-to experiments {:fk :eid}))
+
+(declare score-decode)
 
 (defentity probes
   (many-to-many scores :joins  {:lfk 'pid :rfk 'sid})
   (belongs-to experiments {:fk :eid})
   (transform (fn [{scores :EXPSCORES :as v}]
                (if scores
-                 (assoc v :EXPSCORES (score-decode scores))
+                 (assoc v :EXPSCORES (float-array (score-decode scores)))
                  v))))
 
 (defentity scores
   (many-to-many probes :joins  {:lfk 'sid :rfk 'pid}))
 
 (defentity joins)
+
+;
+;
+;
 
 (defn- probes-in-exp [exp]
   (subselect probes (fields :id) (where {:eid exp})))
@@ -145,6 +158,10 @@
 (defn- insert-join [pid i sid]
   (insert joins (values {:pid pid :i i :sid sid})))
 
+;
+; Binary buffer manipulation.
+;
+
 (def codec-length (memoize (fn [len]
                              (binary/repeated :float-le :length len))))
 
@@ -158,6 +175,33 @@
   (let [baos (java.io.ByteArrayOutputStream.)]
     (binary/encode (codec-length (count slist)) baos slist)
     (.toByteArray baos)))
+
+; Pick elements of float array, by index.
+(defn apick-float [^floats a idxs]
+ (let [ia (float-array idxs)]
+  (amap ia i ret (aget a i))))
+
+(defn ashuffle-float [mapping ^floats out ^floats in]
+  (dorun (map #(aset out (% 1) (aget in (% 0))) mapping))
+  out)
+
+(defn bytes-to-floats [barr]
+  (let [bb (java.nio.ByteBuffer/allocate (alength barr))
+        fb (.asFloatBuffer bb)
+        out (float-array (quot (alength barr) 4))]
+    (.put bb barr)
+    (.get fb out)
+    out))
+
+(defn floats-to-bytes [farr]
+  (let [bb (java.nio.ByteBuffer/allocate (* (alength farr) 4))
+        fb (.asFloatBuffer bb)]
+    (.put fb farr)
+    (.array bb)))
+
+;
+;
+;
 
 (defn- load-probe [exp prow]
   (let [pid (insert-probe exp (:probe (meta prow)))
@@ -175,10 +219,6 @@
 (defn- cohort-sample-list [cid sample-list]
   (select samples (fields :id :sample)
           (where {:cid cid :sample [in sample-list]})))
-
-(defn snoop [x]
-  (println x)
-  x)
 
 ; hash seq of maps by given key
 (defn- hash-by-key [k s]
@@ -231,12 +271,19 @@
       (clear-by-exp exp)
       (delete experiments (where {:id exp})))))
 
-(kdb/defdb cavmdb db)
+(defn create-db [file]
+  (kdb/create-db  {:classname "org.h2.Driver"
+                   :subprotocol "h2"
+                   :subname file}))
+
+(defmacro with-db [db & body]
+  `(kdb/with-db ~db ~@body))
+
 (kconf/set-delimiters "`") ; for h2
 
 ; execute a sequence of sql statements
 (defn- exec-statements [stmts]
-  (dorun (map (partial exec-raw cavmdb) stmts)))
+  (dorun (map (partial exec-raw) stmts)))
 
 ; TODO look up N
 (defn- dataset-transform [ds]
@@ -249,15 +296,21 @@
   (->> (select experiments (with cohorts) (fields :FILE [:cohorts.name :cohort]))
        (map dataset-transform)))
 
-(defn select-probes []
-  (select* probes))
+; Intersect experiment samples with the given set of samples.
+(defn exp-samples-in-list [exp samps]
+  (select exp_samples (with samples) (fields :i :samples.sample)
+          (where  {:eid exp}) (where (in :samples.sample samps))))
 
-; The cast is required because group_concat converts to hex.
+(defn sample-bins [samps]
+  (set (map #(quot (% :I) bin-size) samps)))
+
 (defn select-scores []
   (-> (select* probes)
-      (fields (raw "CAST(GROUP_CONCAT(`expScores` ORDER BY `i` SEPARATOR '') AS BINARY) AS `expScores`"))
-      (join scores)
-      (group :joins.pid)))
+      (fields :name [:scores.expScores :expScores] [:joins.i :i])
+      (join scores)))
+
+(defn with-bins [q bins]
+  (where q (in :i bins)))
 
 (defn for-experiment [q exp]
   (where q {:probes.eid exp}))
@@ -265,11 +318,69 @@
 (defn for-experiment-named [q exp]
   (for-experiment q (subselect experiments (fields "id") (where {:file exp}))))
 
+(defn exp-by-name [exp]
+  (let [[{id :ID}]
+        (select experiments (fields "id") (where {:file exp}))]
+    id))
+
+; XXX expand model for probes/genes??
 (defn with-genes [q genes]
   (fields (where q {:probes.name [in genes]}) [:probes.name :gene]))
 
 (defn do-select [q]
   (exec q))
+
+; merge bin number and bin offset for a sample.
+(defn- merge-bin-off [sample]
+  (let [{i :I} sample]
+    (assoc sample :bin (quot i bin-size) :off (rem i bin-size))))
+
+(defn- bin-mapping [order {off :off sample :SAMPLE}]
+  [off (order sample)])
+
+(defn- pick-samples-fn [order [bin samples]]
+  [bin (partial ashuffle-float
+                (map (partial bin-mapping order) samples))])
+
+; Take an ordered list of requested samples, a list of samples (with indexes) in the
+; experiment, and generate fns to copy values from a score bin to an output array.
+; Returns one function for each score bin in the request.
+
+(defn- pick-samples-fns [s-req s-exp]
+  (let [order (zipmap s-req (range))
+        by-bin (group-by :bin s-exp)]
+    (apply hash-map (mapcat (partial pick-samples-fn order) by-bin))))
+
+; Take map of bin copy fns, list of scores rows, and a map of output arrays,
+; copying the scores to the output arrays via the bin copy fns.
+(defn- build-score-arrays [rows bfns out]
+  (dorun (map (fn [{i :I scores :EXPSCORES gene :GENE}]
+                ((bfns i) (out gene) scores))
+              rows))
+  out)
+
+(defn- col-arrays [columns n]
+  (zipmap columns (repeatedly (partial float-array n))))
+
+; XXX Need to fill in NAN for unknown samples.
+(defn genomic-read-req [req]
+  (let [{samples 'samples table 'table columns 'columns} req
+        eid (exp-by-name table)
+        s-in-exp (map merge-bin-off (exp-samples-in-list eid samples))
+        bins (map :bin s-in-exp)
+        bfns (pick-samples-fns samples s-in-exp)]
+
+    (-> (select-scores)
+        (for-experiment eid)
+        (with-genes columns)
+        (with-bins bins)
+        (do-select)
+        (build-score-arrays bfns (col-arrays columns (count samples))))))
+
+; doall is required so the seq is evaluated in db context.
+; Otherwise lazy map may not be evaluted until the context is lost.
+(defn genomic-source [reqs]
+  (doall (map #(update-in % ['data] merge (genomic-read-req %)) reqs)))
 
 (defn create[]
   (kdb/transaction
