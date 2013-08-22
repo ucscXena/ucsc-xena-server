@@ -1,10 +1,13 @@
 (ns cavm.core
   (:require [clojure.string :as string])
-  (:use [cavm.h2 :only [create load-exp del-exp datasets]]) ; XXX use model instead?
+  (:use [cavm.h2 :only [create load-exp del-exp datasets with-db create-db]]) ; XXX use model instead?
+  (:require [cavm.test-data :as data])
   (:require [clojure.java.io :as io])
-  (:use [clj-time.coerce :only (from-long)])
+  (:require [clj-time.coerce :refer [from-long]])
+  (:require [clj-time.core :refer [now]])
   (:require [noir.server :as server])
   (:require [me.raynes.fs :as fs])
+  (:require [clojure.tools.cli :refer [cli]])
   (:gen-class))
 
 (defn- tabbed [line]
@@ -43,6 +46,12 @@
         h (filehash file)]
     (with-open [in (io/reader file)]
       (load-exp file ts h (genomic-matrix-data (line-seq in))))))
+
+(defn- loadtest [name m n]
+  (create)
+  (let [mi (Integer. m)
+        ni (Integer. n)]
+  (load-exp name (now) "FIXME" (genomic-matrix-data (data/matrix mi ni)))))
 
 ;
 ; web services
@@ -87,11 +96,19 @@
     (create)
     (dorun (map load-tsv-file (in-path true)))))
 
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (if (= (first args) "-s")
-    (serv)
-    (loadfiles args))
+(def ^:private argspec
+  [["-s" "Start web server" :flag true :default false]
+   ["-d" "Database to use" :default "file:///data/TCGA/craft/h2/cavm.h2"]
+   ["-t" "Load test data  <name> <samples> <probes>" :flag true]])
+
+(defn -main [& args]
+  (let [[opts extra usage] (apply cli (cons args argspec))]
+    (with-db (create-db (:d opts))
+      (cond
+        (:s opts) (serv)
+        (:t opts) (if (not (= 3 (count extra)))
+                    (println usage)
+                    (apply loadtest extra))
+        :else (loadfiles extra))))
 
   (shutdown-agents))
