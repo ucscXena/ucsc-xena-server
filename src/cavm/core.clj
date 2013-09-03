@@ -97,6 +97,7 @@
 
 (def ^:private argspec
   [["-s" "Start web server" :flag true :default false]
+   ["-h" "--help" "Show help" :default false :flag true]
    ["-d" "Database to use" :default "file:///data/TCGA/craft/h2/cavm.h2"]
    ["-t" "Load test data  <name> <samples> <probes>" :flag true]])
 
@@ -104,6 +105,7 @@
   (let [[opts extra usage] (apply cli (cons args argspec))]
     (with-db (create-db (:d opts))
       (cond
+        (:help opts) (println usage)
         (:s opts) (serv)
         (:t opts) (if (not (= 3 (count extra)))
                     (println usage)
