@@ -2,12 +2,6 @@
   (:use cavm.query.sources)
   (:use clojure.test))
 
-(deftest add-output-hash-test
-  (testing "add output hash"
-    (let [out (add-output-hash '[{columns [sym1 sym2]} {columns [sym3]}])]
-      (is (= '[{columns [sym1 sym2] data {sym1 nil sym2 nil}}
-               {columns [sym3] data {sym3 nil}}] out)))))
-
 (deftest collect-test
   (testing "collect data"
     (let [out (collect '{data {a 5 b 6 c 12} columns [c b a]})]
