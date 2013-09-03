@@ -81,19 +81,33 @@
   (server/start port {:mode :dev
                       :ns 'cavm}))
 
+(defn- timefn [fn]
+  (with-out-str (time (fn))))
+
+(defn- load-tsv-report [file]
+  (try
+    (load-tsv-file file)
+    (catch java.lang.Throwable e
+      (binding [*out* *err*]
+        (println "Error loading file" file)
+        (throw e)))))  ; XXX should show traceback and continue
+
 (defn- loadfiles [args]
   (when (not (> (count args) 0))
     (println "Usage\nload <filename>")
     (System/exit 0))
 
   ; Skip files outside the designated path, which for now is CWD.
-  (let [in-path (group-by in-data-path args)]
-    (when (in-path false)
+  (let [{in-path true, not-in-path false} (group-by in-data-path args)]
+    (when not-in-path
       (binding [*out* *err*]
         (println "These files are outside the CAVM data path and will not be served:")
         (println (string/join "\n" (in-path false)))))
     (create)
-    (dorun (map load-tsv-file (in-path true)))))
+    (println "Loading " (count in-path) " file(s)")
+    (dorun (map #(do (print %2 %1 "") (time (load-tsv-report %1)))
+                in-path
+                (range (count in-path) 0 -1)))))
 
 (def ^:private argspec
   [["-s" "Start web server" :flag true :default false]
