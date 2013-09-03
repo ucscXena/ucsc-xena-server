@@ -2,7 +2,7 @@
   (:require [clojure.string :refer [join]]))
 
 (defn cell [m n i j]
-  (- (* 5 (/ (+ i (* m j)) (* m n))) 2.5))
+  (- (* 5 (/ (+ i (* n j)) (* m n))) 2.5))
 
 (defn- header [m]
   (join "\t" (cons "probes" (range m))))
