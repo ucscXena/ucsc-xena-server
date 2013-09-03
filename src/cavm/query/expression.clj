@@ -1,8 +1,6 @@
 (ns cavm.query.expression
   (:require [clojure.edn :as edn])
-  (:require [clojure.walk :as walk])
-  (:refer-clojure :exclude  [eval])
-  (:gen-class))
+  (:refer-clojure :exclude  [eval]))
 
 (def eval)
 
@@ -23,11 +21,6 @@
    'if iffn })
 
 (def specialfns (set (vals specials)))
-
-(defn snoop [x]
-  (binding [*out* *err*]
-    (println x))
-  x)
 
 (defn fn-node [node scope]
   (let [func (eval (first node) scope)]
