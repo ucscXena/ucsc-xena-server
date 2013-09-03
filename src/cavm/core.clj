@@ -35,7 +35,7 @@
 (def data-path (str fs/*cwd*))
 
 (defn- in-data-path [path]
-  (boolean (fs/child-of? data-path path)))
+  (boolean (fs/child-of? data-path path))) ; XXX not working??
 
 (defn- filehash [file]
   "fixme")
