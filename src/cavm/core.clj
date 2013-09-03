@@ -13,7 +13,7 @@
   (string/split line #"\t"))
 
 (defn- parseFloatNA [str]
-  (if (= str "NA")
+  (if (or (= str "NA") (= str "nan"))
     Double/NaN
     (Float/parseFloat str)))
 
