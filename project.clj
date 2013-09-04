@@ -15,4 +15,5 @@
                  [me.raynes/fs "1.4.2"]
                  [com.h2database/h2 "1.3.171"]]
   :aot [cavm.h2-binary]
+  :global-vars {*warn-on-reflection* true}
   :main cavm.core)
