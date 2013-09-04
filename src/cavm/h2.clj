@@ -185,7 +185,7 @@
   (dorun (map #(aset out (% 1) (aget in (% 0))) mapping))
   out)
 
-(defn bytes-to-floats [barr]
+(defn bytes-to-floats [^bytes barr]
   (let [bb (java.nio.ByteBuffer/allocate (alength barr))
         fb (.asFloatBuffer bb)
         out (float-array (quot (alength barr) 4))]
@@ -193,7 +193,7 @@
     (.get fb out)
     out))
 
-(defn floats-to-bytes [farr]
+(defn floats-to-bytes [^floats farr]
   (let [bb (java.nio.ByteBuffer/allocate (* (alength farr) 4))
         fb (.asFloatBuffer bb)]
     (.put fb farr)
