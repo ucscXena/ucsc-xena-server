@@ -90,7 +90,7 @@
     (catch java.lang.Throwable e
       (binding [*out* *err*]
         (println "Error loading file" file)
-        (throw e)))))  ; XXX should show traceback and continue
+        (.printStackTrace e)))))
 
 (defn- loadfiles [args]
   (when (not (> (count args) 0))
