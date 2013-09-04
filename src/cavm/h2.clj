@@ -4,6 +4,7 @@
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:use [clj-time.format :only (formatter unparse)])
+  (:use [cavm.hashable :only (ahashable)])
   (:use korma.core))
 
 ;(def db {:classname "org.h2.Driver"
@@ -202,18 +203,23 @@
 ;
 ;
 ;
+(defn- insert-scores-block [block]
+  (insert-scores (.ba block)))
 
-(defn- load-probe [exp prow]
+(defn- insert-unique-scores-fn []
+  (memoize insert-scores-block))
+
+(defn- load-probe [insert-scores-fn exp prow]
   (let [pid (insert-probe exp (:probe (meta prow)))
         blocks (partition-all bin-size prow)
         indx (range (count blocks))]
     (dorun (map (fn [block i]
-           (let [sid (insert-scores (score-encode block))]
+           (let [sid (insert-scores-fn (ahashable (score-encode block)))]
              (insert-join pid i sid))) blocks indx))))
 
 ; insert matrix, updating scores, probes, and joins tables
 (defn- load-exp-matrix [exp matrix]
-  (let [loadp (partial load-probe exp)]
+  (let [loadp (partial load-probe (insert-unique-scores-fn) exp)]
     (dorun (map loadp matrix))))
 
 (defn- cohort-sample-list [cid sample-list]
