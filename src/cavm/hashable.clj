@@ -12,3 +12,6 @@
 
 (defn ahashable [ba]
   (AHashable. ba))
+
+(defn get-array [^AHashable ah]
+  (.ba ah))

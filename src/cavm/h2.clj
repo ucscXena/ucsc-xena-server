@@ -5,7 +5,7 @@
   (:require [clojure.java.io :as io])
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
-  (:use [cavm.hashable :only (ahashable)])
+  (:use [cavm.hashable :only (ahashable get-array)])
   (:use korma.core))
 
 ;(def db {:classname "org.h2.Driver"
@@ -261,8 +261,9 @@
 ;
 ;
 ;
+
 (defn- insert-scores-block [block]
-  (insert-scores (.ba block)))
+  (insert-scores (get-array block)))
 
 (defn- insert-unique-scores-fn []
   (memoize insert-scores-block))
