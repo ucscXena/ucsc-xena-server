@@ -205,7 +205,6 @@
 (def KEY-ID (keyword "SCOPE_IDENTITY()"))
 
 ; Insert probe & return id
-; expand this for chrom info later.
 (defn- insert-probe [exp name]
   (let [{pid KEY-ID} (insert probes (values {:eid exp :name name}))]
     pid))
