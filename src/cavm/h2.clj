@@ -61,6 +61,7 @@
                        `time` TIMESTAMP NOT NULL,
                        `hash` VARCHAR(40) NOT NULL,
                        `cid` INT NOT NULL,
+                        `loaded` BOOLEAN NOT NULL,
                        FOREIGN KEY (cid) REFERENCES `cohorts` (`id`))"])
 
 (def exp-samples-table ["CREATE TABLE IF NOT EXISTS `exp_samples` (
@@ -137,8 +138,8 @@
 
 ; Delete experiment data & update experiment record.
 (defn- merge-exp [file timestamp filehash cohort]
-  (exec-raw ["MERGE INTO experiments (file, time, hash, cid) KEY(file) VALUES (?, ?, ?, ?)"
-             [file timestamp filehash cohort]])
+  (exec-raw ["MERGE INTO experiments (file, time, hash, cid, loaded) KEY(file) VALUES (?, ?, ?, ?, ?)"
+             [file timestamp filehash cohort false]])
   (let [[{exp :ID}] (select experiments (where {:file file}))]
     (clear-by-exp exp)
     exp))
@@ -217,10 +218,12 @@
            (let [sid (insert-scores-fn (ahashable (score-encode block)))]
              (insert-join pid i sid))) blocks indx))))
 
+(def ROWS 100)
+
 ; insert matrix, updating scores, probes, and joins tables
 (defn- load-exp-matrix [exp matrix]
   (let [loadp (partial load-probe (insert-unique-scores-fn) exp)]
-    (dorun (map loadp matrix))))
+    (dorun (map #(kdb/transaction (dorun (map loadp %))) (partition ROWS ROWS nil matrix)))))
 
 (defn- cohort-sample-list [cid sample-list]
   (select samples (fields :id :sample)
@@ -262,13 +265,20 @@
   (defn- format-timestamp [timestamp]
     (unparse fmtr timestamp)))
 
+(defn lock-matrix [file func]
+  (kdb/transaction (update experiments (where {:file file}) (set-fields {:loaded false})))
+  (func)
+  (kdb/transaction (update experiments (where {:file file}) (set-fields {:loaded true}))))
+
 (defn load-exp [file timestamp filehash matrix]
-  (kdb/transaction
-    (let [cid (merge-cohort file)
-          exp (merge-exp file (format-timestamp timestamp) filehash cid)
-          sids (load-samples cid (:samples (meta matrix)))]
-      (load-exp-samples exp sids)
-      (load-exp-matrix exp matrix))))
+  (lock-matrix
+    file
+    (fn []
+      (let [cid (kdb/transaction (merge-cohort file))
+            exp (kdb/transaction (merge-exp file (format-timestamp timestamp) filehash cid))
+            sids (kdb/transaction (load-samples cid (:samples (meta matrix))))]
+        (kdb/transaction (load-exp-samples exp sids))
+        (load-exp-matrix exp matrix)))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
