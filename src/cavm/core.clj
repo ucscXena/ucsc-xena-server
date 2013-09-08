@@ -1,6 +1,7 @@
 (ns cavm.core
   (:require [clojure.string :as string])
   (:use [cavm.h2 :only [create load-exp load-probemap del-exp datasets with-db create-db]]) ; XXX use model instead?
+  (:require [digest])
   (:require [cavm.test-data :as data])
   (:require [clojure.java.io :as io])
   (:require [clj-time.coerce :refer [from-long]])
@@ -38,7 +39,7 @@
   (boolean (fs/child-of? data-path path))) ; XXX not working??
 
 (defn- filehash [file]
-  "fixme")
+  (digest/sha1 (io/as-file file)))
 
 (defn load-tsv-file [file]
   (let [ts (file-time file)
