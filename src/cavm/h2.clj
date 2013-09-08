@@ -3,6 +3,7 @@
   (:require [korma.config :as kconf])
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
+  (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable)])
   (:use korma.core))
@@ -24,13 +25,9 @@
                    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
                    `eid` INT NOT NULL,
                    FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
-                   `bin` INT(11),
-                   `chrom` VARCHAR(255),
-                   `chromStart` INT,
-                   `chromEnd` INT,
                    `name` VARCHAR(255))"
-                   "CREATE INDEX IF NOT EXISTS probe_name ON probes (eid, name)"
-                   "CREATE INDEX IF NOT EXISTS probe_chrom ON probes (eid, chrom, bin)"])
+                   "ALTER TABLE `probes` ADD CONSTRAINT IF NOT EXISTS `eid_name` UNIQUE(`eid`, `name`)"
+                   "CREATE INDEX IF NOT EXISTS probe_name ON probes (eid, name)"])
 
 (def scores-table [(format "CREATE TABLE IF NOT EXISTS `scores` (
                   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -72,6 +69,50 @@
                         `i` INT NOT NULL,
                         PRIMARY KEY(`eid`, `sid`))"])
 
+; XXX What should max file name length be?
+(def probemap-table
+  ["CREATE TABLE IF NOT EXISTS `probemaps` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `file` VARCHAR(2000) NOT NULL UNIQUE,
+   `time` TIMESTAMP NOT NULL,
+   `hash` VARCHAR(40) NOT NULL,
+   `loaded` BOOLEAN NOT NULL)"])
+
+
+; if probemap is a file name, we probably want a separate table.
+; Should we reuse the experiments table?? Or duplicate all the fields??
+(def probemap-probes-table
+  ["CREATE TABLE IF NOT EXISTS `probemap_probes` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `probemaps_id` INT NOT NULL,
+   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
+   `probe` VARCHAR(1000) NOT NULL)"])
+
+; XXX CASCADE might perform badly, since h2 keeps the entire delete transaction
+; in memory. Might need to do this incrementally in application code.
+(def probemap-positions-table
+  ["CREATE TABLE IF NOT EXISTS `probemap_positions` (
+   `probemaps_id` INT NOT NULL,
+   FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
+   `probemap_probes_id` INT NOT NULL,
+   FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE,
+   `bin` INT,
+   `chrom` VARCHAR(255) NOT NULL,
+   `chromStart` INT NOT NULL,
+   `chromEnd` INT NOT NULL,
+   `strand` CHAR(1))"
+   "CREATE INDEX IF NOT EXISTS chrom_bin ON probemap_positions
+   (`probemaps_id`, `chrom`, `bin`)"])
+
+(def probemap-genes-table
+  ["CREATE TABLE IF NOT EXISTS `probemap_genes` (
+   `probemaps_id` INT NOT NULL,
+   FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
+   `probemap_probes_id` INT NOT NULL,
+   FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE,
+   `gene` VARCHAR(255))"
+   "CREATE INDEX IF NOT EXISTS gene ON probemap_genes
+   (`probemaps_id`, `gene`)"])
 
 ;
 ; Table models
@@ -110,6 +151,22 @@
   (many-to-many probes :joins  {:lfk 'sid :rfk 'pid}))
 
 (defentity joins)
+
+(declare probemap_probes probemap_positions probemap_genes)
+
+(defentity probemaps
+  (has-many probemap_probes))
+
+(defentity probemap_probes
+  (belongs-to probemaps)
+  (has-many probemap_positions)
+  (has-many probemap_genes))
+
+(defentity probemap_positions
+  (belongs-to probemap_probes))
+
+(defentity probemap_genes
+  (belongs-to probemap_probes))
 
 ;
 ;
@@ -287,6 +344,50 @@
       (clear-by-exp exp)
       (delete experiments (where {:id exp})))))
 
+;
+; probemap routines
+;
+
+(defn- merge-probemap [file timestamp filehash]
+  ; Use a merge to avoid losing the key, which datasets may be referencing.
+  (exec-raw ["MERGE INTO probemaps (file, time, hash, loaded) KEY(file) VALUES (?, ?, ?, ?)"
+             [file (format-timestamp timestamp) filehash false]])
+   (let [[{probemap :ID}] (select probemaps (where {:file file}))]
+     (delete probemap_probes (where {:probemaps_id probemap}))
+     probemap))
+
+(defn- add-probemap-probe [pmid probe]
+  (let [{pmp KEY-ID}
+        (insert probemap_probes (values {:probemaps_id pmid
+                                         :probe (probe :name)}))]
+    (insert probemap_positions (values {:probemaps_id pmid
+                                        :probemap_probes_id pmp
+                                        :bin (calc-bin
+                                               (probe :chromStart)
+                                               (probe :chromEnd))
+                                        :chrom (probe :chrom)
+                                        :chromStart (probe :chromStart)
+                                        :chromEnd (probe :chromEnd)
+                                        :strand (probe :strand)}))
+    (dorun (map #(insert probemap_genes (values {:probemaps_id pmid
+                                                 :probemap_probes_id pmp
+                                                 :gene %}))
+                (probe :genes)))))
+
+(defn- lock-probemap [file func]
+  (kdb/transaction (update probemaps (where {:file file}) (set-fields {:loaded false})))
+  (func)
+  (kdb/transaction (update probemaps (where {:file file}) (set-fields {:loaded true}))))
+
+(defn load-probemap [file timestamp filehash probes]
+  (lock-probemap
+    file
+    (fn []
+      (let [pmid (kdb/transaction (merge-probemap file timestamp filehash))
+            add-probe (partial add-probemap-probe pmid)]
+        (dorun (map #(dorun (map add-probe %))
+                       (partition ROWS ROWS nil probes)))))))
+
 (defn create-db [file]
   (kdb/create-db  {:classname "org.h2.Driver"
                    :subprotocol "h2"
@@ -406,7 +507,11 @@
     (exec-statements exp-samples-table)
     (exec-statements scores-table)
     (exec-statements join-table)
-    (exec-statements probes-table)))
+    (exec-statements probes-table)
+    (exec-statements probemap-table)
+    (exec-statements probemap-probes-table)
+    (exec-statements probemap-positions-table)
+    (exec-statements probemap-genes-table)))
 
 ; XXX monkey-patch korma to work around h2 bug.
 ; h2 will fail to select an index if joins are grouped, e.g.
