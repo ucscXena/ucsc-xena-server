@@ -21,53 +21,60 @@
 (def score-size (* float-size bin-size))
 
 ; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
-(def probes-table ["CREATE TABLE IF NOT EXISTS `probes` (
-                   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                   `eid` INT NOT NULL,
-                   FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
-                   `name` VARCHAR(255))"
-                   "ALTER TABLE `probes` ADD CONSTRAINT IF NOT EXISTS `eid_name` UNIQUE(`eid`, `name`)"
-                   "CREATE INDEX IF NOT EXISTS probe_name ON probes (eid, name)"])
+(def probes-table
+  ["CREATE TABLE IF NOT EXISTS `probes` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `eid` INT NOT NULL,
+   FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
+   `name` VARCHAR(255))"
+   "ALTER TABLE `probes` ADD CONSTRAINT IF NOT EXISTS `eid_name` UNIQUE(`eid`, `name`)"
+   "CREATE INDEX IF NOT EXISTS probe_name ON probes (eid, name)"])
 
-(def scores-table [(format "CREATE TABLE IF NOT EXISTS `scores` (
-                  `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                  `expScores` VARBINARY(%d) NOT NULL)" score-size)])
+(def scores-table
+  [(format "CREATE TABLE IF NOT EXISTS `scores` (
+           `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+           `expScores` VARBINARY(%d) NOT NULL)" score-size)])
 
-(def join-table ["CREATE TABLE IF NOT EXISTS `joins` (
-                 `pid` INT,
-                 `i` INT,
-                 `sid` INT)"
-                 "CREATE INDEX IF NOT EXISTS index_pid ON joins (`pid`, `i`)"])
+(def join-table
+  ["CREATE TABLE IF NOT EXISTS `joins` (
+   `pid` INT,
+   `i` INT,
+   `sid` INT)"
+   "CREATE INDEX IF NOT EXISTS index_pid ON joins (`pid`, `i`)"])
 
-(def cohorts-table ["CREATE TABLE IF NOT EXISTS `cohorts` (
-                   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                   `name` VARCHAR(2000) NOT NULL UNIQUE)"
-                   "CREATE INDEX IF NOT EXISTS index_name ON cohorts (`name`)"])
+(def cohorts-table
+  ["CREATE TABLE IF NOT EXISTS `cohorts` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `name` VARCHAR(2000) NOT NULL UNIQUE)"
+   "CREATE INDEX IF NOT EXISTS index_name ON cohorts (`name`)"])
 
-(def samples-table ["CREATE TABLE IF NOT EXISTS `samples` (
-                    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                    `cid` INT NOT NULL,
-                    FOREIGN KEY (cid) REFERENCES `cohorts` (`id`),
-                    `sample` VARCHAR(1000) NOT NULL)"
-                    "CREATE INDEX IF NOT EXISTS index_cid ON samples (`cid`)"])
+(def samples-table
+  ["CREATE TABLE IF NOT EXISTS `samples` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `cid` INT NOT NULL,
+   FOREIGN KEY (cid) REFERENCES `cohorts` (`id`),
+   `sample` VARCHAR(1000) NOT NULL)"
+   "CREATE INDEX IF NOT EXISTS index_cid ON samples (`cid`)"])
 
 ; XXX What should max file name length be?
-(def experiments-table ["CREATE TABLE IF NOT EXISTS `experiments` (
-                       `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                       `file` VARCHAR(2000) NOT NULL UNIQUE,
-                       `time` TIMESTAMP NOT NULL,
-                       `hash` VARCHAR(40) NOT NULL,
-                       `cid` INT NOT NULL,
-                        `loaded` BOOLEAN NOT NULL,
-                       FOREIGN KEY (cid) REFERENCES `cohorts` (`id`))"])
+(def experiments-table
+  ["CREATE TABLE IF NOT EXISTS `experiments` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `file` VARCHAR(2000) NOT NULL UNIQUE,
+   `time` TIMESTAMP NOT NULL,
+   `hash` VARCHAR(40) NOT NULL,
+   `cid` INT NOT NULL,
+   `loaded` BOOLEAN NOT NULL,
+   FOREIGN KEY (cid) REFERENCES `cohorts` (`id`))"])
 
-(def exp-samples-table ["CREATE TABLE IF NOT EXISTS `exp_samples` (
-                        `eid` INT NOT NULL,
-                        FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
-                        `sid` INT NOT NULL,
-                        FOREIGN KEY (sid) REFERENCES `samples` (`id`),
-                        `i` INT NOT NULL,
-                        PRIMARY KEY(`eid`, `sid`))"])
+(def exp-samples-table
+  ["CREATE TABLE IF NOT EXISTS `exp_samples` (
+   `eid` INT NOT NULL,
+   FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
+   `sid` INT NOT NULL,
+   FOREIGN KEY (sid) REFERENCES `samples` (`id`),
+   `i` INT NOT NULL,
+   PRIMARY KEY(`eid`, `sid`))"])
 
 ; XXX What should max file name length be?
 (def probemap-table
