@@ -48,14 +48,6 @@
    `name` VARCHAR(2000) NOT NULL UNIQUE)"
    "CREATE INDEX IF NOT EXISTS index_name ON cohorts (`name`)"])
 
-(def samples-table
-  ["CREATE TABLE IF NOT EXISTS `samples` (
-   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `cid` INT NOT NULL,
-   FOREIGN KEY (cid) REFERENCES `cohorts` (`id`),
-   `sample` VARCHAR(1000) NOT NULL)"
-   "CREATE INDEX IF NOT EXISTS index_cid ON samples (`cid`)"])
-
 ; XXX What should max file name length be?
 (def experiments-table
   ["CREATE TABLE IF NOT EXISTS `experiments` (
@@ -63,18 +55,15 @@
    `file` VARCHAR(2000) NOT NULL UNIQUE,
    `time` TIMESTAMP NOT NULL,
    `hash` VARCHAR(40) NOT NULL,
-   `cid` INT NOT NULL,
-   `loaded` BOOLEAN NOT NULL,
-   FOREIGN KEY (cid) REFERENCES `cohorts` (`id`))"])
+   `loaded` BOOLEAN NOT NULL)"])
 
 (def exp-samples-table
   ["CREATE TABLE IF NOT EXISTS `exp_samples` (
-   `eid` INT NOT NULL,
-   FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
-   `sid` INT NOT NULL,
-   FOREIGN KEY (sid) REFERENCES `samples` (`id`),
+   `experiments_id` INT NOT NULL,
+   FOREIGN KEY (experiments_id) REFERENCES `experiments` (`id`),
    `i` INT NOT NULL,
-   PRIMARY KEY(`eid`, `sid`))"])
+   `name` VARCHAR (1000) NOT NULL,
+   PRIMARY KEY(`experiments_id`, `i`))"]) ; XXX what should this be?
 
 ; XXX What should max file name length be?
 (def probemap-table
@@ -125,24 +114,16 @@
 ; Table models
 ;
 
-(declare probes scores experiments samples exp_samples)
+(declare probes scores experiments exp_samples)
 
-(defentity cohorts
-  (has-many experiments {:fk :cid})
-  (has-many samples {:fk :cid}))
+(defentity cohorts)
 
 (defentity experiments
-  (belongs-to cohorts {:fk :cid})
-  (has-many exp_samples {:fk :eid})
+  (has-many exp_samples)
   (has-many probes))
 
-(defentity samples
-  (has-many exp_samples {:fk :sid})
-  (belongs-to cohorts {:fk :cid}))
-
 (defentity exp_samples
-  (belongs-to samples {:fk :sid})
-  (belongs-to experiments {:fk :eid}))
+  (belongs-to experiments))
 
 (declare score-decode)
 
@@ -187,9 +168,7 @@
 
 (defn- clear-by-exp [exp]
   (let [p (probes-in-exp exp)]
-    (delete exp_samples (where {:eid exp}))
-    ; XXX This is a monster delete. Should limit it by cohort, or do it off-line.
-    (delete samples  (where (not (in :id (subselect exp_samples (fields :sid) (modifier "DISTINCT"))))))
+    (delete exp_samples (where {:experiments_id exp}))
     (delete scores (where {:id [in (scores-with-probes p)]}))
     (delete joins (where {:pid [in p]}))
     (delete probes (where {:id [in p]}))))
@@ -201,9 +180,9 @@
     cid))
 
 ; Delete experiment data & update experiment record.
-(defn- merge-exp [file timestamp filehash cohort]
-  (exec-raw ["MERGE INTO experiments (file, time, hash, cid, loaded) KEY(file) VALUES (?, ?, ?, ?, ?)"
-             [file timestamp filehash cohort false]])
+(defn- merge-exp [file timestamp filehash]
+  (exec-raw ["MERGE INTO experiments (file, time, hash, loaded) KEY(file) VALUES (?, ?, ?, ?)"
+             [file timestamp filehash false]])
   (let [[{exp :ID}] (select experiments (where {:file file}))]
     (clear-by-exp exp)
     exp))
@@ -289,41 +268,37 @@
   (let [loadp (partial load-probe (insert-unique-scores-fn) exp)]
     (dorun (map #(kdb/transaction (dorun (map loadp %))) (partition ROWS ROWS nil matrix)))))
 
-(defn- cohort-sample-list [cid sample-list]
-  (select samples (fields :id :sample)
-          (where {:cid cid :sample [in sample-list]})))
+; XXX Update to return all samples in cohort by merging
+; exp_samples.
+;(defn- cohort-sample-list [cid sample-list]
+;  (select samples (fields :id :sample)
+;          (where {:cid cid :sample [in sample-list]})))
+;
+;; hash seq of maps by given key
+;(defn- hash-by-key [k s]
+;  (zipmap (map #(% k) s) s))
+;
+;; return values in order of the given keys
+;(defn- in-order [order hm]
+;  (map hm order))
+;
+;; return value of the given key for all objects in seq
+;(defn- select-val [k hms]
+;  (map #(% k) hms))
+;
+;(defn- sample-ids [cid sample-list]
+;  (->> sample-list
+;       (cohort-sample-list cid)
+;       (hash-by-key :SAMPLE)
+;       (in-order sample-list)
+;       (select-val :ID)))
 
-; hash seq of maps by given key
-(defn- hash-by-key [k s]
-  (zipmap (map #(% k) s) s))
+(defn- insert-exp-sample [eid sample i]
+  (insert exp_samples (values {:experiments_id eid :name sample :i i})))
 
-; return values in order of the given keys
-(defn- in-order [order hm]
-  (map hm order))
-
-; return value of the given key for all objects in seq
-(defn- select-val [k hms]
-  (map #(% k) hms))
-
-(defn- sample-ids [cid sample-list]
-  (->> sample-list
-       (cohort-sample-list cid)
-       (hash-by-key :SAMPLE)
-       (in-order sample-list)
-       (select-val :ID)))
-
-(defn- load-samples [cid sample-list]
-  (dorun
-    (map #(exec-raw ["MERGE INTO samples (cid, sample) KEY(cid, sample) VALUES (?, ?)" [cid %]])
-         sample-list))
-  (sample-ids cid sample-list))
-
-(defn- insert-exp-sample [eid sid i]
-  (insert exp_samples (values {:eid eid :sid sid :i i})))
-
-(defn- load-exp-samples [exp sids]
+(defn- load-exp-samples [exp samples]
   (dorun (map #(apply (partial insert-exp-sample exp) %)
-              (map vector sids (range)))))
+              (map vector samples (range)))))
 
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
   (defn- format-timestamp [timestamp]
@@ -338,10 +313,11 @@
   (lock-matrix
     file
     (fn []
-      (let [cid (kdb/transaction (merge-cohort file))
-            exp (kdb/transaction (merge-exp file (format-timestamp timestamp) filehash cid))
-            sids (kdb/transaction (load-samples cid (:samples (meta matrix))))]
-        (kdb/transaction (load-exp-samples exp sids))
+      (let [exp (kdb/transaction (merge-exp
+                                   file
+                                   (format-timestamp timestamp)
+                                   filehash))]
+        (kdb/transaction (load-exp-samples exp (:samples (meta matrix))))
         (load-exp-matrix exp matrix)))))
 
 ; XXX factor out common parts with merge, above?
@@ -422,8 +398,8 @@
 
 ; Intersect experiment samples with the given set of samples.
 (defn exp-samples-in-list [exp samps]
-  (select exp_samples (with samples) (fields :i :samples.sample)
-          (where  {:eid exp}) (where (in :samples.sample samps))))
+  (select exp_samples (fields :i :name)
+          (where  {:experiments_id exp}) (where (in :name samps))))
 
 (defn sample-bins [samps]
   (set (map #(quot (% :I) bin-size) samps)))
@@ -459,7 +435,7 @@
   (let [{i :I} sample]
     (assoc sample :bin (quot i bin-size) :off (rem i bin-size))))
 
-(defn- bin-mapping [order {off :off sample :SAMPLE}]
+(defn- bin-mapping [order {off :off sample :NAME}]
   [off (order sample)])
 
 (defn- pick-samples-fn [order [bin samples]]
@@ -509,7 +485,6 @@
 (defn create[]
   (kdb/transaction
     (exec-statements cohorts-table)
-    (exec-statements samples-table)
     (exec-statements experiments-table)
     (exec-statements exp-samples-table)
     (exec-statements scores-table)

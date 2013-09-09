@@ -24,4 +24,4 @@
     (let [out (read-symbols
                 [genomic-source]
                 '[{table fivebyten columns ["3"] samples ["1" "2"]}])]
-      (is (nearly-equal eps [-1.7 -1.2] (vec (first out)))))))
+      (is (nearly-equal eps [-1.2 -0.2] (vec (first out)))))))
