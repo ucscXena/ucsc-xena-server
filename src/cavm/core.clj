@@ -27,7 +27,7 @@
 (defn- probe-line [line]
   (let [cols (tabbed line)]
     (with-meta (map parseFloatNA (rest cols))
-               {:probe (first cols)})))
+               {:probe (String. (first cols))}))) ; copy the string, because string/split is evil
 
 ; Return seq of scores, probes X samples, with samples as metadata
 (defn- genomic-matrix-data [lines]
@@ -46,7 +46,7 @@
   (let [ts (file-time file)
         h (filehash file)]
     (with-open [in (io/reader file)]
-      (load-exp file ts h (genomic-matrix-data (line-seq in))))))
+      (load-exp file ts h (fn [] (genomic-matrix-data (line-seq in)))))))
 
 (defn- loadtest [name m n]
   (create)
@@ -75,7 +75,7 @@
   (let [ts (file-time file)
         h (filehash file)]
     (with-open [in (io/reader file)]
-      (load-probemap file ts h (map probemap-row (line-seq in))))))
+      (load-probemap file ts h (fn [] (map probemap-row (line-seq in)))))))
 ;
 ; web services
 

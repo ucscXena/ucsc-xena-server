@@ -54,8 +54,7 @@
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `file` VARCHAR(2000) NOT NULL UNIQUE,
    `time` TIMESTAMP NOT NULL,
-   `hash` VARCHAR(40) NOT NULL,
-   `loaded` BOOLEAN NOT NULL)"])
+   `hash` VARCHAR(40) NOT NULL)"])
 
 (def exp-samples-table
   ["CREATE TABLE IF NOT EXISTS `exp_samples` (
@@ -71,8 +70,7 @@
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `file` VARCHAR(2000) NOT NULL UNIQUE,
    `time` TIMESTAMP NOT NULL,
-   `hash` VARCHAR(40) NOT NULL,
-   `loaded` BOOLEAN NOT NULL)"])
+   `hash` VARCHAR(40) NOT NULL)"])
 
 
 ; if probemap is a file name, we probably want a separate table.
@@ -181,8 +179,8 @@
 
 ; Delete experiment data & update experiment record.
 (defn- merge-exp [file timestamp filehash]
-  (exec-raw ["MERGE INTO experiments (file, time, hash, loaded) KEY(file) VALUES (?, ?, ?, ?)"
-             [file timestamp filehash false]])
+  (exec-raw ["MERGE INTO experiments (file, time, hash) KEY(file) VALUES (?, ?, ?)"
+             [file timestamp filehash]])
   (let [[{exp :ID}] (select experiments (where {:file file}))]
     (clear-by-exp exp)
     exp))
@@ -255,18 +253,17 @@
 
 (defn- load-probe [insert-scores-fn exp prow]
   (let [pid (insert-probe exp (:probe (meta prow)))
-        blocks (partition-all bin-size prow)
-        indx (range (count blocks))]
-    (dorun (map (fn [block i]
-           (let [sid (insert-scores-fn (ahashable (score-encode block)))]
-             (insert-join pid i sid))) blocks indx))))
+        blocks (partition-all bin-size prow)]
+    (doseq [[block i] (map vector blocks (range))]
+      (let [sid (insert-scores-fn (ahashable (score-encode block)))]
+        (insert-join pid i sid)))))
 
 (def ROWS 100)
 
 ; insert matrix, updating scores, probes, and joins tables
 (defn- load-exp-matrix [exp matrix]
   (let [loadp (partial load-probe (insert-unique-scores-fn) exp)]
-    (dorun (map #(kdb/transaction (dorun (map loadp %))) (partition ROWS ROWS nil matrix)))))
+    (dorun (map loadp matrix))))
 
 ; XXX Update to return all samples in cohort by merging
 ; exp_samples.
@@ -304,21 +301,16 @@
   (defn- format-timestamp [timestamp]
     (unparse fmtr timestamp)))
 
-(defn lock-matrix [file func]
-  (kdb/transaction (update experiments (where {:file file}) (set-fields {:loaded false})))
-  (func)
-  (kdb/transaction (update experiments (where {:file file}) (set-fields {:loaded true}))))
+; kdb/transaction will create a closure of our parameters,
+; so we can't pass in the matrix seq w/o blowing the heap. We
+; pass in a function to return the seq, instead.
+(defn load-exp [file timestamp filehash matrix-fn]
+  (kdb/transaction
+    (let [matrix (matrix-fn)
+          exp (merge-exp file (format-timestamp timestamp) filehash)]
+      (load-exp-samples exp (:samples (meta matrix)))
+      (load-exp-matrix exp matrix))))
 
-(defn load-exp [file timestamp filehash matrix]
-  (lock-matrix
-    file
-    (fn []
-      (let [exp (kdb/transaction (merge-exp
-                                   file
-                                   (format-timestamp timestamp)
-                                   filehash))]
-        (kdb/transaction (load-exp-samples exp (:samples (meta matrix))))
-        (load-exp-matrix exp matrix)))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
@@ -333,8 +325,8 @@
 
 (defn- merge-probemap [file timestamp filehash]
   ; Use a merge to avoid losing the key, which datasets may be referencing.
-  (exec-raw ["MERGE INTO probemaps (file, time, hash, loaded) KEY(file) VALUES (?, ?, ?, ?)"
-             [file (format-timestamp timestamp) filehash false]])
+  (exec-raw ["MERGE INTO probemaps (file, time, hash) KEY(file) VALUES (?, ?, ?)"
+             [file (format-timestamp timestamp) filehash]])
    (let [[{probemap :ID}] (select probemaps (where {:file file}))]
      (delete probemap_probes (where {:probemaps_id probemap}))
      probemap))
@@ -357,19 +349,15 @@
                                                  :gene %}))
                 (probe :genes)))))
 
-(defn- lock-probemap [file func]
-  (kdb/transaction (update probemaps (where {:file file}) (set-fields {:loaded false})))
-  (func)
-  (kdb/transaction (update probemaps (where {:file file}) (set-fields {:loaded true}))))
-
-(defn load-probemap [file timestamp filehash probes]
-  (lock-probemap
-    file
-    (fn []
-      (let [pmid (kdb/transaction (merge-probemap file timestamp filehash))
-            add-probe (partial add-probemap-probe pmid)]
-        (dorun (map #(dorun (map add-probe %))
-                       (partition ROWS ROWS nil probes)))))))
+; kdb/transaction will create a closure of our parameters,
+; so we can't pass in the matrix seq w/o blowing the heap. We
+; pass in a function to return the seq, instead.
+(defn load-probemap [file timestamp filehash probes-fn]
+  (kdb/transaction
+    (let [probes (probes-fn)
+          pmid (merge-probemap file timestamp filehash)
+          add-probe (partial add-probemap-probe pmid)]
+      (dorun (map add-probe probes)))))
 
 (defn create-db [file]
   (kdb/create-db  {:classname "org.h2.Driver"
