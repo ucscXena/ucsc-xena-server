@@ -8,7 +8,8 @@
   (:require [clj-time.core :refer [now]])
   (:require [noir.server :as server])
   (:require [me.raynes.fs :as fs])
-  (:require [clojure.tools.cli :refer [cli]]))
+  (:require [clojure.tools.cli :refer [cli]])
+  (:gen-class))
 
 (defn- tabbed [line]
   (string/split line #"\t"))
