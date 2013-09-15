@@ -6,19 +6,60 @@
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable get-array)])
-  (:use korma.core))
+  (:use [korma.core :rename {insert kcinsert}])
+  (:gen-class))
 
 ;(def db {:classname "org.h2.Driver"
 ;         :subprotocol "h2"
 ;         :subname "file:///data/TCGA/craft/h2/cavm.h2"})
 
-;
-; Table definitions.
-;
+; Coerce this sql fn name to a keyword so we can reference it.
+(def KEY-ID (keyword "SCOPE_IDENTITY()"))
+
+; provide an insert macro that directly returns an id, instead of a hash
+; on SCOPE_IDENTITY().
+(defmacro insert [& args] `(KEY-ID (kcinsert ~@args)))
 
 (def float-size 4)
 (def bin-size 100)
 (def score-size (* float-size bin-size))
+
+;
+; Table models
+;
+
+(declare experiment_sources probes scores experiments exp_samples)
+
+(defentity cohorts)
+(defentity sources
+  (many-to-many experiment_sources experiments))
+
+(defentity experiments
+  (many-to-many experiment_sources sources)
+  (has-many exp_samples)
+  (has-many probes))
+
+(defentity exp_samples
+  (belongs-to experiments))
+
+(declare score-decode)
+
+(defentity probes
+  (many-to-many scores :joins  {:lfk 'pid :rfk 'sid})
+  (belongs-to experiments {:fk :eid})
+  (transform (fn [{scores :EXPSCORES :as v}]
+               (if scores
+                 (assoc v :EXPSCORES (float-array (score-decode scores)))
+                 v))))
+
+(defentity scores
+  (many-to-many probes :joins  {:lfk 'sid :rfk 'pid}))
+
+(defentity joins)
+
+;
+; Table definitions.
+;
 
 ; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
 (def probes-table
@@ -49,12 +90,111 @@
    "CREATE INDEX IF NOT EXISTS index_name ON cohorts (`name`)"])
 
 ; XXX What should max file name length be?
+(def sources-table
+  ["CREATE TABLE IF NOT EXISTS `sources` (
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `name` VARCHAR(2000) NOT NULL,
+   `time` TIMESTAMP NOT NULL,
+   `hash` VARCHAR(40) NOT NULL)"])
+
+; XXX FIX NAME
+; XXX Include original json
 (def experiments-table
   ["CREATE TABLE IF NOT EXISTS `experiments` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `file` VARCHAR(2000) NOT NULL UNIQUE,
-   `time` TIMESTAMP NOT NULL,
-   `hash` VARCHAR(40) NOT NULL)"])
+   `name` varchar(255) NOT NULL UNIQUE,
+   `probeMap` varchar(255),
+   `shortTitle` varchar(255),
+   `longTitle` varchar(255),
+   `groupTitle` varchar(255),
+   `platform` varchar(255),
+   `security` varchar(255),
+   `gain` double DEFAULT NULL,
+   `url` varchar(255) DEFAULT NULL,
+   `description` longtext,
+   `notes` longtext,
+   `wrangling_procedure` longtext)"])
+
+;
+; experiments in making a macro for metadata tables
+;
+
+;(defn- create-table [name cols]
+;  (format "CREATE TABLE IF NOT EXISTS `%s` (%s)"
+;          name
+;          cols))
+;
+;(defn- format-cols [cols]
+;  (->> cols
+;       (map (fn [[k v]] (format "`%s` %s" (name k) v)))
+;       (clojure.string/join ", ")))
+;
+;(defmacro defmeta [table & columns]
+;;  (let [cols (array-map (into {} (map vec (partition 2 columns))))]
+;  (let [kv (map vec (partition 2 columns))
+;        create-cmd (create-table
+;                     (str table "-table")
+;                     (format-cols kv))]
+;    nil))
+;
+;
+;(defmeta experiments
+;  :id "INT NOT NULL AUTO_INCREMENT PRIMARY KEY"
+;  :name "varchar(255) NOT NULL UNIQUE"
+;  :probeMap "varchar(255)"
+;  :shortTitle "varchar(255)"
+;  :longTitle "varchar(255)"
+;  :groupTitle "varchar(255)"
+;  :platform "varchar(255)"
+;  :security "varchar(255)"
+;  :gain "double DEFAULT NULL"
+;  :url "varchar(255) DEFAULT NULL"
+;  :description "longtext"
+;  :notes "longtext"
+;  :wrangling_procedure "longtext")
+
+;
+;
+;
+
+
+(def ^:private experiments-columns
+  #{:name
+    :probeMap
+    :shortTitle
+    :longTitle
+    :groupTitle
+    :platform
+    :security
+    :gain
+    :url
+    :description
+    :notes
+    :wrangling_procedure})
+
+(def ^:private experiments-defaults
+  (into {} (map #(vector % nil) experiments-columns)))
+
+; XXX should abstract this to set up the many-to-many
+; on the defentity. Can we run many-to-many on the existing
+; sources entity?? Or maybe do defentity sources *after* all
+; the other tables exist?
+(def experiment-sources-table
+  ["CREATE TABLE IF NOT EXISTS `experiment_sources` (
+   `experiments_id` INT NOT NULL,
+   FOREIGN KEY (experiments_id) REFERENCES `experiments` (`id`),
+   `sources_id` INT NOT NULL,
+   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"
+   "CREATE INDEX IF NOT EXISTS experiment ON `experiment_sources` (`experiments_id`)"
+   "CREATE INDEX IF NOT EXISTS source ON `experiment_sources` (`sources_id`)"])
+
+(defentity experiment_sources)
+
+(def ^:private experiments-meta
+  {:table experiments
+   :defaults experiments-defaults
+   :join experiment_sources
+   :columns experiments-columns})
 
 (def exp-samples-table
   ["CREATE TABLE IF NOT EXISTS `exp_samples` (
@@ -64,14 +204,63 @@
    `name` VARCHAR (1000) NOT NULL,
    PRIMARY KEY(`experiments_id`, `i`))"]) ; XXX what should this be?
 
+;
+; Probemap declarations
+;
+
+(declare probemap_probes probemap_positions probemap_genes)
+(defentity probemap_sources)
+
+(defentity probemaps
+  (has-many probemap_probes))
+
+(defentity probemap_probes
+  (belongs-to probemaps)
+  (has-many probemap_positions)
+  (has-many probemap_genes))
+
+(defentity probemap_positions
+  (belongs-to probemap_probes))
+
+(defentity probemap_genes
+  (belongs-to probemap_probes))
+
+
+; XXX FIX NAME
+; XXX Include original json
 ; XXX What should max file name length be?
-(def probemap-table
+(def probemaps-table
   ["CREATE TABLE IF NOT EXISTS `probemaps` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `file` VARCHAR(2000) NOT NULL UNIQUE,
-   `time` TIMESTAMP NOT NULL,
-   `hash` VARCHAR(40) NOT NULL)"])
+   `name` VARCHAR(1000),
+   `assembly` VARCHAR(255),
+   `version` VARCHAR(255))"])
 
+(def probemap-sources-table
+  ["CREATE TABLE IF NOT EXISTS `probemap_sources` (
+   `probemaps_id` INT NOT NULL,
+   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`),
+   `sources_id` INT NOT NULL,
+   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"
+   "CREATE INDEX IF NOT EXISTS probemap ON `probemap_sources` (`probemaps_id`)"
+   "CREATE INDEX IF NOT EXISTS source ON `probemap_sources` (`sources_id`)"])
+
+(def ^:private probemaps-columns
+  #{:name
+    :assembly
+    :version})
+
+(def ^:private probemaps-defaults
+  (into {} (map #(vector % nil) probemaps-columns)))
+
+(declare probemaps)
+(defentity probemap_sources)
+
+(def ^:private probemaps-meta
+  {:table probemaps
+   :defaults probemaps-defaults
+   :join probemap_sources
+   :columns probemaps-columns})
 
 ; if probemap is a file name, we probably want a separate table.
 ; Should we reuse the experiments table?? Or duplicate all the fields??
@@ -109,52 +298,6 @@
    (`probemaps_id`, `gene`)"])
 
 ;
-; Table models
-;
-
-(declare probes scores experiments exp_samples)
-
-(defentity cohorts)
-
-(defentity experiments
-  (has-many exp_samples)
-  (has-many probes))
-
-(defentity exp_samples
-  (belongs-to experiments))
-
-(declare score-decode)
-
-(defentity probes
-  (many-to-many scores :joins  {:lfk 'pid :rfk 'sid})
-  (belongs-to experiments {:fk :eid})
-  (transform (fn [{scores :EXPSCORES :as v}]
-               (if scores
-                 (assoc v :EXPSCORES (float-array (score-decode scores)))
-                 v))))
-
-(defentity scores
-  (many-to-many probes :joins  {:lfk 'sid :rfk 'pid}))
-
-(defentity joins)
-
-(declare probemap_probes probemap_positions probemap_genes)
-
-(defentity probemaps
-  (has-many probemap_probes))
-
-(defentity probemap_probes
-  (belongs-to probemaps)
-  (has-many probemap_positions)
-  (has-many probemap_genes))
-
-(defentity probemap_positions
-  (belongs-to probemap_probes))
-
-(defentity probemap_genes
-  (belongs-to probemap_probes))
-
-;
 ;
 ;
 
@@ -177,24 +320,51 @@
   (let [[{cid :ID}] (select cohorts (where {:name cohort}))]
     cid))
 
-; Delete experiment data & update experiment record.
-(defn- merge-exp [file timestamp filehash]
-  (exec-raw ["MERGE INTO experiments (file, time, hash) KEY(file) VALUES (?, ?, ?)"
-             [file timestamp filehash]])
-  (let [[{exp :ID}] (select experiments (where {:file file}))]
-    (clear-by-exp exp)
-    exp))
+(defn snoop [x]
+  (println x)
+  x)
 
-; Coerce this sql fn name to a keyword so we can reference it.
-(def KEY-ID (keyword "SCOPE_IDENTITY()"))
+; reset any columns left unspecified, and filter by
+; db columns.
+(defn- normalize-experiment-meta [metadata]
+  (select-keys
+    (merge experiments-defaults (clojure.walk/keywordize-keys metadata))
+    experiments-columns))
+
+; Update experiment record.
+(defn- merge-exp [{ename "name" :as metadata}]
+  (let [normmeta (normalize-experiment-meta metadata)
+        [{id :ID}] (select experiments (fields :id) (where {:name ename}))]
+    (if id
+      (do
+        (update experiments (set-fields normmeta) (where {:id id}))
+        id)
+      (insert experiments (values normmeta)))))
+
+
+(defn- normalize-meta [m-ent metadata]
+  (select-keys
+    (merge (:defaults m-ent) (clojure.walk/keywordize-keys metadata))
+    (:columns m-ent)))
+
+; Update meta entity record.
+(defn- merge-m-ent [m-ent {ename "name" :as metadata}]
+  (let [normmeta (normalize-meta m-ent metadata)
+        table (:table m-ent)
+        [{id :ID}] (select table (fields :id) (where {:name ename}))]
+    (if id
+      (do
+        (update table (set-fields normmeta) (where {:id id}))
+        id)
+      (insert table (values normmeta)))))
 
 ; Insert probe & return id
 (defn- insert-probe [exp name]
-  (let [{pid KEY-ID} (insert probes (values {:eid exp :name name}))]
+  (let [pid (insert probes (values {:eid exp :name name}))]
     pid))
 
 (defn- insert-scores [slist]
-  (let [{sid KEY-ID} (insert scores (values {:expScores slist}))]
+  (let [sid (insert scores (values {:expScores slist}))]
     sid))
 
 (defn- insert-join [pid i sid]
@@ -258,8 +428,6 @@
       (let [sid (insert-scores-fn (ahashable (score-encode block)))]
         (insert-join pid i sid)))))
 
-(def ROWS 100)
-
 ; insert matrix, updating scores, probes, and joins tables
 (defn- load-exp-matrix [exp matrix]
   (let [loadp (partial load-probe (insert-unique-scores-fn) exp)]
@@ -301,16 +469,40 @@
   (defn- format-timestamp [timestamp]
     (unparse fmtr timestamp)))
 
+(defn- fmt-time [file-meta]
+  (assoc file-meta :time (format-timestamp (:time file-meta))))
+
+(defn clean-sources []
+  (delete sources
+          (where (not (in :id (subselect
+                                (union (queries
+                                         (subselect
+                                           experiment_sources
+                                           (fields [:sources_id]))
+                                         (subselect
+                                           probemap_sources
+                                           (fields [:sources_id]))))))))))
+
+(defn- load-related-sources [table id-key id files]
+  (delete table (where {id-key id}))
+  (let [fids (map #(insert sources (values %)) files)]
+    (doseq [fid fids]
+      (insert table
+              (values {id-key id :sources_id fid})))))
+
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
-(defn load-exp [file timestamp filehash matrix-fn]
+
+(defn load-exp [files metadata matrix-fn]
   (kdb/transaction
     (let [matrix (matrix-fn)
-          exp (merge-exp file (format-timestamp timestamp) filehash)]
+          exp (merge-m-ent experiments-meta metadata)]
+      (clear-by-exp exp)
+      (load-related-sources
+        experiment_sources :experiments_id exp (map fmt-time files))
       (load-exp-samples exp (:samples (meta matrix)))
       (load-exp-matrix exp matrix))))
-
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
@@ -332,7 +524,7 @@
      probemap))
 
 (defn- add-probemap-probe [pmid probe]
-  (let [{pmp KEY-ID}
+  (let [pmp
         (insert probemap_probes (values {:probemaps_id pmid
                                          :probe (probe :name)}))]
     (insert probemap_positions (values {:probemaps_id pmid
@@ -352,11 +544,13 @@
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
-(defn load-probemap [file timestamp filehash probes-fn]
+(defn load-probemap [files metadata probes-fn]
   (kdb/transaction
     (let [probes (probes-fn)
-          pmid (merge-probemap file timestamp filehash)
+          pmid (merge-m-ent probemaps-meta metadata)
           add-probe (partial add-probemap-probe pmid)]
+      (load-related-sources
+        probemap_sources :probemaps_id pmid (map fmt-time files))
       (dorun (map add-probe probes)))))
 
 (defn create-db [file]
@@ -473,12 +667,15 @@
 (defn create[]
   (kdb/transaction
     (exec-statements cohorts-table)
+    (exec-statements sources-table)
     (exec-statements experiments-table)
+    (exec-statements experiment-sources-table)
     (exec-statements exp-samples-table)
     (exec-statements scores-table)
     (exec-statements join-table)
     (exec-statements probes-table)
-    (exec-statements probemap-table)
+    (exec-statements probemaps-table)
+    (exec-statements probemap-sources-table)
     (exec-statements probemap-probes-table)
     (exec-statements probemap-positions-table)
     (exec-statements probemap-genes-table)))

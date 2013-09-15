@@ -1,12 +1,20 @@
 (ns cavm.core
   (:require [clojure.string :as string])
-  (:use [cavm.h2 :only [create load-exp load-probemap del-exp datasets with-db create-db]]) ; XXX use model instead?
+  (:use [cavm.h2 :only [create
+                        load-exp
+                        load-probemap
+                        del-exp
+                        datasets
+                        with-db
+                        clean-sources
+                        create-db]]) ; XXX use model instead?
   (:require [digest])
   (:require [cavm.test-data :as data])
   (:require [clojure.java.io :as io])
   (:require [clj-time.coerce :refer [from-long]])
   (:require [clj-time.core :refer [now]])
   (:require [noir.server :as server])
+  (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [cli]])
   (:gen-class))
@@ -22,6 +30,18 @@
 (defn- file-time [file]
   (from-long (.lastModified (java.io.File. file))))
 
+(def data-path (str fs/*cwd*))
+
+(defn- in-data-path [path]
+  (boolean (fs/child-of? data-path path))) ; XXX not working??
+
+(defn- filehash [file]
+  (digest/sha1 (io/as-file file)))
+
+;
+; cgData genomicMatrix
+;
+
 ; return seq of floats from probe line, with probe as metadata
 ; probeid value value value...
 (defn- probe-line [line]
@@ -34,19 +54,32 @@
   (with-meta (map probe-line (rest lines))
              {:samples (rest (tabbed (first lines)))}))
 
-(def data-path (str fs/*cwd*))
+(defn- cgdata-meta [file]
+  (let [mfile (io/as-file (str file ".json"))]
+    (if (.exists mfile)
+      (json/read-str (slurp mfile))
+      {:name file})))
 
-(defn- in-data-path [path]
-  (boolean (fs/child-of? data-path path))) ; XXX not working??
+(defn- genomic-matrix-meta [file]
+  (-> file
+      (cgdata-meta)
+      (clojure.set/rename-keys
+        {":probeMap" "probeMap" "PLATFORM" "platform"})))
 
-(defn- filehash [file]
-  (digest/sha1 (io/as-file file)))
+(defn- probemap-meta [file]
+  (-> file
+      (cgdata-meta)
+      (clojure.set/rename-keys
+        {":assembly" "assembly"})))
 
 (defn load-tsv-file [file]
   (let [ts (file-time file)
         h (filehash file)]
     (with-open [in (io/reader file)]
-      (load-exp file ts h (fn [] (genomic-matrix-data (line-seq in)))))))
+      (load-exp
+        [{:name file :time ts :hash h}]
+        (genomic-matrix-meta file)
+        (fn [] (genomic-matrix-data (line-seq in)))))))
 
 (defn- loadtest [name m n]
   (create)
@@ -75,7 +108,10 @@
   (let [ts (file-time file)
         h (filehash file)]
     (with-open [in (io/reader file)]
-      (load-probemap file ts h (fn [] (map probemap-row (line-seq in)))))))
+      (load-probemap
+        [{:name file :time ts :hash h}]
+        (probemap-meta file)
+        (fn [] (map probemap-row (line-seq in)))))))
 ;
 ; web services
 
@@ -131,7 +167,8 @@
     (println "Loading " (count in-path) " file(s)")
     (dorun (map #(do (print %2 %1 "") (time (load-tsv-report load-fn %1)))
                 in-path
-                (range (count in-path) 0 -1)))))
+                (range (count in-path) 0 -1)))
+    (clean-sources)))
 
 (def ^:private argspec
   [["-s" "Start web server" :flag true :default false]
