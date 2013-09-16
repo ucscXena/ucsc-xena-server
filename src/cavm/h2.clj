@@ -324,24 +324,6 @@
   (println x)
   x)
 
-; reset any columns left unspecified, and filter by
-; db columns.
-(defn- normalize-experiment-meta [metadata]
-  (select-keys
-    (merge experiments-defaults (clojure.walk/keywordize-keys metadata))
-    experiments-columns))
-
-; Update experiment record.
-(defn- merge-exp [{ename "name" :as metadata}]
-  (let [normmeta (normalize-experiment-meta metadata)
-        [{id :ID}] (select experiments (fields :id) (where {:name ename}))]
-    (if id
-      (do
-        (update experiments (set-fields normmeta) (where {:id id}))
-        id)
-      (insert experiments (values normmeta)))))
-
-
 (defn- normalize-meta [m-ent metadata]
   (select-keys
     (merge (:defaults m-ent) (clojure.walk/keywordize-keys metadata))
@@ -514,14 +496,6 @@
 ;
 ; probemap routines
 ;
-
-(defn- merge-probemap [file timestamp filehash]
-  ; Use a merge to avoid losing the key, which datasets may be referencing.
-  (exec-raw ["MERGE INTO probemaps (file, time, hash) KEY(file) VALUES (?, ?, ?)"
-             [file (format-timestamp timestamp) filehash]])
-   (let [[{probemap :ID}] (select probemaps (where {:file file}))]
-     (delete probemap_probes (where {:probemaps_id probemap}))
-     probemap))
 
 (defn- add-probemap-probe [pmid probe]
   (let [pmp
