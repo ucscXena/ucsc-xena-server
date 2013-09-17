@@ -1,5 +1,5 @@
 (ns cavm.core
-  (:require [clojure.string :as string])
+  (:require [clojure.string :as s])
   (:use [cavm.h2 :only [create
                         load-exp
                         load-probemap
@@ -21,12 +21,7 @@
   (:gen-class))
 
 (defn- tabbed [line]
-  (string/split line #"\t"))
-
-(defn- parseFloatNA [str]
-  (if (or (= str "NA") (= str "nan") (= str ""))
-    Double/NaN
-    (Float/parseFloat str)))
+  (s/split line #"\t"))
 
 (defn- file-time [file]
   (from-long (.lastModified (java.io.File. file))))
@@ -40,143 +35,55 @@
   (digest/sha1 (io/as-file file)))
 
 ;
-; cgData genomicMatrix
 ;
 
-(defn- infer-value-type [cols]
-  (try
-    (do
-      (dorun (map parseFloatNA (take 10 (rest cols))))
-      "float")
-    (catch NumberFormatException e "category")))
-
-(defmulti ^:private data-line
-  (fn [features cols]
-    (or (get (get features (first cols)) "valueType") ; using (get) handles nil
-        (infer-value-type cols))))
-
-; return seq of floats from probe line, with probe as metadata
-; probeid value value value...
-(defmethod ^:private data-line "float"
-  [features cols]
-  (let [feature (features (first cols))]
-    (with-meta (map parseFloatNA (rest cols))
-               {:probe (String. (first cols)) :feature feature :valueType "float"}))) ; copy the string, because string/split is evil
-
-; update map with value for NA
-(defn- nil-val [order]
-  (assoc order "" Double/NaN))
-
-(defn- ad-hoc-order
-  "Provide default order from data order in file"
-  [feature cols]
-  (if (:order feature)
-    feature
-    (let [state (distinct cols)
-          order (into {} (map vector state (range)))] ; XXX handle all values null?
-      (assoc feature :state state :order order))))
-
-(defmethod ^:private data-line "category"
-  [features cols]
-  (let [feature (features (first cols))
-        feature (ad-hoc-order feature (rest cols))
-        order (nil-val (:order feature))]
-    (with-meta (map order (rest cols))
-               {:probe (String. (first cols)) :feature feature :valueType "category"}))) ; copy the string, because string/split is evil
-
-;
-; matrix files
-;
-
-(defmulti ^:private matrix-data
-  "Return seq of scores, probes X samples, with samples as metadata"
-  (fn [metadata features lines] (metadata "type")))
-
-(defmethod ^:private matrix-data :default
-  [metadata features lines]
-  (with-meta (map #(data-line features %) (rest lines))
-             {:samples (rest (first lines))}))
-
-(defn- transpose [lines]
-  (apply mapv vector lines))
-
-(defmethod ^:private matrix-data "clinicalMatrix"
-  [metadata features lines]
-  (let [lines (transpose lines)]
-    (with-meta (map #(data-line features %) (rest lines))
-               {:samples (rest (first lines))})))
-
-;
-;
-;
-
-(defn- cgdata-meta [file]
-  (let [mfile (io/as-file (str file ".json"))]
-    (if (.exists mfile)
-      (json/read-str (slurp mfile))
-      {:name file})))
-
-(defn- genomic-matrix-meta [file]
-  (-> file
-      (cgdata-meta)
-      (clojure.set/rename-keys
-        {":probeMap" "probeMap" "PLATFORM" "platform"})))
-
-(defn- probemap-meta [file]
-  (-> file
-      (cgdata-meta)
-      (clojure.set/rename-keys
-        {":assembly" "assembly"})))
 
 (defn- file-stats [file]
   (let  [ts (file-time file)
          h (filehash file)]
     {:name file :time ts :hash h}))
 
-(defn load-tsv-file [file]
-  (let [fstats (file-stats file)
-        metadata (genomic-matrix-meta file)
-        feature (metadata ":clinicalFeature")
-        fdesc (cgdata/feature-file (metadata ":clinicalFeature"))
-        files (if fdesc [fstats (file-stats feature)] [fstats])]
-    (with-open [in (io/reader file)]
-      (load-exp
-        files
-        metadata
-        (fn [] (matrix-data metadata fdesc (map tabbed (line-seq in))))
-        fdesc))))
+(defn- genomic-renames [mdata]
+  "Convert cgData genomic attrs to db attrs."
+  (clojure.set/rename-keys 
+    mdata
+    {":probeMap" "probeMap" "PLATFORM" "platform"}))
 
-(defn- loadtest [name m n]
+(defn load-tsv-file [file]
+  (with-open [in (io/reader file)]
+    (let [{md :meta deps :deps fm :features} (cgdata/matrix-file file)
+          md (genomic-renames md)
+          files (mapv file-stats (cons file deps))
+          data-fn (fn []
+                    (cgdata/matrix-data md fm (map tabbed (line-seq in))))]
+      (load-exp files md data-fn fm))))
+
+(defn- loadtest [name ^Integer m ^Integer n]
   (create)
   (let [mi (Integer. m)
         ni (Integer. n)]
-  (load-exp name (now) "FIXME" (matrix-data nil (data/matrix mi ni)))))
+  (load-exp name (now) "FIXME" (cgdata/matrix-data nil (data/matrix mi ni)))))
 
-
-(defn- split-no-empty [in pat]
-  (filter #(not (= "" %)) (string/split in pat)))
 
 ;
 ; cgData probemap
 ;
 
-(defn- probemap-row [row]
-  (let [[name genes chrom start end strand] (string/split row #"\t")]
-    {:name name
-     :genes (split-no-empty genes #",")
-     :chrom chrom
-     :chromStart (. Integer parseInt start)
-     :chromEnd (. Integer parseInt end)
-     :strand strand}))
+(defn- probemap-renames [mdata]
+  "Convert cgData probemap attrs to db attrs."
+  (clojure.set/rename-keys
+    mdata
+    {":assembly" "assembly"}))
 
 (defn load-probemap-file [file]
-  (let [ts (file-time file)
-        h (filehash file)]
-    (with-open [in (io/reader file)]
-      (load-probemap
-        [{:name file :time ts :hash h}]
-        (probemap-meta file)
-        (fn [] (map probemap-row (line-seq in)))))))
+  (with-open [in (io/reader file)]
+    (let [{md :meta deps :deps} (cgdata/probemap-file file)
+          md (probemap-renames md)
+          files (mapv file-stats (cons file deps))
+          data-fn (fn []
+                    (cgdata/probemap-data (line-seq in)))]
+      (load-probemap files md data-fn))))
+
 ;
 ; web services
 
@@ -228,7 +135,7 @@
     (when not-in-path
       (binding [*out* *err*]
         (println "These files are outside the CAVM data path and will not be served:")
-        (println (string/join "\n" (in-path false)))))
+        (println (s/join "\n" (in-path false)))))
     (create)
     (println "Loading " (count in-path) " file(s)")
     (dorun (map #(do (print %2 %1 "") (time (load-tsv-report load-fn %1)))
