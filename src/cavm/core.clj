@@ -49,7 +49,7 @@
     mdata
     {":probeMap" "probeMap" "PLATFORM" "platform"}))
 
-(defn load-tsv-file [file]
+(defn load-matrix-file [file]
   (with-open [in (io/reader file)]
     (let [{md :meta deps :deps fm :features} (cgdata/matrix-file file)
           md (genomic-renames md)
@@ -152,7 +152,7 @@
 
 (defn -main [& args]
   (let [[opts extra usage] (apply cli (cons args argspec))
-        load-fn (if (:p opts) load-probemap-file load-tsv-file)]
+        load-fn (if (:p opts) load-probemap-file load-matrix-file)]
     (with-db (create-db (:d opts))
       (cond
         (:help opts) (println usage)
