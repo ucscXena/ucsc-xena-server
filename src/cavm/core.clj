@@ -17,13 +17,14 @@
   (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [cli]])
+  (:require [cavm.cgdata :as cgdata])
   (:gen-class))
 
 (defn- tabbed [line]
   (string/split line #"\t"))
 
 (defn- parseFloatNA [str]
-  (if (or (= str "NA") (= str "nan"))
+  (if (or (= str "NA") (= str "nan") (= str ""))
     Double/NaN
     (Float/parseFloat str)))
 
@@ -33,7 +34,7 @@
 (def data-path (str fs/*cwd*))
 
 (defn- in-data-path [path]
-  (boolean (fs/child-of? data-path path))) ; XXX not working??
+  (boolean (fs/child-of? data-path path))) ; XXX not working with ".."??
 
 (defn- filehash [file]
   (digest/sha1 (io/as-file file)))
@@ -42,17 +43,72 @@
 ; cgData genomicMatrix
 ;
 
+(defn- infer-value-type [cols]
+  (try
+    (do
+      (dorun (map parseFloatNA (take 10 (rest cols))))
+      "float")
+    (catch NumberFormatException e "category")))
+
+(defmulti ^:private data-line
+  (fn [features cols]
+    (or (get (get features (first cols)) "valueType") ; using (get) handles nil
+        (infer-value-type cols))))
+
 ; return seq of floats from probe line, with probe as metadata
 ; probeid value value value...
-(defn- probe-line [line]
-  (let [cols (tabbed line)]
+(defmethod ^:private data-line "float"
+  [features cols]
+  (let [feature (features (first cols))]
     (with-meta (map parseFloatNA (rest cols))
-               {:probe (String. (first cols))}))) ; copy the string, because string/split is evil
+               {:probe (String. (first cols)) :feature feature :valueType "float"}))) ; copy the string, because string/split is evil
 
-; Return seq of scores, probes X samples, with samples as metadata
-(defn- genomic-matrix-data [lines]
-  (with-meta (map probe-line (rest lines))
-             {:samples (rest (tabbed (first lines)))}))
+; update map with value for NA
+(defn- nil-val [order]
+  (assoc order "" Double/NaN))
+
+(defn- ad-hoc-order
+  "Provide default order from data order in file"
+  [feature cols]
+  (if (:order feature)
+    feature
+    (let [state (distinct cols)
+          order (into {} (map vector state (range)))] ; XXX handle all values null?
+      (assoc feature :state state :order order))))
+
+(defmethod ^:private data-line "category"
+  [features cols]
+  (let [feature (features (first cols))
+        feature (ad-hoc-order feature (rest cols))
+        order (nil-val (:order feature))]
+    (with-meta (map order (rest cols))
+               {:probe (String. (first cols)) :feature feature :valueType "category"}))) ; copy the string, because string/split is evil
+
+;
+; matrix files
+;
+
+(defmulti ^:private matrix-data
+  "Return seq of scores, probes X samples, with samples as metadata"
+  (fn [metadata features lines] (metadata "type")))
+
+(defmethod ^:private matrix-data :default
+  [metadata features lines]
+  (with-meta (map #(data-line features %) (rest lines))
+             {:samples (rest (first lines))}))
+
+(defn- transpose [lines]
+  (apply mapv vector lines))
+
+(defmethod ^:private matrix-data "clinicalMatrix"
+  [metadata features lines]
+  (let [lines (transpose lines)]
+    (with-meta (map #(data-line features %) (rest lines))
+               {:samples (rest (first lines))})))
+
+;
+;
+;
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
@@ -72,20 +128,29 @@
       (clojure.set/rename-keys
         {":assembly" "assembly"})))
 
+(defn- file-stats [file]
+  (let  [ts (file-time file)
+         h (filehash file)]
+    {:name file :time ts :hash h}))
+
 (defn load-tsv-file [file]
-  (let [ts (file-time file)
-        h (filehash file)]
+  (let [fstats (file-stats file)
+        metadata (genomic-matrix-meta file)
+        feature (metadata ":clinicalFeature")
+        fdesc (cgdata/feature-file (metadata ":clinicalFeature"))
+        files (if fdesc [fstats (file-stats feature)] [fstats])]
     (with-open [in (io/reader file)]
       (load-exp
-        [{:name file :time ts :hash h}]
-        (genomic-matrix-meta file)
-        (fn [] (genomic-matrix-data (line-seq in)))))))
+        files
+        metadata
+        (fn [] (matrix-data metadata fdesc (map tabbed (line-seq in))))
+        fdesc))))
 
 (defn- loadtest [name m n]
   (create)
   (let [mi (Integer. m)
         ni (Integer. n)]
-  (load-exp name (now) "FIXME" (genomic-matrix-data (data/matrix mi ni)))))
+  (load-exp name (now) "FIXME" (matrix-data nil (data/matrix mi ni)))))
 
 
 (defn- split-no-empty [in pat]
@@ -147,9 +212,10 @@
 (defn- load-tsv-report [load-fn file]
   (try
     (load-fn file)
-    (catch java.lang.Throwable e
+    (catch java.lang.Exception e
       (binding [*out* *err*]
         (println "Error loading file" file)
+        (println (str "message " (.getMessage e)))
         (.printStackTrace e)))))
 
 (defn- loadfiles [load-fn args]

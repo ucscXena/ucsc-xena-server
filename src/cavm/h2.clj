@@ -24,6 +24,8 @@
 (def bin-size 100)
 (def score-size (* float-size bin-size))
 
+(declare normalize-meta) ; XXX need to organize this file
+
 ;
 ; Table models
 ;
@@ -298,6 +300,73 @@
    (`probemaps_id`, `gene`)"])
 
 ;
+; feature tables
+;
+
+(def features-table
+  ["CREATE TABLE IF NOT EXISTS `features` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `probes_id` int(11) NOT NULL,
+   FOREIGN KEY (`probes_id`) REFERENCES `probes` (`id`) ON DELETE CASCADE,
+  `shortTitle` varchar(255) NOT NULL,
+  `longTitle` varchar(255) NOT NULL,
+  `priority` double DEFAULT NULL,
+  `valueType` varchar(255) NOT NULL,
+  `visibility` varchar(255) NOT NULL)"])
+
+(declare codes)
+(defentity features
+  (belongs-to probes)
+  (has-many codes))
+
+(def ^:private features-columns
+  #{:shortTitle
+    :longTitle
+    :priority
+    :valueType
+    :visibility})
+
+(def ^:private features-defaults
+  (into {} (map #(vector % nil) features-columns)))
+
+(def ^:private features-meta
+  {:table features
+   :defaults features-defaults
+   :columns features-columns})
+
+(def codes-table
+  ["CREATE TABLE IF NOT EXISTS `codes` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `features_id` int(11) NOT NULL,
+   FOREIGN KEY (`features_id`) REFERENCES `features` (`id`) ON DELETE CASCADE,
+   `ordering` int(10) unsigned NOT NULL,
+   `value` varchar(255) NOT NULL)"
+   "CREATE INDEX IF NOT EXISTS `feature` ON `codes` (`features_id`, `ordering`)"])
+
+(defentity codes
+  (belongs-to features))
+
+(defn snoop [x]
+  (println x)
+  x)
+
+(defn- inferred-type
+  "Replace the given type with the inferred type"
+  [fmeta]
+  (assoc fmeta "type" (:type fmeta)))
+
+(defn- load-probe-meta [feature-list]
+  (doseq [[pid feature] feature-list]
+    (let [fmeta (normalize-meta features-meta feature)
+          fmeta (merge fmeta {:probes_id pid})
+          fid (insert features (values fmeta))
+          order (:order feature)]
+      (doseq [code (:state feature)]
+        (insert codes (values {:features_id fid
+                               :ordering (order code)
+                               :value code}))))))
+
+;
 ;
 ;
 
@@ -319,10 +388,6 @@
   (exec-raw ["MERGE INTO cohorts(name) KEY(name) VALUES (?)" [cohort]])
   (let [[{cid :ID}] (select cohorts (where {:name cohort}))]
     cid))
-
-(defn snoop [x]
-  (println x)
-  x)
 
 (defn- normalize-meta [m-ent metadata]
   (select-keys
@@ -403,17 +468,31 @@
 (defn- insert-unique-scores-fn []
   (memoize insert-scores-block))
 
-(defn- load-probe [insert-scores-fn exp prow]
-  (let [pid (insert-probe exp (:probe (meta prow)))
-        blocks (partition-all bin-size prow)]
+(defn- load-probe [insert-scores-fn exp row]
+  (let [pid (insert-probe exp (:probe (meta row)))
+        blocks (partition-all bin-size row)]
     (doseq [[block i] (map vector blocks (range))]
       (let [sid (insert-scores-fn (ahashable (score-encode block)))]
-        (insert-join pid i sid)))))
+        (insert-join pid i sid)))
+    pid))
+
+(defn- inferred-type
+  "Replace the given type with the inferred type"
+  [fmeta row]
+  (assoc fmeta "valueType" (:valueType (meta row))))
+
+(defn- load-probe-feature [insert-scores-fn exp acc row]
+  (let [pid (load-probe insert-scores-fn exp row)]
+    (if-let [feature (:feature (meta row))]
+      (cons [pid (inferred-type feature row)] acc)
+      acc)))
 
 ; insert matrix, updating scores, probes, and joins tables
 (defn- load-exp-matrix [exp matrix]
-  (let [loadp (partial load-probe (insert-unique-scores-fn) exp)]
-    (dorun (map loadp matrix))))
+  (let [scores-fn (insert-unique-scores-fn)
+        loadp (partial load-probe-feature scores-fn exp)
+        probe-meta (reduce loadp '() matrix)]
+    (load-probe-meta probe-meta)))
 
 ; XXX Update to return all samples in cohort by merging
 ; exp_samples.
@@ -476,7 +555,8 @@
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
 
-(defn load-exp [files metadata matrix-fn]
+; XXX take feature data as well
+(defn load-exp [files metadata matrix-fn features]
   (kdb/transaction
     (let [matrix (matrix-fn)
           exp (merge-m-ent experiments-meta metadata)]
@@ -541,7 +621,7 @@
 (defn- exec-statements [stmts]
   (dorun (map (partial exec-raw) stmts)))
 
-; TODO look up N
+; TODO drop N
 (defn- dataset-transform [ds]
   (-> ds
       (clojure.set/rename-keys {:FILE :name :COHORT :cohort})
@@ -648,6 +728,8 @@
     (exec-statements scores-table)
     (exec-statements join-table)
     (exec-statements probes-table)
+    (exec-statements features-table)
+    (exec-statements codes-table)
     (exec-statements probemaps-table)
     (exec-statements probemap-sources-table)
     (exec-statements probemap-probes-table)
