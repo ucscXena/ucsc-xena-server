@@ -346,10 +346,6 @@
 (defentity codes
   (belongs-to features))
 
-(defn snoop [x]
-  (println x)
-  x)
-
 (defn- inferred-type
   "Replace the given type with the inferred type"
   [fmeta]

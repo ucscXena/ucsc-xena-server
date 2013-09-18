@@ -3,7 +3,14 @@
   (:require [clojure.string :as s])
   (:require [clojure.java.io :as io])
   (:require [clojure-csv.core :as csv])
+  (:require [me.raynes.fs :as fs])
   (:gen-class))
+
+(defn- normalized-path
+  "Like fs/normalized-path, but doesn't add *cwd*."
+  [path]
+  (fs/with-cwd "/"
+    (apply io/file (drop 1 (fs/split (fs/normalized-path path))))))
 
 ;
 ; cgData metadata
@@ -133,8 +140,6 @@
       "float")
     (catch NumberFormatException e "category")))
 
-(defn snoop [x] (println x) x)
-
 (defmulti ^:private data-line
   "(id val val val val) -> seq of parsed values)
 
@@ -201,15 +206,47 @@
       (json/read-str (slurp mfile))
       {:name file})))
 
+(defn- path-from-root
+  "Return file path relative to root"
+  [root file]
+  (let [root (fs/normalized-path root)
+        file (fs/normalized-path file)]
+    (when-not (fs/child-of? root file)
+      (throw (IllegalArgumentException. (str file " not in root path: " root))))
+    (apply io/file (drop (count (fs/split root)) (fs/split file)))))
+
+(defn- path-from-ref
+  "Construct a file path relative to the root of the referring file. 'referer'
+  must be relative to root."
+  [referrer file]
+  (let [sref (fs/split referrer)
+        sfile (fs/split file)]
+    (if (= (first sfile) fs/unix-root)
+      (apply io/file (drop 1 sfile))
+      (fs/with-cwd fs/unix-root
+        (normalized-path (apply io/file (concat (drop-last 1 sref) sfile)))))))
+
+(defn- references [referrer md]
+  "Return map of any references in md to their paths relative to the root. 'referer'
+  must be relative to root."
+  (let [refs (->> md
+                  (keys)
+                  (filter #(.startsWith % ":")))]
+    (into {} (map vector refs (map #(str (path-from-ref referrer (md %))) refs)))))
+
 (defn matrix-file
   "Return a map describing a cgData matrix file. This will read
   any assoicated json or clinicalFeature file."
-  [file]
-  (let [{cf-file ":clinicalFeature" :as meta-data} (cgdata-meta file)
-        feature-meta (feature-file cf-file)]
-    {:meta meta-data
-     :deps (if feature-meta [cf-file] [])
-     :features feature-meta}))
+  [file & {root :root :or {root fs/unix-root}}]
+  (let [rfile (str (path-from-root root file))
+        meta-data (cgdata-meta file)
+        refs (references rfile meta-data)
+        cf (refs ":clinicalFeature")
+        feature (when cf (feature-file (fs/file root cf)))]
+    {:rfile rfile
+     :meta meta-data
+     :refs refs
+     :features feature}))
 
 ;
 ; cgData probemaps
@@ -235,7 +272,10 @@
 (defn probemap-file
   "Return a map describing a cgData probemap file. This will read
   any assoicated json."
-  [file]
-  (let [meta-data (cgdata-meta file)]
-    {:meta meta-data
-     :deps '()}))
+  [file & {root :root :or {root fs/unix-root}}]
+  (let [rfile (str (path-from-root root file))
+        meta-data (cgdata-meta file)
+        refs (references rfile meta-data)]
+    {:rfile rfile
+     :meta meta-data
+     :refs refs}))
