@@ -111,11 +111,7 @@
    `groupTitle` varchar(255),
    `platform` varchar(255),
    `security` varchar(255),
-   `gain` double DEFAULT NULL,
-   `url` varchar(255) DEFAULT NULL,
-   `description` longtext,
-   `notes` longtext,
-   `wrangling_procedure` longtext)"])
+   `gain` double DEFAULT NULL)"])
 
 ;
 ; experiments in making a macro for metadata tables
@@ -168,11 +164,7 @@
     :groupTitle
     :platform
     :security
-    :gain
-    :url
-    :description
-    :notes
-    :wrangling_procedure})
+    :gain})
 
 (def ^:private experiments-defaults
   (into {} (map #(vector % nil) experiments-columns)))
@@ -308,11 +300,11 @@
   `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `probes_id` int(11) NOT NULL,
    FOREIGN KEY (`probes_id`) REFERENCES `probes` (`id`) ON DELETE CASCADE,
-  `shortTitle` varchar(255) NOT NULL,
-  `longTitle` varchar(255) NOT NULL,
+  `shortTitle` varchar(255),
+  `longTitle` varchar(255),
   `priority` double DEFAULT NULL,
   `valueType` varchar(255) NOT NULL,
-  `visibility` varchar(255) NOT NULL)"])
+  `visibility` varchar(255))"])
 
 (declare codes)
 (defentity features
@@ -345,11 +337,6 @@
 
 (defentity codes
   (belongs-to features))
-
-(defn- inferred-type
-  "Replace the given type with the inferred type"
-  [fmeta]
-  (assoc fmeta "type" (:type fmeta)))
 
 (defn- load-probe-meta [feature-list]
   (doseq [[pid feature] feature-list]

@@ -134,30 +134,32 @@
     Double/NaN
     (Float/parseFloat str)))
 
-(defn- infer-value-type [cols]
-  (try
-    (do
-      (dorun (map parseFloatNA (take 10 (rest cols))))
-      "float")
-    (catch NumberFormatException e "category")))
+; If we have no feature description, we try "float". If that
+; fails, we try "category" by passing in a hint. We do not
+; allow the hint to override a feature description, since that
+; would mask curation errors. multimethod may not be the best
+; mechanism for this policy.
 
 (defmulti ^:private data-line
   "(id val val val val) -> seq of parsed values)
 
   Return a seq of floats from a split probe line, with probe name,
   feature definition, and data type as metadata."
-  (fn [features cols]
-    (or (get (get features (first cols)) "valueType") ; using (get) handles nil
-        (infer-value-type cols))))
+  (fn [features cols & [hint]]
+    (or (get (get features (first cols)) "valueType")
+        hint)))
 
-(defmethod ^:private data-line "float"
-  [features cols]
-  (let [feature (get features (first cols))]
-    (with-meta
-      (map parseFloatNA (rest cols))
-      {:probe (String. ^String (first cols))
-       :feature feature
-       :valueType "float"}))) ; copy the string. string/split is evil.
+(defmethod ^:private data-line :default
+  [features cols & [hint]]
+  (try ; the body must be eager so we stay in the try/except scope
+    (let [feature (get features (first cols))]
+      (with-meta
+        (mapv parseFloatNA (rest cols)) ; eager
+        {:probe (String. ^String (first cols)) ; copy, because split is evil.
+         :feature feature
+         :valueType "float"}))
+    (catch NumberFormatException e
+      (data-line features cols "category"))))
 
 ; update map with value for NA
 (defn- nil-val [order]
@@ -168,18 +170,28 @@
   [feature cols]
   (if (:order feature)
     feature
-    (let [state (distinct cols)
+    (let [state (distinct cols) ; XXX drop ""? This adds "" as a state.
           order (into {} (map vector state (range)))] ; XXX handle all values null?
       (assoc feature :state state :order order))))
 
+(defn- throw-on-nil [x msg & args]
+  (when-not x
+    (throw (IllegalArgumentException.
+             (apply format msg args))))
+  x)
+
 (defmethod ^:private data-line "category"
-  [features cols]
-  (let [feature (features (first cols))
+  [features cols & [hint]]
+  (let [name (first cols)
+        feature (get features name)  ; use 'get' to handle nil
         feature (ad-hoc-order feature (rest cols))
-        order (nil-val (:order feature))]
+        order (nil-val (:order feature))
+        msg "Invalid state %s for feature %s"
+        vals (map #(throw-on-nil (order %) msg % name)
+                  (rest cols))]
     (with-meta
-      (map order (rest cols))
-      {:probe (String. ^String (first cols)) ; copy the string. string/split is evil.
+      vals
+      {:probe (String. ^String name) ; copy the string. string/split is evil.
        :feature feature
        :valueType "category"})))
 
