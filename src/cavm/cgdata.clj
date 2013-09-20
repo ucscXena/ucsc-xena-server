@@ -19,7 +19,7 @@
 (defn- all-json [path]
   (let [files (file-seq (io/file path))
         fnames (map str files)]
-    (map #(vector % (json/read-str (slurp %)))
+    (map #(vector (s/replace % #"\.json$" "") (json/read-str (slurp %)))
          (filter #(.endsWith ^String % ".json") fnames))))
 
 (defn- json-add [acc [file {n "name" t "type" :as metadata}]]
@@ -71,7 +71,8 @@
         table (json-table files)
         normalize (partial normalize-path (count root))]
     (doseq [[file data] files]
-      (write-json file (resolve-references normalize table file data)))))
+      (write-json (str file ".json")
+                  (resolve-references normalize table file data)))))
 
 ; apply f to values of map
 (defn- fmap [f m]
