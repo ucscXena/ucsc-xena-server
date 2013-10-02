@@ -7,6 +7,7 @@
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable get-array)])
   (:use [korma.core :rename {insert kcinsert}])
+  (:require [cavm.query.sources :as sources])
   (:gen-class))
 
 ;(def db {:classname "org.h2.Driver"
@@ -700,6 +701,8 @@
 ; Otherwise lazy map may not be evaluted until the context is lost.
 (defn genomic-source [reqs]
   (doall (map #(update-in % ['data] merge (genomic-read-req %)) reqs)))
+
+(sources/register ::genomic genomic-source)
 
 (defn create[]
   (kdb/transaction
