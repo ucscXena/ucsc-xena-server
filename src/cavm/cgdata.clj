@@ -217,7 +217,7 @@
   (let [mfile (io/as-file (str file ".json"))]
     (if (.exists mfile)
       (json/read-str (slurp mfile))
-      {:name file})))
+      {"name" file})))
 
 (defn- path-from-root
   "Return file path relative to root"
