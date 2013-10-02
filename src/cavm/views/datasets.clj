@@ -4,6 +4,7 @@
   (:require [cavm.query.sources :as sources])
   (:require [noir.response :as response])
   (:require [ring.util.codec :as codec])
+  (:require [cavm.h2 :as h2])
   (:gen-class))
 
 (defpage [:get "/datasets"] []
@@ -24,4 +25,5 @@
 
 ; XXX The call to read-symbols needs a list of sources, I think.
 (defpage [:get ["/data/:expression" :expression #".+"]] {:keys [expression]}
-  (response/json (sources/read-symbols expression)))
+  (h2/with-db (:db (ring-request))
+    (response/json (map vec (expr/expression expression f/functions functions)))))

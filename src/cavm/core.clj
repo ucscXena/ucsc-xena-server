@@ -103,6 +103,9 @@
             (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
             (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api"))))))
 
+(defn- db-middleware [db app]
+  (fn [req]
+    (app (assoc req :db db))))
 
 (server/load-views-ns 'cavm.views)
 
@@ -159,11 +162,14 @@
 
 (defn -main [& args]
   (let [[opts extra usage] (apply cli (cons args argspec))
-        load-fn (if (:p opts) load-probemap-file load-matrix-file)]
-    (with-db (create-db (:d opts))
+        load-fn (if (:p opts) load-probemap-file load-matrix-file)
+        db (create-db (:d opts))]
+    (with-db db
       (cond
         (:help opts) (println usage)
-        (:s opts) (serv)
+        (:s opts) (do
+                    (server/add-middleware (partial db-middleware db))
+                    (serv))
         (:t opts) (if (not (= 3 (count extra)))
                     (println usage)
                     (apply loadtest extra))
