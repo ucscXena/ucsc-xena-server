@@ -266,8 +266,7 @@
    FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
    `probe` VARCHAR(1000) NOT NULL)"])
 
-; XXX CASCADE might perform badly, since h2 keeps the entire delete transaction
-; in memory. Might need to do this incrementally in application code.
+; XXX CASCADE might perform badly. Might need to do this incrementally in application code.
 (def probemap-positions-table
   ["CREATE TABLE IF NOT EXISTS `probemap_positions` (
    `probemaps_id` INT NOT NULL,
