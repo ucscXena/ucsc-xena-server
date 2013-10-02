@@ -24,6 +24,11 @@
   {'+ +
    '/ /
    '* emul
+   '> >
+   '< <
+   '>= >=
+   '<= <=
    '- -
+   '= ==
    'mean meannan
-   'apply apply})
+   'apply apply}) ; XXX is this a security hole? Can the user pass in clojure symbols?
