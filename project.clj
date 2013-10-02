@@ -17,6 +17,7 @@
                  [org.clojure/data.json "0.2.3"]
 ;                 [org.codehaus.jsr166-mirror/jsr166y "1.7.0"] ; for core.reducers
                  [clojure-csv/clojure-csv "2.0.1"]
+                 [honeysql "0.4.2"]
                  [com.h2database/h2 "1.3.171"]]
   :aot [cavm.h2-binary]
   :global-vars {*warn-on-reflection* true}

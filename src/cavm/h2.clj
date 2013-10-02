@@ -3,6 +3,7 @@
   (:require [korma.config :as kconf])
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
+  (:require [honeysql.core :as hsql])
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable get-array)])
@@ -31,7 +32,7 @@
 ; Table models
 ;
 
-(declare experiment_sources probes scores experiments exp_samples)
+(declare experiment_sources features probes scores experiments exp_samples)
 
 (defentity cohorts)
 (defentity sources
@@ -48,6 +49,7 @@
 (declare score-decode)
 
 (defentity probes
+  (has-one features)
   (many-to-many scores :joins  {:lfk 'pid :rfk 'sid})
   (belongs-to experiments {:fk :eid})
   (transform (fn [{scores :EXPSCORES :as v}]
@@ -639,7 +641,7 @@
 
 (defn exp-by-name [exp]
   (let [[{id :ID}]
-        (select experiments (fields "id") (where {:file exp}))]
+        (select experiments (fields "id") (where {:name (str exp)}))] ; XXX shoul str be here, or higher in the call stack?
     id))
 
 ; XXX expand model for probes/genes??
@@ -720,6 +722,11 @@
     (exec-statements probemap-probes-table)
     (exec-statements probemap-positions-table)
     (exec-statements probemap-genes-table)))
+
+(defn run-query [q]
+  ; XXX should sanitize the query
+  (let [[qstr & args] (hsql/format q)]
+    (exec-raw [qstr args] :results)))
 
 ; XXX monkey-patch korma to work around h2 bug.
 ; h2 will fail to select an index if joins are grouped, e.g.

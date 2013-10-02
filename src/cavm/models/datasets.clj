@@ -10,3 +10,7 @@
       (db/for-experiment-named id)
       (db/with-genes genes)
       (db/do-select)))
+
+(defn query [db q]
+  (db/with-db db
+    (db/run-query q)))
