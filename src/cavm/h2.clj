@@ -35,11 +35,10 @@
 (declare experiment_sources features probes scores experiments exp_samples)
 
 (defentity cohorts)
-(defentity sources
-  (many-to-many experiment_sources experiments))
+(defentity sources)
 
 (defentity experiments
-  (many-to-many experiment_sources sources)
+  (many-to-many sources :experiment_sources)
   (has-many exp_samples)
   (has-many probes))
 
@@ -205,11 +204,12 @@
 ; Probemap declarations
 ;
 
-(declare probemap_probes probemap_positions probemap_genes)
+(declare probmaps probemap_probes probemap_positions probemap_genes)
 (defentity probemap_sources)
 
 (defentity probemaps
-  (has-many probemap_probes))
+  (has-many probemap_probes)
+  (many-to-many sources :probemap_sources))
 
 (defentity probemap_probes
   (belongs-to probemaps)
@@ -249,9 +249,6 @@
 
 (def ^:private probemaps-defaults
   (into {} (map #(vector % nil) probemaps-columns)))
-
-(declare probemaps)
-(defentity probemap_sources)
 
 (def ^:private probemaps-meta
   {:table probemaps
@@ -516,7 +513,8 @@
     (unparse fmtr timestamp)))
 
 (defn- fmt-time [file-meta]
-  (assoc file-meta :time (format-timestamp (:time file-meta))))
+  (assoc file-meta :time
+         (. java.sql.Timestamp valueOf (format-timestamp (:time file-meta)))))
 
 (defn clean-sources []
   (delete sources
@@ -536,20 +534,37 @@
       (insert table
               (values {id-key id :sources_id fid})))))
 
+; work around h2 uppercase craziness
+; XXX review passing naming option to korma
+(defn- keys-lower [m]
+  (into {} (map #(vector (keyword (subs (clojure.string/lower-case (% 0)) 1)) (% 1)) m)))
+
+(defn- related-sources [table id]
+  (map keys-lower
+    (select table (join sources) (where {:id id}) (fields :sources.name :sources.hash :sources.time))))
+
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
 
-; XXX take feature data as well
-(defn load-exp [files metadata matrix-fn features]
-  (kdb/transaction
-    (let [matrix (matrix-fn)
-          exp (merge-m-ent experiments-meta metadata)]
-      (clear-by-exp exp)
-      (load-related-sources
-        experiment_sources :experiments_id exp (map fmt-time files))
-      (load-exp-samples exp (:samples (meta matrix)))
-      (load-exp-matrix exp matrix))))
+(defn load-exp
+  "Load matrix file and metadata. Skips the data load if file hashes are unchanged."
+  ([files metadata matrix-fn features]
+   (load-exp files metadata matrix-fn features false))
+
+  ([files metadata matrix-fn features force]
+   (kdb/transaction
+     (let [matrix (matrix-fn)
+           exp (merge-m-ent experiments-meta metadata)
+           files (map fmt-time files)]
+       (when (or force
+                 (not (= (set files) (set (related-sources experiments exp)))))
+         (println "loading data")
+         (clear-by-exp exp)
+         (load-related-sources
+           experiment_sources :experiments_id exp files)
+         (load-exp-samples exp (:samples (meta matrix)))
+         (load-exp-matrix exp matrix))))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
