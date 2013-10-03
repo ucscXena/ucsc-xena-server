@@ -598,14 +598,23 @@
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
-(defn load-probemap [files metadata probes-fn]
-  (kdb/transaction
-    (let [probes (probes-fn)
-          pmid (merge-m-ent probemaps-meta metadata)
-          add-probe (partial add-probemap-probe pmid)]
-      (load-related-sources
-        probemap_sources :probemaps_id pmid (map fmt-time files))
-      (dorun (map add-probe probes)))))
+(defn load-probemap
+  "Load probemap file and metadata. Skips the data load if the file hashes are unchanged,
+  and 'force' is false."
+  ([files metadata probes-fn]
+   (load-probemap files metadata probes-fn false))
+
+  ([files metadata probes-fn force]
+   (kdb/transaction
+     (let [probes (probes-fn)
+           pmid (merge-m-ent probemaps-meta metadata)
+           add-probe (partial add-probemap-probe pmid)
+           files (map fmt-time files)]
+       (when (or force
+                 (not (= (set files) (set (related-sources probemaps pmid)))))
+         (load-related-sources
+           probemap_sources :probemaps_id pmid files)
+         (dorun (map add-probe probes)))))))
 
 (defn create-db [file]
   (kdb/create-db  {:classname "org.h2.Driver"
