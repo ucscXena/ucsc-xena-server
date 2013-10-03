@@ -4,6 +4,7 @@
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:require [honeysql.core :as hsql])
+  (:require [clojure.data.json :as json])
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable get-array)])
@@ -113,6 +114,8 @@
    `groupTitle` varchar(255),
    `platform` varchar(255),
    `security` varchar(255),
+   `dataSubType` varchar (255),
+   `text` varchar (65535),
    `gain` double DEFAULT NULL)"])
 
 ;
@@ -166,6 +169,8 @@
     :groupTitle
     :platform
     :security
+    :dataSubType
+    :text
     :gain})
 
 (def ^:private experiments-defaults
@@ -223,15 +228,14 @@
   (belongs-to probemap_probes))
 
 
-; XXX FIX NAME
-; XXX Include original json
 ; XXX What should max file name length be?
 (def probemaps-table
   ["CREATE TABLE IF NOT EXISTS `probemaps` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` VARCHAR(1000),
    `assembly` VARCHAR(255),
-   `version` VARCHAR(255))"])
+   `version` VARCHAR(255),
+   `text` VARCHAR(65535))"])
 
 (def probemap-sources-table
   ["CREATE TABLE IF NOT EXISTS `probemap_sources` (
@@ -245,7 +249,8 @@
 (def ^:private probemaps-columns
   #{:name
     :assembly
-    :version})
+    :version
+    :text})
 
 (def ^:private probemaps-defaults
   (into {} (map #(vector % nil) probemaps-columns)))
@@ -372,9 +377,11 @@
     cid))
 
 (defn- normalize-meta [m-ent metadata]
-  (select-keys
-    (merge (:defaults m-ent) (clojure.walk/keywordize-keys metadata))
-    (:columns m-ent)))
+  (-> metadata
+      (clojure.walk/keywordize-keys)
+      (#(merge (:defaults m-ent) %))
+      (select-keys (:columns m-ent))
+      (assoc :text (json/write-str metadata :escape-slash false))))
 
 ; Update meta entity record.
 (defn- merge-m-ent [m-ent {ename "name" :as metadata}]

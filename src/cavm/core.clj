@@ -46,7 +46,9 @@
   "Convert cgData genomic attrs to db attrs."
   (-> mdata
       (clojure.set/rename-keys
-        {":probeMap" "probeMap" "PLATFORM" "platform"})
+        {":probeMap" "probeMap"
+         "PLATFORM" "platform"
+         ":dataSubType" "dataSubType"})
       (assoc "name" rfile)))
 
 (defn load-matrix-file [root file]
