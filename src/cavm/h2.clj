@@ -560,7 +560,6 @@
            files (map fmt-time files)]
        (when (or force
                  (not (= (set files) (set (related-sources experiments exp)))))
-         (println "loading data")
          (clear-by-exp exp)
          (load-related-sources
            experiment_sources :experiments_id exp files)
