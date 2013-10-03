@@ -548,7 +548,8 @@
 ; pass in a function to return the seq, instead.
 
 (defn load-exp
-  "Load matrix file and metadata. Skips the data load if file hashes are unchanged."
+  "Load matrix file and metadata. Skips the data load if file hashes are unchanged,
+  and 'force' is false."
   ([files metadata matrix-fn features]
    (load-exp files metadata matrix-fn features false))
 
