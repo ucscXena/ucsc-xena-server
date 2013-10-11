@@ -635,7 +635,7 @@
 
 ; execute a sequence of sql statements
 (defn- exec-statements [stmts]
-  (dorun (map (partial exec-raw) stmts)))
+  (dorun (map exec-raw stmts)))
 
 ; TODO drop N
 (defn- dataset-transform [ds]
