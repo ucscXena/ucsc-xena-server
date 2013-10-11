@@ -106,7 +106,7 @@
 ; XXX Include original json
 (def experiments-table
   ["CREATE TABLE IF NOT EXISTS `experiments` (
-   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `id` INT NOT NULL AUTO_INCREMENT,
    `name` varchar(255) NOT NULL UNIQUE,
    `probeMap` varchar(255),
    `shortTitle` varchar(255),
@@ -114,9 +114,10 @@
    `groupTitle` varchar(255),
    `platform` varchar(255),
    `security` varchar(255),
-   `dataSubType` varchar (255),
+   `gain` double DEFAULT NULL,
    `text` varchar (65535),
-   `gain` double DEFAULT NULL)"])
+   `dataSubType` varchar (255))"
+   "ALTER TABLE `experiments` ADD CONSTRAINT IF NOT EXISTS `experiments_id` PRIMARY KEY (`id`)"])
 
 ;
 ; experiments in making a macro for metadata tables
