@@ -342,6 +342,15 @@
 (defentity codes
   (belongs-to features))
 
+(defn- normalize-meta [m-ent metadata]
+  (-> metadata
+      (clojure.walk/keywordize-keys)
+      (#(merge (:defaults m-ent) %))
+      (select-keys (:columns m-ent))))
+
+(defn- json-text [md]
+  (assoc md :text (json/write-str md :escape-slash false)))
+
 (defn- load-probe-meta [feature-list]
   (doseq [[pid feature] feature-list]
     (let [fmeta (normalize-meta features-meta feature)
@@ -376,16 +385,9 @@
   (let [[{cid :ID}] (select cohorts (where {:name cohort}))]
     cid))
 
-(defn- normalize-meta [m-ent metadata]
-  (-> metadata
-      (clojure.walk/keywordize-keys)
-      (#(merge (:defaults m-ent) %))
-      (select-keys (:columns m-ent))
-      (assoc :text (json/write-str metadata :escape-slash false))))
-
 ; Update meta entity record.
 (defn- merge-m-ent [m-ent {ename "name" :as metadata}]
-  (let [normmeta (normalize-meta m-ent metadata)
+  (let [normmeta (json-text (normalize-meta m-ent metadata))
         table (:table m-ent)
         [{id :ID}] (select table (fields :id) (where {:name ename}))]
     (if id
