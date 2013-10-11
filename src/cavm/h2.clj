@@ -662,7 +662,7 @@
       (join scores)))
 
 (defn with-bins [q bins]
-  (where q (in :i bins)))
+  (where q (in :i (distinct bins))))
 
 (defn for-experiment [q exp]
   (where q {:probes.eid exp}))
