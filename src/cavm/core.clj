@@ -20,9 +20,6 @@
   (:require [cavm.cgdata :as cgdata])
   (:gen-class))
 
-(defn- tabbed [line]
-  (s/split line #"\t"))
-
 (defn- file-time [file]
   (from-long (.lastModified (java.io.File. file))))
 
@@ -60,7 +57,7 @@
                   [rfile])
           stats (mapv #(file-stats root %) files)
           data-fn (fn []
-                    (cgdata/matrix-data meta features (map tabbed (line-seq in))))]
+                    (cgdata/matrix-data meta features (line-seq in)))]
       (load-exp stats meta data-fn features))))
 
 (defn- loadtest [name ^Integer m ^Integer n]
