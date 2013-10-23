@@ -6,11 +6,24 @@
   (:require [me.raynes.fs :as fs])
   (:gen-class))
 
+;
+; Utility functions
+;
+
+(defn- chunked-pmap [f coll]
+  (->> coll
+       (partition-all 250)
+       (pmap (fn [chunk] (doall (map f chunk))))
+       (apply concat)))
+
 (defn- normalized-path
   "Like fs/normalized-path, but doesn't add *cwd*."
   [path]
   (fs/with-cwd "/"
     (apply io/file (drop 1 (fs/split (fs/normalized-path path))))))
+
+(defn- tabbed [line]
+  (s/split line #"\t"))
 
 ;
 ; cgData metadata
@@ -201,7 +214,7 @@
 
 (defmethod matrix-data :default
   [metadata features lines]
-  (with-meta (map #(data-line features %) (rest lines))
+  (with-meta (chunked-pmap #(data-line features (tabbed %)) (rest lines))
              {:samples (rest (first lines))}))
 
 (defn- transpose [lines]
@@ -210,7 +223,7 @@
 (defmethod matrix-data "clinicalMatrix"
   [metadata features lines]
   (let [lines (transpose lines)]
-    (with-meta (map #(data-line features %) (rest lines))
+    (with-meta (chunked-pmap #(data-line features (tabbed %)) (rest lines))
                {:samples (rest (first lines))})))
 
 (defn- cgdata-meta [file]
