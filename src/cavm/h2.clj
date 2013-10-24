@@ -7,14 +7,12 @@
   (:require [clojure.data.json :as json])
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
-  (:use [cavm.hashable :only (ahashable get-array)])
+  (:use [cavm.hashable :only (ahashable)])
   (:use [korma.core :rename {insert kcinsert}])
   (:require [cavm.query.sources :as sources])
+  (:require [me.raynes.fs :as fs])
   (:gen-class))
 
-;(def db {:classname "org.h2.Driver"
-;         :subprotocol "h2"
-;         :subname "file:///data/TCGA/craft/h2/cavm.h2"})
 
 ; Coerce this sql fn name to a keyword so we can reference it.
 (def KEY-ID (keyword "SCOPE_IDENTITY()"))
@@ -26,8 +24,30 @@
 (def float-size 4)
 (def bin-size 100)
 (def score-size (* float-size bin-size))
+; Add 30 for gzip header
+;( def score-size (+ 30 (* float-size bin-size)))
 
-(declare normalize-meta) ; XXX need to organize this file
+;
+; Utility functions
+;
+
+(defn- chunked-pmap [f coll]
+  (->> coll
+       (partition-all 250)
+       (pmap (fn [chunk] (doall (map f chunk))))
+       (apply concat)))
+
+(defn memoize-key
+  "Memoize with the given function of the arguments"
+  [kf f]
+  (let [mem (atom {})]
+    (fn [& args]
+      (let [k (kf args)]
+        (if-let [e (find @mem k)]
+          (val e)
+          (let [ret (apply f args)]
+            (swap! mem assoc k ret)
+            ret))))))
 
 ;
 ; Table models
@@ -48,14 +68,16 @@
 
 (declare score-decode)
 
+(defn- cvt-scores [{scores :EXPSCORES :as v}]
+  (if scores
+    (assoc v :EXPSCORES (float-array (score-decode scores)))
+    v))
+
 (defentity probes
   (has-one features)
   (many-to-many scores :joins  {:lfk 'pid :rfk 'sid})
   (belongs-to experiments {:fk :eid})
-  (transform (fn [{scores :EXPSCORES :as v}]
-               (if scores
-                 (assoc v :EXPSCORES (float-array (score-decode scores)))
-                 v))))
+  (transform cvt-scores))
 
 (defentity scores
   (many-to-many probes :joins  {:lfk 'sid :rfk 'pid}))
@@ -326,6 +348,7 @@
 (def ^:private features-defaults
   (into {} (map #(vector % nil) features-columns)))
 
+
 (def ^:private features-meta
   {:table features
    :defaults features-defaults
@@ -397,35 +420,51 @@
         id)
       (insert table (values normmeta)))))
 
-; Insert probe & return id
-(defn- insert-probe [exp name]
-  (let [pid (insert probes (values {:eid exp :name name}))]
-    pid))
+;
+; Hex
+;
 
-(defn- insert-scores [slist]
-  (let [sid (insert scores (values {:expScores slist}))]
-    sid))
+(def ^:private hex-chars (char-array "0123456789ABCDEF"))
 
-(defn- insert-join [pid i sid]
-  (insert joins (values {:pid pid :i i :sid sid})))
+(defn- bytes->hex [^bytes ba]
+  (let [c (count ba)
+        out ^chars (char-array (* 2 c))]
+    (loop [i 0]
+      (when (< i c)
+        (aset out (* 2 i)
+              (aget ^chars hex-chars
+                    (bit-shift-right
+                      (bit-and 0xF0 (aget ba i))
+                      4)))
+        (aset out (+ 1 (* 2 i))
+              (aget ^chars hex-chars
+                    (bit-and 0x0F (aget ba i))))
+        (recur (inc i))))
+    (String. out)))
 
 ;
 ; Binary buffer manipulation.
 ;
 
-(def codec-length (memoize (fn [len]
-                             (binary/repeated :float-le :length len))))
-
-(defn- codec [blob]
-  (codec-length (/ (count blob) float-size)))
-
-(defn- score-decode [blob]
-  (binary/decode (codec blob) (io/input-stream blob)))
-
-(defn- score-encode [slist]
-  (let [baos (java.io.ByteArrayOutputStream.)]
-    (binary/encode (codec-length (count slist)) baos slist)
-    (.toByteArray baos)))
+(defn- sort-float-bytes
+  "Sorts a byte array by float byte order. This makes the bytes very slightly
+  more compressable."
+  [^bytes in]
+  (let [c (count in)
+        fc (/ c 4)
+        out (byte-array c)]
+    (loop [i 0
+           b1 0
+           b2 fc
+           b3 (* fc 2)
+           b4 (* fc 3)]
+      (when (< i c)
+        (aset out b1 (aget in i))
+        (aset out b2 (aget in (+ i 1)))
+        (aset out b3 (aget in (+ i 2)))
+        (aset out b4 (aget in (+ i 3)))
+        (recur (+ i 4) (inc b1) (inc b2) (inc b3) (inc b4))))
+    out))
 
 ; Pick elements of float array, by index.
 (defn apick-float [^floats a idxs]
@@ -451,40 +490,196 @@
     (.array bb)))
 
 ;
+; Score encoders
 ;
+
+(def codec-length (memoize (fn [len]
+                             (binary/repeated :float-le :length len))))
+
+(defn- codec [blob]
+  (codec-length (/ (count blob) float-size)))
+
+;(defn- score-decode [blob]
+;  (binary/decode (codec blob) (io/input-stream blob)))
+
+(defn- score-decode [blob]
+  (bytes-to-floats blob))
+
+(defn- score-encode-orig [slist]
+  (floats-to-bytes (float-array slist)))
+
+(defn- score-encodez
+  "Experimental compressing score encoder."
+  [slist]
+  (let [baos (java.io.ByteArrayOutputStream.)
+        gzos (java.util.zip.GZIPOutputStream. baos)]
+    (binary/encode (codec-length (count slist)) gzos slist)
+    (.finish gzos)
+    (.toByteArray baos)))
+
+(defn- score-sort-encodez
+  "Experimental compressing score encoder that sorts by byte order before compressing."
+  [slist]
+  (let [fbytes (score-encode-orig slist)
+        ^bytes sorted (sort-float-bytes fbytes)
+        baos (java.io.ByteArrayOutputStream.)
+        gzos (java.util.zip.GZIPOutputStream. baos)]
+    (.write gzos sorted)
+    (.finish gzos)
+    (.toByteArray baos)))
+
+(defn- score-decodez [blob]
+  (let [bais (java.io.ByteArrayInputStream. blob)
+        gzis (java.util.zip.GZIPInputStream. bais)]
+    (binary/decode (binary/repeated :float-le :length 10) gzis)))
+
+(def score-encode score-encode-orig)
+
+;
+; Table writer that updates tables as rows are read.
 ;
 
-(defn- insert-scores-block [block]
-  (insert-scores (get-array block)))
+; Insert probe & return id
+(defn- insert-probe [exp name]
+  (let [pid (insert probes (values {:eid exp :name name}))]
+    pid))
 
-(defn- insert-unique-scores-fn []
-  (memoize insert-scores-block))
+(defn- insert-scores [slist]
+  (let [sid (insert scores (values {:expScores slist}))]
+    sid))
 
-(defn- load-probe [insert-scores-fn exp row]
-  (let [pid (insert-probe exp (:probe (meta row)))
-        blocks (partition-all bin-size row)]
-    (doseq [[block i] (map vector blocks (range))]
-      (let [sid (insert-scores-fn (ahashable (score-encode block)))]
-        (insert-join pid i sid)))
+(defn- insert-join [pid i sid]
+  (insert joins (values {:pid pid :i i :sid sid})))
+
+(defn- table-writer-default [dir f]
+  (f {:insert-probe insert-probe
+         :insert-score insert-scores
+         :insert-join insert-join
+         :encode score-encode
+         :key ahashable}))
+
+;
+; Table writer that updates one table at a time by writing to temporary files.
+;
+
+(defn- insert-probe-out [^java.io.BufferedWriter out seqfn eid name]
+  (let [pid (seqfn)]
+    (.write out (str pid "\t" eid "\t" name "\n"))
+    pid))
+
+; Iterators are not typical of clojure, but it's a quick way to get sequential ids
+; deep in a call stack. A more conventional way might be to return the data up
+; the stack, then zip with the sequence ids.
+(defn- seq-iterator [s]
+    (let [a (atom s)]
+    (fn []
+       (let [s @a]
+          (reset! a (next s))
+          (first s)))))
+
+(defn- sequence-seq [seqname]
+  (let [cmd (format "SELECT NEXT VALUE FOR %s AS i FROM SYSTEM_RANGE(1, 100)" seqname)]
+    (apply concat
+           (repeatedly
+             (fn [] (-> cmd str
+                        (exec-raw :results)
+                        (#(map :I %))))))))
+
+(defn- insert-scores-out [^java.io.BufferedWriter out seqfn slist]
+  (let [sid (seqfn)]
+    (.write out (str sid "\t" (:hex slist) "\n"))
+    sid))
+
+(defn- insert-joins-out [^java.io.BufferedWriter out pid i sid]
+  (.write out (str pid "\t" i "\t" sid "\n")))
+
+(defn- sequence-for-column [table column]
+  (-> (exec-raw
+        ["SELECT SEQUENCE_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=? AND COLUMN_NAME=?"
+         [table column]]
+        :results)
+      first
+      :SEQUENCE_NAME))
+
+(defn- read-from-tsv [table file & cols]
+  (-> "INSERT INTO `%s` SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
+      (format table file (clojure.string/join "\t" cols))
+      (exec-raw)))
+
+(defn- table-writer [dir f]
+  (let [probes-seq (-> (sequence-for-column "PROBES" "ID") sequence-seq seq-iterator)
+        scores-seq (-> (sequence-for-column "SCORES" "ID") sequence-seq seq-iterator)
+        pfname (fs/file dir "probes.tmp")
+        sfname (fs/file dir "scores.tmp")
+        jfname (fs/file dir "joins.tmp")]
+    (try
+      (with-open
+        [probes-file (io/writer pfname)
+         scores-file (io/writer sfname)
+         joins-file (io/writer jfname)]
+        (f {:insert-probe (partial insert-probe-out probes-file probes-seq)
+               :insert-score (partial insert-scores-out scores-file scores-seq)
+               :insert-join (partial insert-joins-out joins-file)
+               :encode (fn [scores] (let [s (score-encode scores)] {:scores s :hex (bytes->hex s)}))
+               :key #(ahashable (:scores (first %)))}))
+      (time (do (read-from-tsv "probes" pfname "PID" "EID" "NAME")
+                (read-from-tsv "scores" sfname "ID" "SCORES")
+                (read-from-tsv "joins" jfname "PID" "I" "SID")))
+      (finally
+        (fs/delete pfname)
+        (fs/delete sfname)
+        (fs/delete jfname)))))
+
+;
+; Main loader routines
+;
+
+(defn- insert-scores-block [writer block]
+  ((:insert-score writer) block))
+
+(defn- insert-unique-scores-fn [writer]
+  (memoize-key (:key writer) (partial insert-scores-block writer)))
+
+(defn- load-probe [writer insert-scores-fn exp row]
+  (let [pid ((:insert-probe writer) exp (:probe row))
+        blocks (:data row)]
+    (doseq [[block i] (mapv vector blocks (range))]
+      (let [sid (insert-scores-fn block)]
+        ((:insert-join writer) pid i sid)))
     pid))
 
 (defn- inferred-type
   "Replace the given type with the inferred type"
   [fmeta row]
-  (assoc fmeta "valueType" (:valueType (meta row))))
+  (assoc fmeta "valueType" (:valueType row)))
 
-(defn- load-probe-feature [insert-scores-fn exp acc row]
-  (let [pid (load-probe insert-scores-fn exp row)]
-    (if-let [feature (:feature (meta row))]
+(defn- load-probe-feature [writer insert-scores-fn exp acc row]
+  (let [pid (load-probe writer insert-scores-fn exp row)]
+    (if-let [feature (:feature row)]
       (cons [pid (inferred-type feature row)] acc)
       acc)))
 
+(defn- insert-exp-sample [eid sample i]
+  (insert exp_samples (values {:experiments_id eid :name sample :i i})))
+
+(defn- load-exp-samples [exp samples]
+  (dorun (map #(apply (partial insert-exp-sample exp) %)
+              (map vector samples (range)))))
+
+(defn- encode-scores [writer row]
+  (mapv (:encode writer) (partition-all bin-size row)))
+
 ; insert matrix, updating scores, probes, and joins tables
-(defn- load-exp-matrix [exp matrix]
-  (let [scores-fn (insert-unique-scores-fn)
-        loadp (partial load-probe-feature scores-fn exp)
-        probe-meta (reduce loadp '() matrix)]
-    (load-probe-meta probe-meta)))
+(defn- load-exp-matrix [exp matrix-fn writer]
+  (let [matrix (matrix-fn)]
+    (load-exp-samples exp (:samples (meta matrix)))
+    (let [scores-fn (insert-unique-scores-fn writer)
+          loadp (partial load-probe-feature writer scores-fn exp)
+          ; XXX rework cgdata so the fields aren't in the metadata
+          matrix (chunked-pmap #(assoc (meta %) :data (encode-scores writer %)) matrix)
+          probe-meta (reduce loadp '() matrix)]
+      (load-probe-meta probe-meta))))
+
 
 ; XXX Update to return all samples in cohort by merging
 ; exp_samples.
@@ -510,13 +705,6 @@
 ;       (hash-by-key :SAMPLE)
 ;       (in-order sample-list)
 ;       (select-val :ID)))
-
-(defn- insert-exp-sample [eid sample i]
-  (insert exp_samples (values {:experiments_id eid :name sample :i i})))
-
-(defn- load-exp-samples [exp samples]
-  (dorun (map #(apply (partial insert-exp-sample exp) %)
-              (map vector samples (range)))))
 
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
   (defn- format-timestamp [timestamp]
@@ -565,16 +753,15 @@
 
   ([files metadata matrix-fn features force]
    (kdb/transaction
-     (let [matrix (matrix-fn)
-           exp (merge-m-ent experiments-meta metadata)
+     (let [exp (merge-m-ent experiments-meta metadata)
            files (map fmt-time files)]
        (when (or force
                  (not (= (set files) (set (related-sources experiments exp)))))
          (clear-by-exp exp)
          (load-related-sources
            experiment_sources :experiments_id exp files)
-         (load-exp-samples exp (:samples (meta matrix)))
-         (load-exp-matrix exp matrix))))))
+         (table-writer "/dev/shm" ; XXX use db dir? root dir? tmp dir?
+                       (partial load-exp-matrix exp matrix-fn)))))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
@@ -629,7 +816,8 @@
 (defn create-db [file]
   (kdb/create-db  {:classname "org.h2.Driver"
                    :subprotocol "h2"
-                   :subname file}))
+                   :subname file
+                   :make-pool true}))
 
 (defmacro with-db [db & body]
   `(kdb/with-db ~db ~@body))
@@ -717,8 +905,40 @@
 (defn- col-arrays [columns n]
   (zipmap columns (repeatedly (partial float-array n))))
 
-; XXX Need to fill in NAN for unknown samples.
+(def probe-query
+  "SELECT  gene, i, expscores from
+     (SELECT  `probes`.`name` as `gene`, `probes`.`id`  FROM `probes`
+       INNER JOIN TABLE(name varchar=?) T ON T.`name`=`probes`.`name`
+       WHERE (`probes`.`eid` = ?)) P
+   LEFT JOIN `joins` on P.id = `joins`.`pid`
+   LEFT JOIN `scores` ON `sid` = `scores`.`id`
+   WHERE `joins`.`i` in (%s)")
+
+(defn select-scores-full [eid columns bins]
+  (let [q (format probe-query
+                  (clojure.string/join ","
+                                       (repeat (count bins) "?")))
+        c (to-array (map str columns))
+        i (to-array bins)]
+    (exec-raw [q (concat [c eid] i)] :results)))
+
+; Doing an inner join on a table literal, instead of a big IN clause, so it will hit
+; the index.
 (defn genomic-read-req [req]
+  (let [{samples 'samples table 'table columns 'columns} req
+        eid (exp-by-name table)
+        s-in-exp (map merge-bin-off (exp-samples-in-list eid samples))
+        bins (map :bin s-in-exp)
+        bfns (pick-samples-fns samples s-in-exp)]
+
+    (-> (select-scores-full eid columns (distinct bins))
+        (#(map cvt-scores %))
+        (build-score-arrays bfns (col-arrays columns (count samples))))))
+
+; XXX Need to fill in NAN for unknown samples.
+; XXX call (double-array) to convert to double here, or in genomic-source
+; XXX This query is slow
+(comment (defn genomic-read-req [req]
   (let [{samples 'samples table 'table columns 'columns} req
         eid (exp-by-name table)
         s-in-exp (map merge-bin-off (exp-samples-in-list eid samples))
@@ -730,7 +950,7 @@
         (with-genes columns)
         (with-bins bins)
         (do-select)
-        (build-score-arrays bfns (col-arrays columns (count samples))))))
+        (build-score-arrays bfns (col-arrays columns (count samples)))))))
 
 ; doall is required so the seq is evaluated in db context.
 ; Otherwise lazy map may not be evaluted until the context is lost.
