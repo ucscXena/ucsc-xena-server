@@ -215,7 +215,7 @@
 (defmethod matrix-data :default
   [metadata features lines]
   (with-meta (chunked-pmap #(data-line features (tabbed %)) (rest lines))
-             {:samples (rest (first lines))}))
+             {:samples (rest (tabbed (first lines)))}))
 
 (defn- transpose [lines]
   (apply mapv vector lines))
