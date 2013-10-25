@@ -60,11 +60,14 @@
                     (cgdata/matrix-data meta features (line-seq in)))]
       (load-exp stats meta data-fn features))))
 
-(defn- loadtest [name ^Integer m ^Integer n]
+(defn- loadtest [name m n]
   (create)
   (let [mi (Integer. m)
         ni (Integer. n)]
-  (load-exp name (now) "FIXME" (cgdata/matrix-data nil (data/matrix mi ni)))))
+  (load-exp
+    [{:name name :time (now) :hash "FIXME" }]
+    {"name" name}
+    (fn [] (cgdata/matrix-data {} nil (data/matrix mi ni))) nil)))
 
 
 ;
