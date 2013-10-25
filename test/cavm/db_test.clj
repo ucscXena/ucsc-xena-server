@@ -22,6 +22,5 @@
 (deftest one-probe
   (testing "one probe"
     (let [out (read-symbols
-                [genomic-source]
                 '[{table fivebyten columns ["3"] samples ["1" "2"]}])]
       (is (nearly-equal eps [-1.2 -0.2] (vec (first out)))))))
