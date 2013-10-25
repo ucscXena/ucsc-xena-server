@@ -93,10 +93,9 @@
   ["CREATE TABLE IF NOT EXISTS `probes` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `eid` INT NOT NULL,
-   FOREIGN KEY (eid) REFERENCES `experiments` (`id`),
-   `name` VARCHAR(255))"
-   "ALTER TABLE `probes` ADD CONSTRAINT IF NOT EXISTS `eid_name` UNIQUE(`eid`, `name`)"
-   "CREATE INDEX IF NOT EXISTS probe_name ON probes (eid, name)"])
+   `name` VARCHAR(255),
+   UNIQUE(`eid`, `name`),
+   FOREIGN KEY (`eid`) REFERENCES `experiments` (`id`))"])
 
 (def scores-table
   [(format "CREATE TABLE IF NOT EXISTS `scores` (
@@ -107,16 +106,16 @@
   ["CREATE TABLE IF NOT EXISTS `joins` (
    `pid` INT,
    `i` INT,
-   `sid` INT)"
-   "CREATE INDEX IF NOT EXISTS index_pid ON joins (`pid`, `i`)"])
+   `sid` INT,
+   UNIQUE (`pid`, `i`))"])
 
 (def cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `name` VARCHAR(2000) NOT NULL UNIQUE)"
-   "CREATE INDEX IF NOT EXISTS index_name ON cohorts (`name`)"])
+   `name` VARCHAR(2000) NOT NULL UNIQUE)"])
 
 ; XXX What should max file name length be?
+; XXX Unique columns? Indexes?
 (def sources-table
   ["CREATE TABLE IF NOT EXISTS `sources` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -128,7 +127,7 @@
 ; XXX Include original json
 (def experiments-table
   ["CREATE TABLE IF NOT EXISTS `experiments` (
-   `id` INT NOT NULL AUTO_INCREMENT,
+   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` varchar(255) NOT NULL UNIQUE,
    `probeMap` varchar(255),
    `shortTitle` varchar(255),
@@ -138,8 +137,7 @@
    `security` varchar(255),
    `gain` double DEFAULT NULL,
    `text` varchar (65535),
-   `dataSubType` varchar (255))"
-   "ALTER TABLE `experiments` ADD CONSTRAINT IF NOT EXISTS `experiments_id` PRIMARY KEY (`id`)"])
+   `dataSubType` varchar (255))"])
 
 ;
 ; experiments in making a macro for metadata tables
@@ -206,11 +204,9 @@
 (def experiment-sources-table
   ["CREATE TABLE IF NOT EXISTS `experiment_sources` (
    `experiments_id` INT NOT NULL,
-   FOREIGN KEY (experiments_id) REFERENCES `experiments` (`id`),
    `sources_id` INT NOT NULL,
-   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"
-   "CREATE INDEX IF NOT EXISTS experiment ON `experiment_sources` (`experiments_id`)"
-   "CREATE INDEX IF NOT EXISTS source ON `experiment_sources` (`sources_id`)"])
+   FOREIGN KEY (experiments_id) REFERENCES `experiments` (`id`),
+   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"])
 
 (defentity experiment_sources)
 
@@ -263,11 +259,9 @@
 (def probemap-sources-table
   ["CREATE TABLE IF NOT EXISTS `probemap_sources` (
    `probemaps_id` INT NOT NULL,
-   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`),
    `sources_id` INT NOT NULL,
-   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"
-   "CREATE INDEX IF NOT EXISTS probemap ON `probemap_sources` (`probemaps_id`)"
-   "CREATE INDEX IF NOT EXISTS source ON `probemap_sources` (`sources_id`)"])
+   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`),
+   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"])
 
 (def ^:private probemaps-columns
   #{:name
@@ -290,33 +284,31 @@
   ["CREATE TABLE IF NOT EXISTS `probemap_probes` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `probemaps_id` INT NOT NULL,
-   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
-   `probe` VARCHAR(1000) NOT NULL)"])
+   `probe` VARCHAR(1000) NOT NULL,
+   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`) ON DELETE CASCADE)"])
 
 ; XXX CASCADE might perform badly. Might need to do this incrementally in application code.
 (def probemap-positions-table
   ["CREATE TABLE IF NOT EXISTS `probemap_positions` (
    `probemaps_id` INT NOT NULL,
-   FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
    `probemap_probes_id` INT NOT NULL,
-   FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE,
    `bin` INT,
    `chrom` VARCHAR(255) NOT NULL,
    `chromStart` INT NOT NULL,
    `chromEnd` INT NOT NULL,
    `strand` CHAR(1))"
-   "CREATE INDEX IF NOT EXISTS chrom_bin ON probemap_positions
-   (`probemaps_id`, `chrom`, `bin`)"])
+   "CREATE INDEX IF NOT EXISTS chrom_bin ON probemap_positions (`probemaps_id`, `chrom`, `bin`)"
+   "ALTER TABLE `probemap_positions` ADD FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE"
+   "ALTER TABLE `probemap_positions` ADD FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE"])
 
 (def probemap-genes-table
   ["CREATE TABLE IF NOT EXISTS `probemap_genes` (
    `probemaps_id` INT NOT NULL,
-   FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
    `probemap_probes_id` INT NOT NULL,
-   FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE,
    `gene` VARCHAR(255))"
-   "CREATE INDEX IF NOT EXISTS gene ON probemap_genes
-   (`probemaps_id`, `gene`)"])
+   "CREATE INDEX IF NOT EXISTS probemap_gene ON `probemap_genes` (`probemaps_id`, `gene`)"
+   "ALTER TABLE `probemap_genes` ADD FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE"
+   "ALTER TABLE `probemap_genes` ADD FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE"])
 
 ;
 ; feature tables
@@ -326,12 +318,12 @@
   ["CREATE TABLE IF NOT EXISTS `features` (
   `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `probes_id` int(11) NOT NULL,
-   FOREIGN KEY (`probes_id`) REFERENCES `probes` (`id`) ON DELETE CASCADE,
   `shortTitle` varchar(255),
   `longTitle` varchar(255),
   `priority` double DEFAULT NULL,
   `valueType` varchar(255) NOT NULL,
-  `visibility` varchar(255))"])
+  `visibility` varchar(255),
+  FOREIGN KEY (`probes_id`) REFERENCES `probes` (`id`) ON DELETE CASCADE)"])
 
 (declare codes)
 (defentity features
@@ -354,14 +346,17 @@
    :defaults features-defaults
    :columns features-columns})
 
+; Order is important to avoid creating duplicate indexes. A foreign
+; key constraint creates an index if one doesn't exist, so create our
+; index before adding the constraint.
 (def codes-table
   ["CREATE TABLE IF NOT EXISTS `codes` (
-  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `features_id` int(11) NOT NULL,
-   FOREIGN KEY (`features_id`) REFERENCES `features` (`id`) ON DELETE CASCADE,
+   `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `features_id` int(11) NOT NULL,
    `ordering` int(10) unsigned NOT NULL,
-   `value` varchar(255) NOT NULL)"
-   "CREATE INDEX IF NOT EXISTS `feature` ON `codes` (`features_id`, `ordering`)"])
+   `value` varchar(255) NOT NULL,
+   UNIQUE (`features_id`, `ordering`),
+   FOREIGN KEY (`features_id`) REFERENCES `features` (`id`) ON DELETE CASCADE)"])
 
 (defentity codes
   (belongs-to features))
