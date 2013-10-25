@@ -900,14 +900,24 @@
 (defn- col-arrays [columns n]
   (zipmap columns (repeatedly (partial float-array n))))
 
-(def probe-query
+; Replaced this with the query below, which applies the bin id filter
+; earlier.
+(comment (def probe-query
   "SELECT  gene, i, expscores from
      (SELECT  `probes`.`name` as `gene`, `probes`.`id`  FROM `probes`
        INNER JOIN TABLE(name varchar=?) T ON T.`name`=`probes`.`name`
        WHERE (`probes`.`eid` = ?)) P
    LEFT JOIN `joins` on P.id = `joins`.`pid`
    LEFT JOIN `scores` ON `sid` = `scores`.`id`
-   WHERE `joins`.`i` in (%s)")
+   WHERE `joins`.`i` in (%s)"))
+
+(def probe-query
+  "SELECT  gene, i, expscores from
+     (SELECT * FROM (SELECT  `probes`.`name` as `gene`, `probes`.`id`  FROM `probes`
+       INNER JOIN TABLE(name varchar=?) T ON T.`name`=`probes`.`name`
+       WHERE (`probes`.`eid` = ?)) P
+   LEFT JOIN `joins` on P.id = `joins`.`pid` WHERE `joins`.`i` in (%s))
+   LEFT JOIN `scores` ON `sid` = `scores`.`id`")
 
 (defn select-scores-full [eid columns bins]
   (let [q (format probe-query
