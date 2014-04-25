@@ -30,5 +30,12 @@
    '<= <=
    '- -
    '= ==
+   'map map
+   'get get
+   'assoc assoc
+   'cons cons
+   'car first
+   'cdr rest
+   'group-by group-by
    'mean meannan
    'apply apply}) ; XXX is this a security hole? Can the user pass in clojure symbols?
