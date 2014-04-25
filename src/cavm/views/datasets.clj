@@ -119,4 +119,4 @@
 ; XXX The call to read-symbols needs a list of sources, I think.
 (defpage [:get ["/data/:expression" :expression #".+"]] {:keys [expression]}
   (h2/with-db (:db (ring-request))
-    (response/json (map vec (expr/expression expression f/functions functions)))))
+    (response/json (expr/expression expression f/functions functions))))
