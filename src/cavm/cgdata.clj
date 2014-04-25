@@ -222,8 +222,8 @@
 
 (defmethod matrix-data "clinicalMatrix"
   [metadata features lines]
-  (let [lines (transpose lines)]
-    (with-meta (chunked-pmap #(data-line features (tabbed %)) (rest lines))
+  (let [lines (transpose (map tabbed lines))]
+    (with-meta (chunked-pmap #(data-line features %) (rest lines))
                {:samples (rest (first lines))})))
 
 (defn- cgdata-meta [file]
