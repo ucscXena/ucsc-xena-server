@@ -675,7 +675,7 @@
           ; XXX rework cgdata so the fields aren't in the metadata
           matrix (chunked-pmap #(assoc (meta %) :data (encode-scores writer %)) matrix)
           probe-meta (reduce loadp '() matrix)]
-      (load-probe-meta probe-meta))))
+      #(load-probe-meta probe-meta))))
 
 
 ; XXX Update to return all samples in cohort by merging
