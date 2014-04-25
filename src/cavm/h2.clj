@@ -296,19 +296,21 @@
    `chrom` VARCHAR(255) NOT NULL,
    `chromStart` INT NOT NULL,
    `chromEnd` INT NOT NULL,
-   `strand` CHAR(1))"
+   `strand` CHAR(1),
+   FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
+   FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE)"
    "CREATE INDEX IF NOT EXISTS chrom_bin ON probemap_positions (`probemaps_id`, `chrom`, `bin`)"
-   "ALTER TABLE `probemap_positions` ADD FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE"
-   "ALTER TABLE `probemap_positions` ADD FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE"])
+   ])
 
 (def probemap-genes-table
   ["CREATE TABLE IF NOT EXISTS `probemap_genes` (
    `probemaps_id` INT NOT NULL,
    `probemap_probes_id` INT NOT NULL,
-   `gene` VARCHAR(255))"
+   `gene` VARCHAR(255),
+    FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE)"
    "CREATE INDEX IF NOT EXISTS probemap_gene ON `probemap_genes` (`probemaps_id`, `gene`)"
-   "ALTER TABLE `probemap_genes` ADD FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE"
-   "ALTER TABLE `probemap_genes` ADD FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE"])
+   ])
 
 ;
 ; feature tables
