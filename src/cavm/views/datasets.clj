@@ -9,8 +9,10 @@
   (:require [noir.response :as response])
   (:require [ring.util.codec :as codec])
   (:require [clojure.edn :as edn])
-  (:require [clojure.data.json :as json])
+  (:require [cheshire.custom :as json])
   (:require [cavm.h2 :as h2])
+  (:import mikera.matrixx.Matrix)
+  (:import mikera.vectorz.impl.ArraySubVector)
   (:gen-class))
 
 (defpage [:get "/datasets"] []
@@ -33,11 +35,12 @@
   (let [{db :db} (ring-request)]
     (response/json (d/query db (edn/read-string query)))))
 
+; pretty-print query
 (defpage [:get ["/query-p/:query" :query #".+"]] {:keys [query]}
   (let [{db :db} (ring-request)]
     (response/content-type "application/json; charset=utf-8"
                            (binding [clojure.pprint/*print-right-margin* 200]
-                             (with-out-str (json/pprint (d/query db (edn/read-string query)) :escape-slash false))))))
+                             (with-out-str (json/encode (d/query db (edn/read-string query)) {:pretty true}))))))
 
 (defn samples-for-attr [attr]
   {:select [[:experiments.name "experiment"] :exp_samples.name]
@@ -94,6 +97,19 @@
        (mapcat #(map (fn [exp samp]
                          {:experiment exp
                           :sample samp}) (repeat ('table %)) ('samples %)))))
+
+; Add a json encoder for primitive float arrays, since that's what
+; we get back from the expression engine.
+(defn encode-array
+  "Encode a primitive array to the json generator."
+  [arr jg]
+  (json/to-json (seq arr) jg))
+
+(json/add-encoder (Class/forName "[F") encode-array)
+; Mike suggests extending mikera.arrayz.INDArray to hit all
+; core.matrix types. Leaving these for now.
+(json/add-encoder mikera.vectorz.impl.ArraySubVector encode-array)
+(json/add-encoder mikera.matrixx.Matrix encode-array)
 
 (def functions
   {'fetch sources/read-symbols
