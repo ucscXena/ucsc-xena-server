@@ -4,6 +4,8 @@
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:require [honeysql.core :as hsql])
+  (:require [honeysql.format :as hsqlfmt])
+  (:require [honeysql.types :as hsqltypes])
   (:require [clojure.data.json :as json])
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
@@ -988,6 +990,32 @@
   ; XXX should sanitize the query
   (let [[qstr & args] (hsql/format q)]
     (exec-raw [qstr args] :results)))
+
+;
+; add TABLE handling for honeysql
+;
+
+(defmethod hsqlfmt/format-clause :table [[_ [fields alias]] _]
+  (str "TABLE("
+       (clojure.string/join ", "
+       (map (fn [[name type values]]
+              (str (hsqlfmt/to-sql name) " " (hsqlfmt/to-sql type) "="
+                   (hsqlfmt/paren-wrap (clojure.string/join ", " (map hsqlfmt/to-sql values))))) fields))
+       ") " (hsqlfmt/to-sql alias)))
+
+; Fix GROUP_CONCAT in honeysql
+(defn- format-concat
+  ([value {:keys [order separator]}]
+   (let [oclause (if (nil? order)
+                   ""
+                   (str " order by " (hsqlfmt/to-sql order)))
+         sclause (if (nil? separator)
+                   ""
+                   (str " separator " (hsqlfmt/to-sql separator)))]
+     (str "GROUP_CONCAT(" (hsqlfmt/to-sql value) oclause sclause ")"))))
+
+(defmethod hsqlfmt/fn-handler "group_concat" [_ value & args]
+  (format-concat value args))
 
 ; XXX monkey-patch korma to work around h2 bug.
 ; h2 will fail to select an index if joins are grouped, e.g.
