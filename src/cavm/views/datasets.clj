@@ -112,7 +112,7 @@
 (json/add-encoder mikera.matrixx.Matrix encode-array)
 
 (def functions
-  {'fetch sources/read-symbols
+  {'fetch #(map vec (sources/read-symbols %))
    'query h2/run-query
    'filter filter-attr})
 
