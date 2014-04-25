@@ -612,18 +612,20 @@
         sfname (fs/file dir "scores.tmp")
         jfname (fs/file dir "joins.tmp")]
     (try
-      (with-open
-        [probes-file (io/writer pfname)
-         scores-file (io/writer sfname)
-         joins-file (io/writer jfname)]
-        (f {:insert-probe (partial insert-probe-out probes-file probes-seq)
-               :insert-score (partial insert-scores-out scores-file scores-seq)
-               :insert-join (partial insert-joins-out joins-file)
-               :encode (fn [scores] (let [s (score-encode scores)] {:scores s :hex (bytes->hex s)}))
-               :key #(ahashable (:scores (first %)))}))
-      (time (do (read-from-tsv "probes" pfname "PID" "EID" "NAME")
-                (read-from-tsv "scores" sfname "ID" "SCORES")
-                (read-from-tsv "joins" jfname "PID" "I" "SID")))
+      (let [finish
+            (with-open
+              [probes-file (io/writer pfname)
+               scores-file (io/writer sfname)
+               joins-file (io/writer jfname)]
+              (f {:insert-probe (partial insert-probe-out probes-file probes-seq)
+                  :insert-score (partial insert-scores-out scores-file scores-seq)
+                  :insert-join (partial insert-joins-out joins-file)
+                  :encode (fn [scores] (let [s (score-encode scores)] {:scores s :hex (bytes->hex s)}))
+                  :key #(ahashable (:scores (first %)))}))]
+        (do (read-from-tsv "probes" pfname "PID" "EID" "NAME")
+          (read-from-tsv "scores" sfname "ID" "SCORES")
+          (read-from-tsv "joins" jfname "PID" "I" "SID"))
+        (finish))
       (finally
         (fs/delete pfname)
         (fs/delete sfname)
