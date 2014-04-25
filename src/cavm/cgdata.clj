@@ -4,6 +4,7 @@
   (:require [clojure.java.io :as io])
   (:require [clojure-csv.core :as csv])
   (:require [me.raynes.fs :as fs])
+  (:require clojure.pprint)
   (:gen-class))
 
 ;
