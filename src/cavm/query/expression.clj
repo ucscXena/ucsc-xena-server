@@ -1,5 +1,6 @@
 (ns cavm.query.expression
   (:require [clojure.edn :as edn])
+  (:require [honeysql.types :as hsqltypes])
   (:refer-clojure :exclude  [eval]))
 
 (def eval)
@@ -36,4 +37,4 @@
     :else node))
 
 (defn expression [exp & globals]
-  (eval (edn/read-string exp) (cons specials globals)))
+  (eval (edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}} exp) (cons specials globals)))
