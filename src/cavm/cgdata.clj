@@ -79,7 +79,7 @@
     (binding [*out* writer]
       (json/pprint json :escape-slash false))))
 
-(defn- fix-json [root]
+(defn fix-json [root]
   (let [files (all-json root)
         table (json-table files)
         normalize (partial normalize-path (count root))]

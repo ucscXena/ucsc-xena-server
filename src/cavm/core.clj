@@ -18,6 +18,7 @@
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [cli]])
   (:require [cavm.cgdata :as cgdata])
+  (:require [ring.middleware.file :refer [wrap-file]])
   (:gen-class))
 
 (defn- file-time [file]
@@ -119,7 +120,9 @@
 (defn- print-datasets []
   (dorun (map println (datasets))))
 
-(defn- serv []
+(defn- serv [db]
+  (server/add-middleware (partial db-middleware db))
+  (server/add-middleware wrap-file "resources")
   (server/start port {:mode :dev
                       :ns 'cavm}))
 
@@ -140,7 +143,7 @@
     (println "Usage\nload <filename>")
     (System/exit 0))
 
-  ; Skip files outside the designated path, which for now is CWD.
+  ; Skip files outside the designated path
   (let [{in-path true, not-in-path false}
         (group-by #(in-data-path root %) args)]
     (when not-in-path
@@ -156,25 +159,45 @@
 
 (def ^:private argspec
   [["-s" "Start web server" :flag true :default false]
+   ["-l" "Load files (default)" :flag true :default false]
    ["-p" "Load probemaps" :flag true :default false]
    ["-h" "--help" "Show help" :default false :flag true]
    ["-r" "--root" "Set root data directory" :default (str fs/*cwd*)]
-   ["-d" "Database to use" :default "file:///data/TCGA/craft/h2/cavm.h2"]
+   ["-d" "Database to use"]
+   ["-j" "--json" "Fix json" :default false :flag true]
    ["-t" "Load test data  <name> <samples> <probes>" :flag true]])
+
+(def ^:private modes [:s :help :json])
+(def ^:private nodb-opts #{:help :json})
 
 (defn -main [& args]
   (let [[opts extra usage] (apply cli (cons args argspec))
         load-fn (if (:p opts) load-probemap-file load-matrix-file)
+        opts-modes (map first (filter (fn [[k v]] v) (select-keys opts modes)))
+        mode  (or (first opts-modes) :l)
         db (create-db (:d opts))]
-    (with-db db
+    ; Because we don't know if the option is short or long, this error message
+    ; can have the wrong number of dashes. Also, we don't have the order
+    ; of the options, so we can't pick the first one. The ones we ignore are
+    ; random due to the hash.
+    (when (> (count opts-modes) 1)
+      (binding [*out* *err*]
+        (println "Ignoring conflicting modes:"
+                 (s/join " " (map #(->> % name (str "-")) (rest opts-modes))))))
+    (if (nodb-opts mode)
       (cond
         (:help opts) (println usage)
-        (:s opts) (do
-                    (server/add-middleware (partial db-middleware db))
-                    (serv))
-        (:t opts) (if (not (= 3 (count extra)))
-                    (println usage)
-                    (apply loadtest extra))
-        :else (loadfiles load-fn (:root opts) extra))))
+        (:json opts) (cgdata/fix-json (:root opts)))
+      (with-db db
+        (cond
+          (:s opts) (do
+                      (serv db))
+          (:t opts) (if (not (= 3 (count extra)))
+                      (println usage)
+                      (apply loadtest extra))
+          :else (loadfiles load-fn (:root opts) extra)))))
 
   (shutdown-agents))
+
+; (def testdb (create-db "test"))
+; (with-db testdb (serv testdb))
