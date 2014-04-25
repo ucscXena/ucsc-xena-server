@@ -116,7 +116,6 @@
    'query h2/run-query
    'filter filter-attr})
 
-; XXX The call to read-symbols needs a list of sources, I think.
 (defpage [:get ["/data/:expression" :expression #".+"]] {:keys [expression]}
   (h2/with-db (:db (ring-request))
     (response/json (expr/expression expression f/functions functions))))
