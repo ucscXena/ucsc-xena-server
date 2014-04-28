@@ -13,12 +13,16 @@
   (:require [clojure.java.io :as io])
   (:require [clj-time.coerce :refer [from-long]])
   (:require [clj-time.core :refer [now]])
-  (:require [noir.server :as server])
+  (:require [ring.adapter.jetty :refer [run-jetty]])
   (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [cli]])
   (:require [cavm.cgdata :as cgdata])
-  (:require [ring.middleware.file :refer [wrap-file]])
+  (:require [ring.middleware.resource :refer [wrap-resource]])
+  (:require [ring.middleware.content-type :refer [wrap-content-type]])
+  (:require [ring.middleware.not-modified :refer [wrap-not-modified]])
+  (:require [ring.middleware.params :refer [wrap-params]])
+  (:require [cavm.views.datasets])
   (:gen-class))
 
 (defn- file-time [file]
@@ -106,13 +110,9 @@
             (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
             (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api"))))))
 
-(defn- db-middleware [db app]
+(defn- db-middleware [app db]
   (fn [req]
     (app (assoc req :db db))))
-
-(server/load-views-ns 'cavm.views)
-
-(server/add-middleware wrap-access-control)
 
 (defn- del-datasets [args]
   (dorun (map del-exp args)))
@@ -120,14 +120,19 @@
 (defn- print-datasets []
   (dorun (map println (datasets))))
 
-(defn- serv [db]
-  (server/add-middleware (partial db-middleware db))
-  (server/add-middleware wrap-file "resources")
-  (server/start port {:mode :dev
-                      :ns 'cavm}))
+; XXX add wrap-access-control
+; XXX should add https://github.com/amalloy/ring-gzip-middleware
+; XXX should add ring jsonp
+(defn- get-app [db]
+  (-> cavm.views.datasets/routes
+      (db-middleware db)
+      (wrap-params)
+      (wrap-resource "public")
+      (wrap-content-type)
+      (wrap-not-modified)))
 
-(defn- timefn [fn]
-  (with-out-str (time (fn))))
+(defn- serv [app]
+  (ring.adapter.jetty/run-jetty app {:port port :join? true}))
 
 (defn- load-report [load-fn root file]
   (try
@@ -188,10 +193,13 @@
       (cond
         (:help opts) (println usage)
         (:json opts) (cgdata/fix-json (:root opts)))
+      ; XXX don't think serv needs with-db, since it's called in the view.
+      ; I think this is the wrong approach, because with-db in the view
+      ; will open/close the pooled db connection??
       (with-db db
         (cond
           (:s opts) (do
-                      (serv db))
+                      (serv (get-app db)))
           (:t opts) (if (not (= 3 (count extra)))
                       (println usage)
                       (apply loadtest extra))
@@ -200,4 +208,7 @@
   (shutdown-agents))
 
 ; (def testdb (create-db "test"))
-; (with-db testdb (serv testdb))
+; (def app (get-app testdb))
+; (defonce server (ring.adapter.jetty/run-jetty #'app {:port port :join? false}))
+; (.start server)
+; (.stop server)

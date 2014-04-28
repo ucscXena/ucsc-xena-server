@@ -1,19 +1,19 @@
 (ns cavm.views.datasets
-  (:use [noir.core])
-  (:use [noir.request])
   (:use [clojure.core.matrix])
   (:require [cavm.models.datasets :as d])
   (:require [cavm.query.expression :as expr])
   (:require [cavm.query.functions :as f])
   (:require [cavm.query.sources :as sources])
-  (:require [noir.response :as response])
   (:require [ring.util.codec :as codec])
   (:require [clojure.edn :as edn])
-  (:require [cheshire.custom :as json])
+  (:require [clojure.data.json :as json])
   (:require [cavm.h2 :as h2])
-  (:import mikera.matrixx.Matrix)
-  (:import mikera.vectorz.impl.ArraySubVector)
+  (:require [liberator.core :refer [defresource]])
+  (:require [compojure.core :refer [defroutes ANY]])
   (:gen-class))
+
+; disabling old noir pages for now.
+(defmacro defpage [& args])
 
 (defpage [:get "/datasets"] []
          (response/json (d/datasets)))
@@ -22,6 +22,7 @@
 (defpage [:get "/tracks"] []
   (response/json (d/datasets)))
 
+; XXX for CORS?
 (defpage [:options [":any" :any #".*"]] []
   (response/empty))
 
@@ -98,24 +99,69 @@
                          {:experiment exp
                           :sample samp}) (repeat ('table %)) ('samples %)))))
 
-; Add a json encoder for primitive float arrays, since that's what
-; we get back from the expression engine.
-(defn encode-array
-  "Encode a primitive array to the json generator."
-  [arr jg]
-  (json/to-json (seq arr) jg))
+;
+; Cheshire encoders. Not using them any more.
+;
 
-(json/add-encoder (Class/forName "[F") encode-array)
-; Mike suggests extending mikera.arrayz.INDArray to hit all
-; core.matrix types. Leaving these for now.
-(json/add-encoder mikera.vectorz.impl.ArraySubVector encode-array)
-(json/add-encoder mikera.matrixx.Matrix encode-array)
+;; Add a json encoder for primitive float arrays, since that's what
+;; we get back from the expression engine.
+;(defn encode-array
+;  "Encode a primitive array to the json generator."
+;  [arr jg]
+;  (json/to-json (seq arr) jg))
+;
+;(json/add-encoder (Class/forName "[F") encode-array)
+;; Mike suggests extending mikera.arrayz.INDArray to hit all
+;; core.matrix types. Leaving these for now.
+;(json/add-encoder mikera.vectorz.impl.ArraySubVector encode-array)
+;(json/add-encoder mikera.matrixx.Matrix encode-array)
 
+;
+; clojure.data.json encoders
+;
+
+(defn write-array
+  "Write a core.matrix array to json"
+  [arr out]
+  (json/-write (seq arr) out))
+
+(extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
+
+; (json/json-str (float-array [1 2 3]))
+; (json/json-str (double-array [1 2 3]))
+; (json/json-str (matrix (double-array [1 2 3])))
+; (json/json-str (matrix [(double-array [1 2 3])]))
+
+;
+; liberator handler for simple values
+;
+
+(defn- simple-as-response [this ctx]
+  (liberator.representation/as-response (str this) ctx))
+
+(extend Double liberator.representation/Representation
+  {:as-response simple-as-response})
+
+; (liberator.representation/as-response 1.0 {:representation {:media-type "application/json"}})
+; (liberator.representation/as-response 1.0 {:representation {:media-type "application/edn"}})
+
+;
+;
+;
+
+; XXX map vec is being used to convert the [F so core.matrix can work on them.
+; double-array might be a faster solution.
 (def functions
   {'fetch #(map vec (sources/read-symbols %))
    'query h2/run-query
    'filter filter-attr})
 
-(defpage [:get ["/data/:expression" :expression #".+"]] {:keys [expression]}
-  (h2/with-db (:db (ring-request))
-    (response/json (expr/expression expression f/functions functions))))
+(defresource expression [exp]
+  :available-media-types ["application/json" "application/edn"]
+  :handle-ok (fn [{{db :db} :request}]
+               (h2/with-db db
+                 (expr/expression exp f/functions functions))))
+
+; XXX add the custom patter #".+" to avoid nil, as above?
+(defroutes routes
+  (ANY "/data/:exp" [exp] (expression exp)))
