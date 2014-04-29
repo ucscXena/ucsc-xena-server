@@ -93,6 +93,7 @@
     if (ie_upto10) setTimeout(bind(resetInput, this, true), 20);
 
     registerEventHandlers(this);
+    ensureGlobalHandlers();
 
     var cm = this;
     runInOp(this, function() {
@@ -230,6 +231,10 @@
 
     // True when shift is held down.
     d.shift = false;
+
+    // Used to track whether anything happened since the context menu
+    // was opened.
+    d.selForContextMenu = null;
   }
 
   // STATE UPDATES
@@ -1621,7 +1626,7 @@
         else
           rect = nullRect;
       } else {
-        rect = range(node, start, end).getBoundingClientRect();
+        rect = range(node, start, end).getBoundingClientRect() || nullRect;
       }
     } else { // If it is a widget, simply get the box for the whole widget.
       if (start > 0) collapse = bias = "right";
@@ -2246,6 +2251,8 @@
     if (withOp) startOperation(cm);
     cm.display.shift = false;
 
+    if (text.charCodeAt(0) == 0x200b && doc.sel == cm.display.selForContextMenu && !prevInput)
+      prevInput = "\u200b";
     // Find the part of the input that is actually new
     var same = 0, l = Math.min(prevInput.length, text.length);
     while (same < l && prevInput.charCodeAt(same) == text.charCodeAt(same)) ++same;
@@ -2386,26 +2393,6 @@
     // Prevent wrapper from ever scrolling
     on(d.wrapper, "scroll", function() { d.wrapper.scrollTop = d.wrapper.scrollLeft = 0; });
 
-    // When the window resizes, we need to refresh active editors.
-    var resizeTimer;
-    function onResize() {
-      if (resizeTimer == null) resizeTimer = setTimeout(function() {
-        resizeTimer = null;
-        // Might be a text scaling operation, clear size caches.
-        d.cachedCharWidth = d.cachedTextHeight = d.cachedPaddingH = knownScrollbarWidth = null;
-        cm.setSize();
-      }, 100);
-    }
-    on(window, "resize", onResize);
-    // The above handler holds on to the editor and its data
-    // structures. Here we poll to unregister it when the editor is no
-    // longer in the document, so that it can be garbage-collected.
-    function unregister() {
-      if (contains(document.body, d.wrapper)) setTimeout(unregister, 5000);
-      else off(window, "resize", onResize);
-    }
-    setTimeout(unregister, 5000);
-
     on(d.input, "keyup", operation(cm, onKeyUp));
     on(d.input, "input", function() {
       if (ie && !ie_upto8 && cm.display.inputHasSelection) cm.display.inputHasSelection = null;
@@ -2480,6 +2467,14 @@
       if (activeElt() == d.input) d.input.blur();
       focusInput(cm);
     });
+  }
+
+  // Called when the window resizes
+  function onResize(cm) {
+    // Might be a text scaling operation, clear size caches.
+    var d = cm.display;
+    d.cachedCharWidth = d.cachedTextHeight = d.cachedPaddingH = null;
+    cm.setSize();
   }
 
   // MOUSE EVENTS
@@ -3110,7 +3105,7 @@
       // The prevInput test prevents this from firing when a context
       // menu is closed (since the resetInput would kill the
       // select-all detection hack)
-      if (!cm.curOp && cm.display.selForContextMenu == cm.doc.sel) {
+      if (!cm.curOp && cm.display.selForContextMenu != cm.doc.sel) {
         resetInput(cm);
         if (webkit) setTimeout(bind(resetInput, cm, true), 0); // Issue #1730
       }
@@ -3382,7 +3377,7 @@
 
       var after = i ? computeSelAfterChange(doc, change, null) : lst(source);
       makeChangeSingleDoc(doc, change, after, mergeOldSpans(doc, change));
-      if (doc.cm) ensureCursorVisible(doc.cm);
+      if (!i && doc.cm) doc.cm.scrollIntoView(change);
       var rebased = [];
 
       // Propagate to the linked documents
@@ -3399,12 +3394,17 @@
   // Sub-views need their line numbers shifted when text is added
   // above or below them in the parent document.
   function shiftDoc(doc, distance) {
+    if (distance == 0) return;
     doc.first += distance;
     doc.sel = new Selection(map(doc.sel.ranges, function(range) {
       return new Range(Pos(range.anchor.line + distance, range.anchor.ch),
                        Pos(range.head.line + distance, range.head.ch));
     }), doc.sel.primIndex);
-    if (doc.cm) regChange(doc.cm, doc.first, doc.first - distance, distance);
+    if (doc.cm) {
+      regChange(doc.cm, doc.first, doc.first - distance, distance);
+      for (var d = doc.cm.display, l = d.viewFrom; l < d.viewTo; l++)
+        regLineChange(doc.cm, l, "gutter");
+    }
   }
 
   // More lower-level change function, handling only a single document
@@ -3496,6 +3496,7 @@
       if (changeHandler) signalLater(cm, "change", cm, obj);
       if (changesHandler) (cm.curOp.changeObjs || (cm.curOp.changeObjs = [])).push(obj);
     }
+    cm.display.selForContextMenu = null;
   }
 
   function replaceRange(doc, code, from, to, origin) {
@@ -7135,6 +7136,43 @@
     for (var i = 0; i < as.length; i++)
       if (as[i] && !classTest(as[i]).test(b)) b += " " + as[i];
     return b;
+  }
+
+  // WINDOW-WIDE EVENTS
+
+  // These must be handled carefully, because naively registering a
+  // handler for each editor will cause the editors to never be
+  // garbage collected.
+
+  function forEachCodeMirror(f) {
+    if (!document.body.getElementsByClassName) return;
+    var byClass = document.body.getElementsByClassName("CodeMirror");
+    for (var i = 0; i < byClass.length; i++) {
+      var cm = byClass[i].CodeMirror;
+      if (cm) f(cm);
+    }
+  }
+
+  var globalsRegistered = false;
+  function ensureGlobalHandlers() {
+    if (globalsRegistered) return;
+    registerGlobalHandlers();
+    globalsRegistered = true;
+  }
+  function registerGlobalHandlers() {
+    // When the window resizes, we need to refresh active editors.
+    var resizeTimer;
+    on(window, "resize", function() {
+      if (resizeTimer == null) resizeTimer = setTimeout(function() {
+        resizeTimer = null;
+        knownScrollbarWidth = null;
+        forEachCodeMirror(onResize);
+      }, 100);
+    });
+    // When the window loses focus, we want to show the editor as blurred
+    on(window, "blur", function() {
+      forEachCodeMirror(onBlur);
+    });
   }
 
   // FEATURE DETECTION
