@@ -102,14 +102,19 @@
 
 (def port 7222)
 
+; XXX need better home for this list
+(def hosts
+  ["https://tcga1.kilokluster.ucsc.edu"
+   "https://tcga1-b.kilokluster.ucsc.edu"
+   "https://cancer-beta.kilokluster.ucsc.edu"
+   "https://genome-cancer.ucsc.edu"])
+
 (defn wrap-access-control [handler]
   (fn [request]
     (let [response (handler request)]
-      (if (= nil response)
-        response              ; If we add headers to nil 404 become 200.
-        (-> response
-            (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
-            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api"))))))
+      (-> response
+          (assoc-in [:headers "Access-Control-Allow-Origin"] (s/join " " hosts))
+          (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api")))))
 
 (defn- db-middleware [app db]
   (fn [req]
@@ -130,6 +135,7 @@
       (wrap-resource "public")
       (wrap-content-type)
       (wrap-not-modified)
+      (wrap-access-control)
       (wrap-gzip)))
 
 (defn- serv [app]
