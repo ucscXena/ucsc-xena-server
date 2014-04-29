@@ -818,12 +818,11 @@
   (kdb/create-db  {:classname "org.h2.Driver"
                    :subprotocol "h2"
                    :subname file
-                   :make-pool true}))
+                   :delimiters "`"
+                   :make-pool? true}))
 
 (defmacro with-db [db & body]
   `(kdb/with-db ~db ~@body))
-
-(kconf/set-delimiters "`") ; for h2
 
 ; execute a sequence of sql statements
 (defn- exec-statements [stmts]

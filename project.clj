@@ -7,7 +7,7 @@
                  [org.clojure/tools.cli "0.2.2"]
                  [net.mikera/core.matrix "0.8.0"]
                  [net.mikera/vectorz-clj "0.11.0"]
-                 [korma "0.3.0-RC5"] ; XXX update to 0.3.1, or drop. need jdbc 0.3
+                 [korma "0.3.1"]
                  [org.clojars.smee/binary "0.2.0"]
                  [clj-time "0.5.0"]
                  [liberator "0.10.0"]
