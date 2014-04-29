@@ -23,6 +23,7 @@
   (:require [ring.middleware.not-modified :refer [wrap-not-modified]])
   (:require [ring.middleware.params :refer [wrap-params]])
   (:require [cavm.views.datasets])
+  (:require [ring.middleware.gzip :refer [wrap-gzip]])
   (:gen-class))
 
 (defn- file-time [file]
@@ -121,7 +122,6 @@
   (dorun (map println (datasets))))
 
 ; XXX add wrap-access-control
-; XXX should add https://github.com/amalloy/ring-gzip-middleware
 ; XXX should add ring jsonp
 (defn- get-app [db]
   (-> cavm.views.datasets/routes
@@ -129,7 +129,8 @@
       (wrap-params)
       (wrap-resource "public")
       (wrap-content-type)
-      (wrap-not-modified)))
+      (wrap-not-modified)
+      (wrap-gzip)))
 
 (defn- serv [app]
   (ring.adapter.jetty/run-jetty app {:port port :join? true}))
@@ -207,7 +208,7 @@
 
   (shutdown-agents))
 
-; (def testdb (create-db "test"))
+; (def testdb (create-db "test;TRACE_LEVEL_FILE=3"))
 ; (def app (get-app testdb))
 ; (defonce server (ring.adapter.jetty/run-jetty #'app {:port port :join? false}))
 ; (.start server)
