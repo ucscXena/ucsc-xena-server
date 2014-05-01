@@ -24,6 +24,8 @@
   (:require [ring.middleware.params :refer [wrap-params]])
   (:require [cavm.views.datasets])
   (:require [ring.middleware.gzip :refer [wrap-gzip]])
+  (:require [ring.middleware.stacktrace :refer [wrap-stacktrace]]) ; XXX only in dev
+  (:require [liberator.dev :refer [wrap-trace]])                   ; XXX only in dev
   (:gen-class))
 
 (defn- file-time [file]
@@ -102,18 +104,12 @@
 
 (def port 7222)
 
-; XXX need better home for this list
-(def hosts
-  ["https://tcga1.kilokluster.ucsc.edu"
-   "https://tcga1-b.kilokluster.ucsc.edu"
-   "https://cancer-beta.kilokluster.ucsc.edu"
-   "https://genome-cancer.ucsc.edu"])
-
+; XXX change Access-Control-Allow-Origin in production.
 (defn wrap-access-control [handler]
   (fn [request]
     (let [response (handler request)]
       (-> response
-          (assoc-in [:headers "Access-Control-Allow-Origin"] (s/join " " hosts))
+          (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
           (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api")))))
 
 (defn- db-middleware [app db]
@@ -126,7 +122,6 @@
 (defn- print-datasets []
   (dorun (map println (datasets))))
 
-; XXX add wrap-access-control
 ; XXX should add ring jsonp
 (defn- get-app [db]
   (-> cavm.views.datasets/routes
@@ -136,7 +131,8 @@
       (wrap-content-type)
       (wrap-not-modified)
       (wrap-access-control)
-      (wrap-gzip)))
+      (wrap-gzip)
+      (wrap-stacktrace)))
 
 (defn- serv [app]
   (ring.adapter.jetty/run-jetty app {:port port :join? true}))
@@ -200,9 +196,6 @@
       (cond
         (:help opts) (println usage)
         (:json opts) (cgdata/fix-json (:root opts)))
-      ; XXX don't think serv needs with-db, since it's called in the view.
-      ; I think this is the wrong approach, because with-db in the view
-      ; will open/close the pooled db connection??
       (with-db db
         (cond
           (:s opts) (do

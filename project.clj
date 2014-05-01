@@ -13,6 +13,7 @@
                  [liberator "0.10.0"]
                  [compojure "1.1.3"]
                  [ring/ring-core "1.2.2"]
+                 [ring/ring-devel "1.2.2"] ; XXX only in dev
                  [ring/ring-jetty-adapter "1.2.2"]
                  [amalloy/ring-gzip-middleware "0.1.3"]
                  [me.raynes/fs "1.4.2"]
