@@ -13,6 +13,7 @@
   (:use [korma.core :rename {insert kcinsert}])
   (:require [cavm.query.sources :as sources])
   (:require [me.raynes.fs :as fs])
+  (:require [cavm.db :refer [XenaDb]])
   (:gen-class))
 
 
@@ -1031,3 +1032,24 @@
 (defn left-assoc [v]
   (clojure.string/join " " v))
 (in-ns 'cavm.h2)
+
+(defrecord H2Db [db])
+
+(extend-protocol XenaDb H2Db
+  (write-matrix [this files metadata data-fn features always]
+    (with-db (:db this)
+      (load-exp files metadata data-fn features always)))
+  (write-probemap [this files metadata data-fn features always]
+    (with-db (:db this)
+      (load-probemap files metadata data-fn always)))
+  (run-query [this query]
+    (with-db (:db this)
+      (run-query query)))
+  (close [this]
+    (.close (:datasource @(:pool (:db this))) false)))
+
+; XXX rename
+(defn create-db2 [& args]
+  (let [db (apply create-db args)]
+    (with-db db (create))
+    (H2Db. db)))
