@@ -814,12 +814,16 @@
            probemap_sources :probemaps_id pmid files)
          (dorun (map add-probe probes)))))))
 
-(defn create-db [file]
-  (kdb/create-db  {:classname "org.h2.Driver"
-                   :subprotocol "h2"
+(defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
+                          :or {classname "org.h2.Driver"
+                               subprotocol "h2"
+                               delimiters "`"
+                               make-pool? true}}]]
+  (kdb/create-db  {:classname classname
+                   :subprotocol subprotocol
                    :subname file
-                   :delimiters "`"
-                   :make-pool? true}))
+                   :delimiters delimiters
+                   :make-pool? make-pool?}))
 
 (defmacro with-db [db & body]
   `(kdb/with-db ~db ~@body))
