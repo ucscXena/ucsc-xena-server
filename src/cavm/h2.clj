@@ -643,7 +643,7 @@
   (memoize-key (:key writer) (partial insert-scores-block writer)))
 
 (defn- load-probe [writer insert-scores-fn exp row]
-  (let [pid ((:insert-probe writer) exp (:probe row))
+  (let [pid ((:insert-probe writer) exp (:field row))
         blocks (:data row)]
     (doseq [[block i] (mapv vector blocks (range))]
       (let [sid (insert-scores-fn block)]
@@ -673,13 +673,12 @@
 
 ; insert matrix, updating scores, probes, and joins tables
 (defn- load-exp-matrix [exp matrix-fn writer]
-  (let [matrix (matrix-fn)]
-    (load-exp-samples exp (:samples (meta matrix)))
+  (let [{:keys [samples fields]} (matrix-fn)]
+    (load-exp-samples exp samples)
     (let [scores-fn (insert-unique-scores-fn writer)
           loadp (partial load-probe-feature writer scores-fn exp)
-          ; XXX rework cgdata so the fields aren't in the metadata
-          matrix (chunked-pmap #(assoc (meta %) :data (encode-scores writer %)) matrix)
-          probe-meta (reduce loadp '() matrix)]
+          fields (chunked-pmap #(assoc % :data (encode-scores writer (:scores %))) fields)
+          probe-meta (reduce loadp '() fields)]
       #(load-probe-meta probe-meta))))
 
 

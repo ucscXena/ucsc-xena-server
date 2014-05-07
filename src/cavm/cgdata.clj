@@ -157,8 +157,8 @@
 (defmulti ^:private data-line
   "(id val val val val) -> seq of parsed values)
 
-  Return a seq of floats from a split probe line, with probe name,
-  feature definition, and data type as metadata."
+  Return from a split probe line a probe name,
+  feature definition, data type, and seq of floats"
   (fn [features cols & [hint]]
     (or (get (get features (first cols)) "valueType")
         hint)))
@@ -167,11 +167,10 @@
   [features cols & [hint]]
   (try ; the body must be eager so we stay in the try/except scope
     (let [feature (get features (first cols))]
-      (with-meta
-        (mapv parseFloatNA (rest cols)) ; eager
-        {:probe (String. ^String (first cols)) ; copy, because split is evil.
-         :feature feature
-         :valueType "float"}))
+      {:field (String. ^String (first cols)) ; copy, because split is evil.
+       :feature feature
+       :valueType "float"
+       :scores (mapv parseFloatNA (rest cols))}) ; eager
     (catch NumberFormatException e
       (data-line features cols "category"))))
 
@@ -203,20 +202,20 @@
         msg "Invalid state %s for feature %s"
         vals (map #(throw-on-nil (order %) msg % name)
                   (rest cols))]
-    (with-meta
-      vals
-      {:probe (String. ^String name) ; copy the string. string/split is evil.
-       :feature feature
-       :valueType "category"})))
+
+    {:field (String. ^String name) ; copy the string. string/split is evil.
+     :feature feature
+     :valueType "category"
+     :scores vals}))
 
 (defmulti matrix-data
-  "Return seq of scores, probes X samples, with samples as metadata"
+  "Return samples and seq of scores, probes X samples"
   (fn [metadata features lines] (metadata "type")))
 
 (defmethod matrix-data :default
   [metadata features lines]
-  (with-meta (chunked-pmap #(data-line features (tabbed %)) (rest lines))
-             {:samples (rest (tabbed (first lines)))}))
+  {:fields (chunked-pmap #(data-line features (tabbed %)) (rest lines))
+   :samples (rest (tabbed (first lines)))})
 
 (defn- transpose [lines]
   (apply mapv vector lines))
@@ -224,8 +223,8 @@
 (defmethod matrix-data "clinicalMatrix"
   [metadata features lines]
   (let [lines (transpose (map tabbed lines))]
-    (with-meta (chunked-pmap #(data-line features %) (rest lines))
-               {:samples (rest (first lines))})))
+    {:fields (chunked-pmap #(data-line features %) (rest lines))
+     :samples (rest (first lines))}))
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
