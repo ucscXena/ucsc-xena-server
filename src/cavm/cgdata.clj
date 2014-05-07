@@ -38,7 +38,7 @@
 
 (defn- json-add [acc [file {n "name" t "type" :as metadata}]]
   (if-let [group (and (= t "probeMap") (metadata "group"))]
-    (assoc-in acc [t (str group "::" (metadata ":assembly"))] file)  
+    (assoc-in acc [t (str group "::" (metadata ":assembly"))] file)
     (assoc-in acc [t n] file)))
 
 (defn- json-table [json-list]
@@ -63,7 +63,7 @@
 ; either pass through [k v] or map it to a file if
 ; it matches an object in the table.
 (defn resolve-reference [normalize table file [k v]]
-  (if-let [match (and (.startsWith ^String k ":") 
+  (if-let [match (and (.startsWith ^String k ":")
                       (or
                         (get-in table [(subs k 1) v])
                         (get-in table [(subs k 1) (str v "::hg18")])))]
