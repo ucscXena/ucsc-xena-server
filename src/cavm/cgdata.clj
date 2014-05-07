@@ -5,6 +5,7 @@
   (:require [clojure-csv.core :as csv])
   (:require [me.raynes.fs :as fs])
   (:require clojure.pprint)
+  (:require [cavm.readers :refer [reader]])
   (:gen-class))
 
 ;
@@ -228,9 +229,8 @@
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
-    (if (.exists mfile)
-      (json/read-str (slurp mfile))
-      {"name" file})))
+    (when (.exists mfile)
+      (json/read-str (slurp mfile)))))
 
 (defn- path-from-root
   "Return file path relative to root"
@@ -265,14 +265,16 @@
   any assoicated json or clinicalFeature file."
   [file & {root :root :or {root fs/unix-root}}]
   (let [rfile (str (path-from-root root file))
-        meta-data (cgdata-meta file)
+        meta-data (or (cgdata-meta file) {"name" file})
         refs (references rfile meta-data)
         cf (refs ":clinicalFeature")
         feature (when cf (feature-file (fs/file root cf)))]
-    {:rfile rfile
-     :meta meta-data
-     :refs refs
-     :features feature}))
+
+    {:rfile rfile        ; file relative to root
+     :meta meta-data     ; json metadata
+     :refs refs          ; map of json metadata references to paths relative to root
+     :features feature   ; slurped clinicalFeatures
+     :data-fn (fn [in] (matrix-data meta-data feature (line-seq in)))}))
 
 ;
 ; cgData probemaps
@@ -305,3 +307,60 @@
     {:rfile rfile
      :meta meta-data
      :refs refs}))
+
+;
+; cgdata file detector
+;
+
+(def types
+  {"clincialMatrix" ::clinical
+   "genomicMatrix" ::genomic
+   "probeMap" ::probeMap})
+
+(defn detect-cgdata
+  "Detect cgdata files by presence of json metadata. If no type
+  is give, assume genomicMatrix"
+  [file]
+  (when-let [cgmeta (cgdata-meta file)]
+    (or (types (cgmeta "type")) ::genomic)))
+
+;
+; cgdata file reader
+;
+
+(defmethod reader ::probeMap
+  [filetype url]
+  (probemap-file url))
+
+(defmethod reader ::genomic
+  [filetype url]
+  (matrix-file url))
+
+;
+;
+;
+
+(defn tabs [line]
+  (count (filter #(= % \tab) line)))
+
+(defn is-tsv?
+  "Detect tsv. Requires two non-blank lines, each having
+  at least one tab."
+  [lines]
+  (let [head (take 2 (filter #(re-matches #".*\S.*" %) lines))] ; two non-blank lines
+    (and
+      (> (count head) 1)
+      (every? #(> (tabs %) 0) head))))
+
+; XXX Note that this will pick up all kinds of unrelated files,
+; including probeMaps without assocated json metadata.
+(defn detect-tsv
+  "Return ::tsv if the file is tsv, or nil"
+  [file]
+  (when (with-open [in (io/reader file)]
+        (is-tsv? (line-seq in)))
+    ::tsv))
+
+(defmethod reader ::tsv
+  [filetype url]
+  (matrix-file url))
