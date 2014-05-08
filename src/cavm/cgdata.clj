@@ -313,8 +313,8 @@
 ;
 
 (def types
-  {"clincialMatrix" ::clinical
-   "genomicMatrix" ::genomic
+  {"clincialMatrix" ::matrix
+   "genomicMatrix" ::matrix
    "probeMap" ::probeMap})
 
 (defn detect-cgdata
@@ -332,7 +332,7 @@
   [filetype url]
   (probemap-file url))
 
-(defmethod reader ::genomic
+(defmethod reader ::matrix
   [filetype url]
   (matrix-file url))
 
