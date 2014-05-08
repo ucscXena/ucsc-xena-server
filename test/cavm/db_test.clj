@@ -3,7 +3,7 @@
   (:require [cavm.h2 :as h2])
   (:require [cavm.db :as cdb])
   (:require [cavm.readers :as cr])
-  (:require [cavm.cgdata :as cgdata])
+  (:require [cgdata.core :as cgdata])
   (:use cavm.query.sources)
   (:require [clojure.test :as ct]))
 
@@ -53,7 +53,7 @@
 (defn detect-matrix [db]
   (ct/testing "detect tsv matrix"
     (let [{file-type :file-type} (detector "test/cavm/test_inputs/matrix")]
-      (ct/is (= file-type :cavm.cgdata/tsv)))))
+      (ct/is (= file-type :cgdata.core/tsv)))))
 
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
@@ -87,7 +87,7 @@
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
     (let [{file-type :file-type} (detector "test/cavm/test_inputs/cgdata_matrix")]
-      (ct/is (= file-type :cavm.cgdata/genomic)))))
+      (ct/is (= file-type :cgdata.core/matrix)))))
 
 (defn matrix3 [db]
   (ct/testing "cgdata genomic matrix"

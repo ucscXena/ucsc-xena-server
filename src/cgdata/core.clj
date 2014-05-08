@@ -1,4 +1,4 @@
-(ns cavm.cgdata
+(ns cgdata.core
   (:require [clojure.data.json :as json])
   (:require [clojure.string :as s])
   (:require [clojure.java.io :as io])

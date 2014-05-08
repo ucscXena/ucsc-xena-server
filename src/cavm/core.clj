@@ -17,7 +17,7 @@
   (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [cli]])
-  (:require [cavm.cgdata :as cgdata])
+  (:require [cgdata.core :as cgdata])
   (:require [ring.middleware.resource :refer [wrap-resource]])
   (:require [ring.middleware.content-type :refer [wrap-content-type]])
   (:require [ring.middleware.not-modified :refer [wrap-not-modified]])
