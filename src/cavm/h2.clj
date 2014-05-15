@@ -410,8 +410,8 @@
     cid))
 
 ; Update meta entity record.
-(defn- merge-m-ent [m-ent {ename "name" :as metadata}]
-  (let [normmeta (json-text (normalize-meta m-ent metadata))
+(defn- merge-m-ent [m-ent ename metadata]
+  (let [normmeta (json-text (normalize-meta m-ent (assoc metadata "name" ename)))
         table (:table m-ent)
         [{id :ID}] (select table (fields :id) (where {:name ename}))]
     (if id
@@ -748,13 +748,13 @@
 
 (defn load-exp
   "Load matrix file and metadata. Skips the data load if file hashes are unchanged,
-  and 'force' is false."
-  ([files metadata matrix-fn features]
-   (load-exp files metadata matrix-fn features false))
+  and 'force' is false. Metadata is always updated."
+  ([mname files metadata matrix-fn features]
+   (load-exp mname files metadata matrix-fn features false))
 
-  ([files metadata matrix-fn features force]
+  ([mname files metadata matrix-fn features force]
    (kdb/transaction
-     (let [exp (merge-m-ent experiments-meta metadata)
+     (let [exp (merge-m-ent experiments-meta mname metadata)
            files (map fmt-time files)]
        (when (or force
                  (not (= (set files) (set (related-sources experiments exp)))))
@@ -799,13 +799,13 @@
 (defn load-probemap
   "Load probemap file and metadata. Skips the data load if the file hashes are unchanged,
   and 'force' is false."
-  ([files metadata probes-fn]
-   (load-probemap files metadata probes-fn false))
+  ([pname files metadata probes-fn]
+   (load-probemap pname files metadata probes-fn false))
 
-  ([files metadata probes-fn force]
+  ([pname files metadata probes-fn force]
    (kdb/transaction
      (let [probes (probes-fn)
-           pmid (merge-m-ent probemaps-meta metadata)
+           pmid (merge-m-ent probemaps-meta pname metadata)
            add-probe (partial add-probemap-probe pmid)
            files (map fmt-time files)]
        (when (or force
@@ -1035,12 +1035,12 @@
 (defrecord H2Db [db])
 
 (extend-protocol XenaDb H2Db
-  (write-matrix [this files metadata data-fn features always]
+  (write-matrix [this mname files metadata data-fn features always]
     (with-db (:db this)
-      (load-exp files metadata data-fn features always)))
-  (write-probemap [this files metadata data-fn features always]
+      (load-exp mname files metadata data-fn features always)))
+  (write-probemap [this pname files metadata data-fn features always]
     (with-db (:db this)
-      (load-probemap files metadata data-fn always)))
+      (load-probemap pname files metadata data-fn always)))
   (run-query [this query]
     (with-db (:db this)
       (run-query query)))

@@ -22,8 +22,9 @@
   (ct/testing "tsv matrix from memory"
     (cdb/write-matrix
       db
+      "id1"
       [{:name "id1" :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0) :hash "1234"}]
-      {:name "id1"}
+      {}
       (fn [] {:fields [{:scores [1.1 1.2] :field "probe1"}
                        {:scores [2.1 2.2] :field "probe2"}]
                :samples ["sample1" "sample2"]})
@@ -63,8 +64,9 @@
       (with-open [in (io/reader filename)]
         (cdb/write-matrix
           db
+          filename
           nil            ; list of file name, hash, timestamp
-          {:name filename}  ; json metadata
+          {}             ; json metadata
           (partial data-fn in)
           nil
           false)))
@@ -97,8 +99,9 @@
       (with-open [in (io/reader filename)]
         (cdb/write-matrix
           db
+          filename
           nil ; XXX fix this
-          {:name filename}
+          {}
           (partial data-fn in)
           nil
           false)))
