@@ -18,11 +18,20 @@
        (pmap (fn [chunk] (doall (map f chunk))))
        (apply concat)))
 
-(defn- normalized-path
-  "Like fs/normalized-path, but doesn't add *cwd*."
+
+; java's lovely File API will not resolve all ".." appearing
+; in a path. "/one/../../two", for example, will resolve to
+; "/../two". The wonky workaround below calls the API repeatedly
+; until the return value stops changing. Ugh.
+
+(defn normalized-path
+  "Normalize a (possibly relative) path with embedded . and .."
   [path]
-  (fs/with-cwd "/"
-    (apply io/file (drop 1 (fs/split (fs/normalized-path path))))))
+  (loop [p (io/file path)]
+    (let [np (.getCanonicalFile p)]
+      (if (= p np)
+        np
+        (recur np)))))
 
 (defn- tabbed [line]
   (s/split line #"\t"))
@@ -232,49 +241,50 @@
     (when (.exists mfile)
       (json/read-str (slurp mfile)))))
 
-(defn- path-from-root
+(defn relativize
   "Return file path relative to root"
   [root file]
-  (let [root (fs/normalized-path root)
-        file (fs/normalized-path file)]
+  (let [root (normalized-path root)
+        file (normalized-path file)]
     (when-not (fs/child-of? root file)
       (throw (IllegalArgumentException. (str file " not in root path: " root))))
     (apply io/file (drop (count (fs/split root)) (fs/split file)))))
 
-(defn- path-from-ref
-  "Construct a file path relative to the root of the referring file. 'referer'
-  must be relative to root."
-  [referrer file]
-  (let [sref (fs/split referrer)
-        sfile (fs/split file)]
-    (if (= (first sfile) fs/unix-root)
-      (apply io/file (drop 1 sfile))
-      (fs/with-cwd fs/unix-root
-        (normalized-path (apply io/file (concat (drop-last 1 sref) sfile)))))))
+(defn path-from-ref
+  "Construct a file path relative to the document root, given a file
+  reference and the referring file path. References can be relative to
+  the referring file, or absolute (relative to document root)."
+  [docroot referrer file]
+  (let [sref (fs/split (normalized-path referrer))
+        sfile (fs/split file)
+        abs (if (= (first sfile) fs/unix-root)
+              (apply io/file docroot (rest sfile))
+              (apply io/file (conj (vec (drop-last sref)) file)))]
+    (relativize docroot abs)))
 
-(defn- references [referrer md]
-  "Return map of any references in md to their paths relative to the root. 'referer'
-  must be relative to root."
+(defn references
+  "Return map of any references in md to their paths relative to the document root."
+  [docroot referrer md]
   (let [refs (->> md
                   (keys)
                   (filter #(.startsWith % ":")))]
-    (into {} (map vector refs (map #(str (path-from-ref referrer (md %))) refs)))))
+    (into {} (map vector refs (map #(str (path-from-ref docroot referrer (md %))) refs)))))
 
 (defn matrix-file
   "Return a map describing a cgData matrix file. This will read
   any assoicated json or clinicalFeature file."
-  [file & {root :root :or {root fs/unix-root}}]
-  (let [rfile (str (path-from-root root file))
-        meta-data (or (cgdata-meta file) {"name" file})
-        refs (references rfile meta-data)
+  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+  (let [rfile (str (relativize docroot file))
+        metadata (or (cgdata-meta file) {"name" file})
+        refs (references docroot file metadata)
         cf (refs ":clinicalFeature")
-        feature (when cf (feature-file (fs/file root cf)))]
+        feature (when cf (feature-file (fs/file docroot cf)))]
 
     {:rfile rfile        ; file relative to root
-     :meta meta-data     ; json metadata
-     :refs refs          ; map of json metadata references to paths relative to root
+     :metadata metadata  ; json metadata
+     :refs refs          ; map of json metadata references to paths relative to docroot
      :features feature   ; slurped clinicalFeatures
-     :data-fn (fn [in] (matrix-data meta-data feature (line-seq in)))}))
+     :data-fn (fn [in] (matrix-data metadata feature (line-seq in)))}))
 
 ;
 ; cgData probemaps
@@ -300,12 +310,12 @@
 (defn probemap-file
   "Return a map describing a cgData probemap file. This will read
   any assoicated json."
-  [file & {root :root :or {root fs/unix-root}}]
-  (let [rfile (str (path-from-root root file))
-        meta-data (cgdata-meta file)
-        refs (references rfile meta-data)]
+  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+  (let [rfile (str (relativize docroot file))
+        metadata (cgdata-meta file)
+        refs (references file metadata)]
     {:rfile rfile
-     :meta meta-data
+     :meta metadata
      :refs refs}))
 
 ;
@@ -313,8 +323,8 @@
 ;
 
 (def types
-  {"clincialMatrix" ::matrix
-   "genomicMatrix" ::matrix
+  {"clincialMatrix" ::clinical
+   "genomicMatrix" ::genomic
    "probeMap" ::probeMap})
 
 (defn detect-cgdata
@@ -325,19 +335,9 @@
     (or (types (cgmeta "type")) ::genomic)))
 
 ;
-; cgdata file reader
-;
-
-(defmethod reader ::probeMap
-  [filetype url]
-  (probemap-file url))
-
-(defmethod reader ::matrix
-  [filetype url]
-  (matrix-file url))
-
-;
-;
+; tsv file detector
+; XXX might want to also files named *.tsv, files with # comment
+; headers, check that column counts are consistent, etc.
 ;
 
 (defn tabs [line]
@@ -360,7 +360,3 @@
   (when (with-open [in (io/reader file)]
         (is-tsv? (line-seq in)))
     ::tsv))
-
-(defmethod reader ::tsv
-  [filetype url]
-  (matrix-file url))

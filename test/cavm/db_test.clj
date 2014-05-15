@@ -58,20 +58,20 @@
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
     (let [filename "test/cavm/test_inputs/matrix"
-          {:keys [rfile meta refs features data-fn]} @(:reader (detector filename))]
+          {:keys [rfile metadata refs features data-fn]} @(:reader (detector filename))]
 
       (with-open [in (io/reader filename)]
         (cdb/write-matrix
           db
-          nil ; XXX fix this
-          {:name rfile}
+          nil            ; list of file name, hash, timestamp
+          {:name filename}  ; json metadata
           (partial data-fn in)
           nil
           false)))
     (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
           samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
           probes (cdb/run-query db {:select [:*] :from [:probes]})]
-      (ct/is (= exp [{:NAME "inside/home/craft/cavm/test/cavm/test_inputs/matrix"}]))
+      (ct/is (= exp [{:NAME "test/cavm/test_inputs/matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
                  {:NAME "sample2"}
@@ -87,25 +87,25 @@
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
     (let [{file-type :file-type} (detector "test/cavm/test_inputs/cgdata_matrix")]
-      (ct/is (= file-type :cgdata.core/matrix)))))
+      (ct/is (= file-type :cgdata.core/genomic)))))
 
 (defn matrix3 [db]
   (ct/testing "cgdata genomic matrix"
     (let [filename "test/cavm/test_inputs/cgdata_matrix"
-          {:keys [rfile meta refs features data-fn]} @(:reader (detector filename))]
+          {:keys [rfile metadata refs features data-fn]} @(:reader (detector filename))]
 
       (with-open [in (io/reader filename)]
         (cdb/write-matrix
           db
           nil ; XXX fix this
-          {:name rfile}
+          {:name filename}
           (partial data-fn in)
           nil
           false)))
     (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
           samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
           probes (cdb/run-query db {:select [:*] :from [:probes]})]
-      (ct/is (= exp [{:NAME "inside/home/craft/cavm/test/cavm/test_inputs/cgdata_matrix"}]))
+      (ct/is (= exp [{:NAME "test/cavm/test_inputs/cgdata_matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
                  {:NAME "sample2"}
@@ -134,7 +134,7 @@
   (run-tests
     (fn [f]
       (let [db (h2/create-db2 "test" {:subprotocol "h2:mem"})]
-        (try (f db) ; 'try' to ensure our teardown always runs
+        (try (f db) ; 'finally' ensures our teardown always runs
           (finally (cdb/close db)))))))
 
 ; (ct/run-tests)
