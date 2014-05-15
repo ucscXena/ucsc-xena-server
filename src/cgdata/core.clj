@@ -5,7 +5,7 @@
   (:require [clojure-csv.core :as csv])
   (:require [me.raynes.fs :as fs])
   (:require clojure.pprint)
-  (:require [cavm.readers :refer [reader]])
+  (:require [cavm.fs-utils :refer [normalized-path relativize]]) ; should copy these fns if releasing cgdata stand-alone
   (:gen-class))
 
 ;
@@ -17,21 +17,6 @@
        (partition-all 250)
        (pmap (fn [chunk] (doall (map f chunk))))
        (apply concat)))
-
-
-; java's lovely File API will not resolve all ".." appearing
-; in a path. "/one/../../two", for example, will resolve to
-; "/../two". The wonky workaround below calls the API repeatedly
-; until the return value stops changing. Ugh.
-
-(defn normalized-path
-  "Normalize a (possibly relative) path with embedded . and .."
-  [path]
-  (loop [p (io/file path)]
-    (let [np (.getCanonicalFile p)]
-      (if (= p np)
-        np
-        (recur np)))))
 
 (defn- tabbed [line]
   (s/split line #"\t"))
@@ -240,15 +225,6 @@
   (let [mfile (io/as-file (str file ".json"))]
     (when (.exists mfile)
       (json/read-str (slurp mfile)))))
-
-(defn relativize
-  "Return file path relative to root"
-  [root file]
-  (let [root (normalized-path root)
-        file (normalized-path file)]
-    (when-not (fs/child-of? root file)
-      (throw (IllegalArgumentException. (str file " not in root path: " root))))
-    (apply io/file (drop (count (fs/split root)) (fs/split file)))))
 
 (defn path-from-ref
   "Construct a file path relative to the document root, given a file
