@@ -1038,7 +1038,7 @@
   (write-matrix [this mname files metadata data-fn features always]
     (with-db (:db this)
       (load-exp mname files metadata data-fn features always)))
-  (write-probemap [this pname files metadata data-fn features always]
+  (write-probemap [this pname files metadata data-fn always]
     (with-db (:db this)
       (load-probemap pname files metadata data-fn always)))
   (run-query [this query]

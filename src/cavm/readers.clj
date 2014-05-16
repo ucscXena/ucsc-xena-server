@@ -10,15 +10,18 @@
 ;
 
 (defmulti reader
-  (fn [filetype file] filetype))
+  (fn [filetype docroot file] filetype))
+
+(defmethod reader :default ; ignore
+  [filetype docroot file])
 
 ; XXX Note that this strategy opens each file repeatedly to determine its type.
 (defn detector
   "Returns a function that invokes file type detectors in order
   until the file is identified, then returns the file type and its
   registered reader"
-  [& detectors]
+  [docroot & detectors]
   (fn [file]
     (let [file-type (some #(% file) detectors)]
       {:file-type file-type
-       :reader (delay (reader file-type file))})))
+       :reader (delay (reader file-type docroot file))})))

@@ -4,6 +4,7 @@
   (:require [cavm.db :as cdb])
   (:require [cavm.readers :as cr])
   (:require [cgdata.core :as cgdata])
+  (:require [cavm.loader :refer [loader]])
   (:use cavm.query.sources)
   (:require [clojure.test :as ct]))
 
@@ -46,8 +47,11 @@
       (comment (ct/is (= data
                 [[1.1 1.2] [2.1 2.2]]))))))
 
+(def docroot "test/cavm/test_inputs")
+
 (def detector
   (cr/detector
+    docroot
     cgdata/detect-cgdata
     cgdata/detect-tsv))
 
@@ -58,22 +62,11 @@
 
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
-    (let [filename "test/cavm/test_inputs/matrix"
-          {:keys [rfile metadata refs features data-fn]} @(:reader (detector filename))]
-
-      (with-open [in (io/reader filename)]
-        (cdb/write-matrix
-          db
-          filename
-          nil            ; list of file name, hash, timestamp
-          {}             ; json metadata
-          (partial data-fn in)
-          nil
-          false)))
+    (loader db detector docroot "test/cavm/test_inputs/matrix") ; odd that loader & detector both require docroot
     (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
           samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
           probes (cdb/run-query db {:select [:*] :from [:probes]})]
-      (ct/is (= exp [{:NAME "test/cavm/test_inputs/matrix"}]))
+      (ct/is (= exp [{:NAME "matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
                  {:NAME "sample2"}
@@ -93,22 +86,11 @@
 
 (defn matrix3 [db]
   (ct/testing "cgdata genomic matrix"
-    (let [filename "test/cavm/test_inputs/cgdata_matrix"
-          {:keys [rfile metadata refs features data-fn]} @(:reader (detector filename))]
-
-      (with-open [in (io/reader filename)]
-        (cdb/write-matrix
-          db
-          filename
-          nil ; XXX fix this
-          {}
-          (partial data-fn in)
-          nil
-          false)))
+    (loader db detector docroot "test/cavm/test_inputs/cgdata_matrix")
     (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
           samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
           probes (cdb/run-query db {:select [:*] :from [:probes]})]
-      (ct/is (= exp [{:NAME "test/cavm/test_inputs/cgdata_matrix"}]))
+      (ct/is (= exp [{:NAME "cgdata_matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
                  {:NAME "sample2"}
@@ -121,16 +103,62 @@
                  {:NAME "probe4" :ID 4 :EID 1}
                  {:NAME "probe5" :ID 5 :EID 1}])))))
 
+(defn detect-cgdata-probemap [db]
+  (ct/testing "detect cgdata probemap"
+    (let [{file-type :file-type} (detector "test/cavm/test_inputs/probes")]
+      (ct/is (= file-type :cgdata.core/probemap)))))
+
+(defn probemap1 [db]
+  (ct/testing "cgdata probemap"
+    (loader db detector docroot "test/cavm/test_inputs/probes")
+    (let [probemap (cdb/run-query db {:select [:name] :from [:probemaps]})
+          probes (cdb/run-query db {:select [:*] :from [:probemap_probes]})]
+      (ct/is (= probemap [{:NAME "probes"}]))
+      (ct/is (= probes
+                [{:PROBE "probe1" :ID 1 :PROBEMAPS_ID 1}
+                 {:PROBE "probe2" :ID 2 :PROBEMAPS_ID 1}
+                 {:PROBE "probe3" :ID 3 :PROBEMAPS_ID 1}
+                 {:PROBE "probe4" :ID 4 :PROBEMAPS_ID 1}
+                 {:PROBE "probe5" :ID 5 :PROBEMAPS_ID 1}
+                 {:PROBE "probe6" :ID 6 :PROBEMAPS_ID 1}
+                 {:PROBE "probe7" :ID 7 :PROBEMAPS_ID 1}
+                 {:PROBE "probe8" :ID 8 :PROBEMAPS_ID 1}
+                 {:PROBE "probe9" :ID 9 :PROBEMAPS_ID 1}])))))
+
+
+(defn detect-cgdata-clinical [db]
+  (ct/testing "detect cgdata clinical"
+    (let [{file-type :file-type} (detector "test/cavm/test_inputs/clinical_matrix")]
+      (ct/is (= file-type :cgdata.core/clinical)))))
+
+(defn clinical1 [db]
+  (ct/testing "cgdata clinical matrix"
+    (loader db detector docroot "test/cavm/test_inputs/clinical_matrix")
+    (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
+          samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
+          probes (cdb/run-query db {:select [:*] :from [:probes]})]
+      (ct/is (= exp [{:NAME "clinical_matrix"}]))
+      (ct/is (= samples
+                [{:NAME "sample1"}
+                 {:NAME "sample2"}
+                 {:NAME "sample3"}
+                 {:NAME "sample4"}
+                 {:NAME "sample5"}]))
+      (ct/is (= probes
+                [{:NAME "probe1" :ID 1 :EID 1}
+                 {:NAME "probe2" :ID 2 :EID 1}
+                 {:NAME "probe3" :ID 3 :EID 1}
+                 {:NAME "probe4" :ID 4 :EID 1}])))))
+
 ; XXX test that cgdata defaults to genomicMatrix if not specified
-; XXX fix root path: our test depends on $HOME, which is broken
-;     drop root from cgdata processing. Should be in a support lib.
 ; XXX test clinical
-; XXX test probemaps
 
 ; clojure.test fixtures don't work with nested tests, so we
 ; have to invoke fixtures ourselves.
 (defn run-tests [fixture]
-  (doseq [t [matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3]]
+  (doseq [t [matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3
+             detect-cgdata-probemap probemap1
+             detect-cgdata-clinical clinical1]]
     (fixture t)))
 
 (ct/deftest test-h2
@@ -140,4 +168,3 @@
         (try (f db) ; 'finally' ensures our teardown always runs
           (finally (cdb/close db)))))))
 
-; (ct/run-tests)

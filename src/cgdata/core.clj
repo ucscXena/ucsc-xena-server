@@ -250,14 +250,12 @@
   "Return a map describing a cgData matrix file. This will read
   any assoicated json or clinicalFeature file."
   [file & {docroot :docroot :or {docroot fs/unix-root}}]
-  (let [rfile (str (relativize docroot file))
-        metadata (or (cgdata-meta file) {"name" file})
+  (let [metadata (or (cgdata-meta file) {"name" file})
         refs (references docroot file metadata)
         cf (refs ":clinicalFeature")
         feature (when cf (feature-file (fs/file docroot cf)))]
 
-    {:rfile rfile        ; file relative to root
-     :metadata metadata  ; json metadata
+    {:metadata metadata  ; json metadata
      :refs refs          ; map of json metadata references to paths relative to docroot
      :features feature   ; slurped clinicalFeatures
      :data-fn (fn [in] (matrix-data metadata feature (line-seq in)))}))
@@ -287,21 +285,20 @@
   "Return a map describing a cgData probemap file. This will read
   any assoicated json."
   [file & {docroot :docroot :or {docroot fs/unix-root}}]
-  (let [rfile (str (relativize docroot file))
-        metadata (cgdata-meta file)
-        refs (references file metadata)]
-    {:rfile rfile
-     :meta metadata
-     :refs refs}))
+  (let [metadata (cgdata-meta file)
+        refs (references docroot file metadata)]
+    {:metadata metadata
+     :refs refs
+     :data-fn (fn [in] (probemap-data (line-seq in)))}))
 
 ;
 ; cgdata file detector
 ;
 
 (def types
-  {"clincialMatrix" ::clinical
+  {"clinicalMatrix" ::clinical
    "genomicMatrix" ::genomic
-   "probeMap" ::probeMap})
+   "probeMap" ::probemap})
 
 (defn detect-cgdata
   "Detect cgdata files by presence of json metadata. If no type

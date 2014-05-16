@@ -1,0 +1,9 @@
+probe1	GENEA	chr1	100	200	.
+probe2	GENEA	chr2	1000	2000	.
+probe3	GENEB	chr3	10000	20000	.
+probe4	GENEB,GENEC	chr4	100000	200000	.
+probe5		chr1	200	300	.
+probe6		chr2	2000	3000	.
+probe7		chr3	20000	30000	.
+probe8	GENED	chr4	200000	300000	.
+probe9	GENEE	chr6	300	400	.

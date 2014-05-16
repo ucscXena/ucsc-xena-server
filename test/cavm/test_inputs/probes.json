@@ -1,0 +1,13 @@
+{
+"cgDataVersion":1,
+"wrangler": "Chris Szeto", 
+":assembly": "hg18", 
+"group": null, 
+"name": "probesAffy100K", 
+"author": "Chris Szeto", 
+"notes": "did not double check hg18", 
+"title": null, 
+"version":"2012-06-14",
+"dbXRef": null, 
+"type": "probeMap"
+}

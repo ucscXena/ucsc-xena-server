@@ -3,9 +3,6 @@
   (:require [cavm.readers :refer [reader]])
   (:gen-class))
 
-; normalize names for xena
-; normalize path by removing root XXX where do we get root?
-
 ;
 ; cgdata file readers
 ;
@@ -16,7 +13,6 @@
 ;
 ; Note that dropping colons means we no longer know which attributes
 ; are references, so we might want to rethink this.
-; XXX add "name" to metadata?
 
 (defn- normalize-meta-key [k]
   (-> k
@@ -26,31 +22,29 @@
 (defn- normalize-meta-keys [mdata]
   (into {} (map (fn [[k v]] [(normalize-meta-key k) v]) mdata)))
 
-(defmethod reader ::probeMap
-  [filetype url]
-  (cgdata/probemap-file url))
+(defmethod reader :cgdata.core/probemap
+  [filetype docroot url]
+  (-> (cgdata/probemap-file url :docroot docroot)
+      (assoc :datatype :probemap)))
 
-; xena cgdata adaptor should normalize references relative to doc root
-; xena cgdata adaptor should normalize file name relative to doc root
-; XXX Need to pass doc root to matrix-file
-
-(defn normalized-matrix-reader [filetype url]
-  (let [{:keys [metadata] :as mf} (cgdata/matrix-file url)]
-    (assoc mf "metadata" (normalize-meta-keys metadata))))
+(defn normalized-matrix-reader [filetype docroot url]
+  (-> (cgdata/matrix-file url :docroot docroot)
+      (assoc :datatype :matrix)
+      (update-in [:metadata] normalize-meta-keys)))
 
 (defmethod reader :cgdata.core/genomic
-  [filetype url]
-  (normalized-matrix-reader filetype url))
+  [filetype docroot url]
+  (normalized-matrix-reader filetype docroot url))
 
 (defmethod reader :cgdata.core/clinical
-  [filetype url]
-  (normalized-matrix-reader filetype url))
+  [filetype docroot url]
+  (normalized-matrix-reader filetype docroot url))
 
 ;
 ; Use cgdata's tsv reader for plain tsv.
 ;
 
 (defmethod reader :cgdata.core/tsv
-  [filetype url]
-  (normalized-matrix-reader filetype url))
+  [filetype docroot url]
+  (normalized-matrix-reader filetype docroot url))
 
