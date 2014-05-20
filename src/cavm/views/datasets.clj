@@ -1,6 +1,7 @@
 (ns cavm.views.datasets
   (:use [clojure.core.matrix])
   (:require [cavm.models.datasets :as d])
+  (:require [cavm.db :as cdb])
   (:require [cavm.query.expression :as expr])
   (:require [cavm.query.functions :as f])
   (:require [cavm.query.sources :as sources])
@@ -147,21 +148,28 @@
 
 ;
 ;
-;
+; collect data in order of columns
+; copied from cavm.query.sources
+(defn- collect [{data 'data columns 'columns}]
+  (map data columns))
 
 ; XXX map vec is being used to convert the [F so core.matrix can work on them.
-; double-array might be a faster solution.
-(def functions
-  {'fetch #(map vec (sources/read-symbols %))
-   'query h2/run-query
-   'filter filter-attr})
+; double-array might be a faster solution. Would really like core.matrix to
+; convert as necessary. Is there a protocol we can extend?
+(defn functions [db]
+  {'fetch #(map vec (apply concat (map collect (cdb/fetch db %)))) ; XXX concat? see below
+   'query #(cdb/run-query db %)
+   'filter filter-attr}) ; XXX filter is broken
+
+; XXX concat is copied from cavm.query.sources. This is something to do with
+; pulling from differen sources, or different datasets, and returning a single
+; set of vectors. Not sure how it was supposed to work.
 
 (defresource expression [exp]
   :available-media-types ["application/json" "application/edn"]
   :handle-ok (fn [{{db :db} :request}]
-               (h2/with-db db
-                 (expr/expression exp f/functions functions))))
+               (expr/expression exp f/functions (functions db))))
 
-; XXX add the custom patter #".+" to avoid nil, as above?
+; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
   (ANY "/data/:exp" [exp] (expression exp)))

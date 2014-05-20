@@ -966,12 +966,16 @@
         (do-select)
         (build-score-arrays bfns (col-arrays columns (count samples)))))))
 
-; doall is required so the seq is evaluated in db context.
-; Otherwise lazy map may not be evaluted until the context is lost.
+; Each req is a map of
+;  'table "tablename"
+;  'columns '("column1" "column2")
+;  'samples '("sample1" "sample2")
+; We merge into 'data the columns that we can resolve, like
+;  'data { 'column1 [1.1 1.2] 'column2 [2.1 2.2] }
 (defn genomic-source [reqs]
-  (doall (map #(update-in % ['data] merge (genomic-read-req %)) reqs)))
+  (map #(update-in % ['data] merge (genomic-read-req %)) reqs))
 
-(sources/register ::genomic genomic-source)
+;(sources/register ::genomic genomic-source)
 
 (defn create[]
   (kdb/transaction
@@ -1044,6 +1048,9 @@
   (run-query [this query]
     (with-db (:db this)
       (run-query query)))
+  (fetch [this reqs]
+    (with-db (:db this)
+      (doall (genomic-source reqs))))
   (close [this]
     (.close (:datasource @(:pool (:db this))) false)))
 
