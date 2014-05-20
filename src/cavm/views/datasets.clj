@@ -13,6 +13,7 @@
   (:require [liberator.core :refer [defresource]])
   (:require [compojure.core :refer [defroutes ANY GET POST]])
   (:require [compojure.route :refer [not-found]])
+  (:import (java.io PrintWriter))
   (:gen-class))
 
 ; disabling old noir pages for now.
@@ -126,16 +127,30 @@
 (defn write-array
   "Write a core.matrix array to json"
   [arr out]
-  (json/-write (seq arr) out))
+  (json/-write (seq arr) out)) ; XXX is the seq here expensive? Using vec fails.
+
+
+(defn- write-number [x ^PrintWriter out]
+  (.print out
+          (if (Double/isNaN x)
+            "\"NaN\""
+            x)))
 
 (extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
+(extend java.lang.Number json/JSONWriter {:-write write-number})
 
 ; (json/json-str (float-array [1 2 3]))
 ; (json/json-str (double-array [1 2 3]))
 ; (json/json-str (matrix (double-array [1 2 3])))
 ; (json/json-str (matrix [(double-array [1 2 3])]))
 
-;
+; (json/json-str Float/NaN)
+; (json/json-str [1.2 Float/NaN])
+; (json/json-str (float-array [1 Float/NaN 3]))
+; (json/json-str (double-array [1 Float/NaN 3]))
+; (json/json-str (matrix (double-array [1 Double/NaN 3])))
+; (json/json-str (matrix [(double-array [1 Double/NaN 3])]))
+
 ; liberator handler for simple values
 ;
 
