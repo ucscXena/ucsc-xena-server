@@ -1055,7 +1055,7 @@
     (.close (:datasource @(:pool (:db this))) false)))
 
 ; XXX rename
-(defn create-db2 [& args]
+(defn create-xenadb [& args]
   (let [db (apply create-db args)]
     (with-db db (create))
     (H2Db. db)))

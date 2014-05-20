@@ -1,6 +1,6 @@
 (ns cavm.core
   (:require [clojure.string :as s])
-  (:require [cavm.h2 :refer [create-db2]])
+  (:require [cavm.h2 :refer [create-xenadb]])
   (:require [digest])
   (:require [cavm.test-data :as data])
   (:require [clojure.java.io :as io])
@@ -124,7 +124,7 @@
     (cond
       (:help opts) (println usage)
       (:json opts) (cgdata/fix-json docroot)
-      :else (let [db (create-db2 (:d opts))
+      :else (let [db (create-xenadb (:d opts))
                   detector (apply cr/detector docroot detectors)
                   loader (partial cl/loader db detector docroot)]
               (.mkdirs (io/file docroot))
@@ -138,8 +138,8 @@
                     (serv (get-app db) (:port opts))))))))
   (shutdown-agents))
 
-; (def testdb (create-db2 "test;TRACE_LEVEL_FILE=3"))
-; (def testdb (create-db2 "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
+; (def testdb (create-xenadb "test;TRACE_LEVEL_FILE=3"))
+; (def testdb (create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
 ; (def app (get-app testdb))
 ; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
 ; (.start server)

@@ -164,7 +164,7 @@
 (ct/deftest test-h2
   (run-tests
     (fn [f]
-      (let [db (h2/create-db2 "test" {:subprotocol "h2:mem"})]
+      (let [db (h2/create-xenadb "test" {:subprotocol "h2:mem"})]
         (try (f db) ; 'finally' ensures our teardown always runs
           (finally (cdb/close db)))))))
 
