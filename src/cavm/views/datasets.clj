@@ -6,11 +6,13 @@
   (:require [cavm.query.functions :as f])
   (:require [cavm.query.sources :as sources])
   (:require [ring.util.codec :as codec])
+  (:require [ring.util.response :as response ])
   (:require [clojure.edn :as edn])
   (:require [clojure.data.json :as json])
   (:require [cavm.h2 :as h2])
   (:require [liberator.core :refer [defresource]])
-  (:require [compojure.core :refer [defroutes ANY]])
+  (:require [compojure.core :refer [defroutes ANY GET POST]])
+  (:require [compojure.route :refer [not-found]])
   (:gen-class))
 
 ; disabling old noir pages for now.
@@ -170,6 +172,21 @@
   :handle-ok (fn [{{db :db} :request}]
                (expr/expression exp f/functions (functions db))))
 
+(defn- is-local? [ip]
+  (or (= ip "0:0:0:0:0:0:0:1")
+      (= ip "::1")
+      (= ip "127.0.0.1")))
+
+; Return immediately, queuing a loader job.
+(defn loader-request [ip loader files]
+  (when (is-local? ip)
+    (future (doseq [f (if (coll? files) files [files])]
+       (loader f)))
+    "ok"))
+
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
-  (ANY "/data/:exp" [exp] (expression exp)))
+  (ANY "/data/:exp" [exp] (expression exp))
+  (POST "/update/" [file :as {ip :remote-addr
+                              loader :loader}] (loader-request ip loader file))
+  (not-found "not found"))

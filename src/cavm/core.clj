@@ -40,9 +40,9 @@
           (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
           (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api")))))
 
-(defn- db-middleware [app db]
+(defn- attr-middleware [app k v]
   (fn [req]
-    (app (assoc req :db db))))
+    (app (assoc req k v))))
 
 (comment (defn- del-datasets [args]
    (dorun (map del-exp args))))
@@ -51,9 +51,10 @@
    (dorun (map println (datasets)))))
 
 ; XXX should add ring jsonp
-(defn- get-app [db]
+(defn- get-app [db loader]
   (-> cavm.views.datasets/routes
-      (db-middleware db)
+      (attr-middleware :db db)
+      (attr-middleware :loader loader)
       (wrap-params)
       (wrap-resource "public")
       (wrap-content-type)
@@ -135,12 +136,14 @@
                   (when (:auto opts)
                     (watch (partial file-changed loader) docroot))
                   (when (:serve opts)
-                    (serv (get-app db) (:port opts))))))))
+                    (serv (get-app db loader) (:port opts))))))))
   (shutdown-agents))
 
 ; (def testdb (create-xenadb "test;TRACE_LEVEL_FILE=3"))
 ; (def testdb (create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
-; (def app (get-app testdb))
+; (def testdetector (apply cr/detector "/inside/home/craft/xena/files" detectors))
+; (def testloader (partial cl/loader testdb testdetector "/inside/home/craft/xena/files"))
+; (def app (get-app testdb testloader))
 ; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
 ; (.start server)
 ; (.stop server)
