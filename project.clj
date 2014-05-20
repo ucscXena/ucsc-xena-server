@@ -23,7 +23,8 @@
                  [clojure-csv/clojure-csv "2.0.1"]
                  [honeysql "0.4.2"]
                  [com.h2database/h2 "1.3.171"]
-                 [filevents  "0.1.0"]]
+                 [filevents  "0.1.0"]
+                 [clj-http  "0.9.1"]]
   :aot [cavm.h2-binary]
   :global-vars {*warn-on-reflection* true}
   :main cavm.core)

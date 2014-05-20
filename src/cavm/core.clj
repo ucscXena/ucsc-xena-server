@@ -24,6 +24,7 @@
   (:require [cavm.loader :as cl])
   (:require [cavm.fs-utils :refer [normalized-path]])
   (:require [cavm.cgdata])
+  (:require [clj-http.client :as client])
   (:gen-class))
 
 (defn- in-data-path [root path]
@@ -95,6 +96,10 @@
                  (range (count in-path) 0 -1)))
      (clean-sources))))
 
+(defn- loadfiles [port files]
+  (client/post (str "http://localhost:" port "/update/")
+               {:form-params {:file files}}))
+
 (def detectors
   [cgdata/detect-cgdata
    cgdata/detect-tsv])
@@ -111,7 +116,7 @@
 (def ^:private argspec
   [["-s" "--serve" "Start web server" :flag true :default true] ; note --no-s to disable
    ["-p" "--port" "Server port to listen on" :default 7222]
-;   ["-l" "Load files (default)" :flag true :default false]
+   ["-l" "--load" "Load files into running server" :flag true :default false]
    ["--auto" "Auto-load files" :flag true :default true]
    ["-h" "--help" "Show help" :flag true :default false]
    ["-r" "--root" "Set document root directory" :default docroot-default]
@@ -121,10 +126,12 @@
 ; XXX create dir for database as well?
 (defn -main [& args]
   (let [[opts extra usage] (apply cli (cons args argspec))
-        docroot (:root opts)]
+        docroot (:root opts)
+        port (:port opts)]
     (cond
       (:help opts) (println usage)
       (:json opts) (cgdata/fix-json docroot)
+      (:load opts) (loadfiles port extra)
       :else (let [db (create-xenadb (:d opts))
                   detector (apply cr/detector docroot detectors)
                   loader (partial cl/loader db detector docroot)]
@@ -136,7 +143,7 @@
                   (when (:auto opts)
                     (watch (partial file-changed loader) docroot))
                   (when (:serve opts)
-                    (serv (get-app db loader) (:port opts))))))))
+                    (serv (get-app db loader) port)))))))
   (shutdown-agents))
 
 ; (def testdb (create-xenadb "test;TRACE_LEVEL_FILE=3"))
