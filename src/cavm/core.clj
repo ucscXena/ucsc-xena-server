@@ -1,11 +1,7 @@
 (ns cavm.core
   (:require [clojure.string :as s])
   (:require [cavm.h2 :refer [create-xenadb]])
-  (:require [digest])
-  (:require [cavm.test-data :as data])
   (:require [clojure.java.io :as io])
-  (:require [clj-time.coerce :refer [from-long]])
-  (:require [clj-time.core :refer [now]])
   (:require [ring.adapter.jetty :refer [run-jetty]])
   (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
@@ -51,7 +47,7 @@
 (comment (defn- print-datasets []
    (dorun (map println (datasets)))))
 
-; XXX should add ring jsonp
+; XXX add ring jsonp?
 (defn- get-app [db loader]
   (-> cavm.views.datasets/routes
       (wrap-trace :header :ui)
@@ -105,10 +101,12 @@
   [cgdata/detect-cgdata
    cgdata/detect-tsv])
 
-(defn file-changed [loader kind file]
-  (cond
-    (= :created kind) (loader file)
-    (= :modified kind) (loader file))) ; XXX ignoring deletes, for the moment.
+; Full reload metadata. The loader will skip
+; data files with unchanged hashes.
+(defn file-changed [loader docroot kind file]
+  (doseq [f (rest (file-seq (io/file docroot)))] ; skip docroot (the first element)
+    (try (loader f)
+      (catch Exception e (println (str "caught exception: " (.getMessage e))))))) ; XXX this is unhelpful. Log it somewhere.
 
 (def xenadir-default (str (io/file (System/getProperty  "user.home") "xena")))
 (def docroot-default (str (io/file xenadir-default "files")))
@@ -142,15 +140,24 @@
                   (println "Unable to create directory" docroot))
                 (do
                   (when (:auto opts)
-                    (watch (partial file-changed loader) docroot))
+                    (watch (partial file-changed loader docroot) docroot))
                   (when (:serve opts)
                     (serv (get-app db loader) port)))))))
   (shutdown-agents))
+
+; When logging to the repl from a future, *err* gets lost.
+; This will set it to the repl terminal, for reasons I don't understand.
+(comment (defn snoop [msg x]
+   (.start (Thread. #(binding [*out* *err*]
+                       (println msg x)
+                       (flush))))
+   x))
 
 ; (def testdb (create-xenadb "test;TRACE_LEVEL_FILE=3"))
 ; (def testdb (create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
 ; (def testdetector (apply cr/detector "/inside/home/craft/xena/files" detectors))
 ; (def testloader (partial cl/loader testdb testdetector "/inside/home/craft/xena/files"))
+;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
 ; (def app (get-app testdb testloader))
 ; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
 ; (.start server)
