@@ -14,10 +14,29 @@
 ; Note that dropping colons means we no longer know which attributes
 ; are references, so we might want to rethink this.
 
+;
+; Canonical forms for xena metadata keys
+(def metakeys
+  ["probeMap"
+   "shortTitle"
+   "longTitle"
+   "groupTitle"
+   "platform"
+   "security"
+   "dataSubType"
+   "text"
+   "gain"])
+
+; Map of lower-case forms to canonical forms of xena metadata.
+; We are permissive in what we accept from cgdata, because humans
+; are editing it.
+(def keymap (into {} (map vector (map clojure.string/lower-case metakeys) metakeys)))
+
 (defn- normalize-meta-key [k]
   (-> k
       (clojure.string/lower-case)
-      (clojure.string/replace #"^:" "")))
+      (clojure.string/replace #"^:" "")
+      (keymap)))
 
 (defn- normalize-meta-keys [mdata]
   (into {} (map (fn [[k v]] [(normalize-meta-key k) v]) mdata)))
