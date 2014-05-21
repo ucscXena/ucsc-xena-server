@@ -7,6 +7,7 @@
   (:require [cavm.query.sources :as sources])
   (:require [ring.util.codec :as codec])
   (:require [ring.util.response :as response ])
+  (:require [ring.util.request :refer [body-string] ])
   (:require [clojure.edn :as edn])
   (:require [clojure.data.json :as json])
   (:require [cavm.h2 :as h2])
@@ -151,6 +152,7 @@
 ; (json/json-str (matrix (double-array [1 Double/NaN 3])))
 ; (json/json-str (matrix [(double-array [1 Double/NaN 3])]))
 
+;
 ; liberator handler for simple values
 ;
 
@@ -183,7 +185,11 @@
 ; set of vectors. Not sure how it was supposed to work.
 
 (defresource expression [exp]
+  :allowed-methods [:post :get]
   :available-media-types ["application/json" "application/edn"]
+  :new? (fn [req] false)
+  :respond-with-entity? (fn [req] true)
+  :multiple-representations? (fn [req] false)
   :handle-ok (fn [{{db :db} :request}]
                (expr/expression exp f/functions (functions db))))
 
@@ -201,7 +207,8 @@
 
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
-  (ANY "/data/:exp" [exp] (expression exp))
+  (GET "/data/:exp" [exp] (expression exp))
+  (POST "/data/" r (expression (body-string r)))
   (POST "/update/" [file :as {ip :remote-addr
                               loader :loader}] (loader-request ip loader file))
   (not-found "not found"))
