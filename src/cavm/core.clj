@@ -54,6 +54,7 @@
 ; XXX should add ring jsonp
 (defn- get-app [db loader]
   (-> cavm.views.datasets/routes
+      (wrap-trace :header :ui)
       (attr-middleware :db db)
       (attr-middleware :loader loader)
       (wrap-params)
