@@ -2,6 +2,7 @@
   (:require [cavm.fs-utils :refer [relativize]])
   (:require [clj-time.coerce :refer [from-long]])
   (:require [clojure.java.io :as io])
+  (:require [digest])
   (:require [cavm.db :as cdb]))
 
 ; Combines file readers with db writers.
