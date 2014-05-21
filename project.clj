@@ -1,4 +1,4 @@
-(defproject cavm "0.1.0-SNAPSHOT"
+(defproject cavm "0.1.1-SNAPSHOT"
   :description "Cancer Analytics Virtual Machine"
   :url "http://example.com/FIXME"
   :license {:name "Eclipse Public License"
