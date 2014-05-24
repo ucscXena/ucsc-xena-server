@@ -298,14 +298,17 @@
 (def types
   {"clinicalMatrix" ::clinical
    "genomicMatrix" ::genomic
-   "probeMap" ::probemap})
+   "probeMap" ::probemap
+   "genomicSegment" ::segment})
 
 (defn detect-cgdata
   "Detect cgdata files by presence of json metadata. If no type
   is give, assume genomicMatrix"
   [file]
   (when-let [cgmeta (cgdata-meta file)]
-    (or (types (cgmeta "type")) ::genomic)))
+    (if-let [cgtype (cgmeta "type")]
+      (types cgtype)
+      ::genomic)))
 
 ;
 ; tsv file detector
