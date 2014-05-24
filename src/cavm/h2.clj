@@ -17,6 +17,11 @@
   (:gen-class))
 
 
+(def ^:dynamic *tmp-dir* (System/getProperty "java.io.tmpdir"))
+
+(defn set-tmp-dir! [dir]
+  (alter-var-root #'*tmp-dir* (constantly dir)))
+
 ; Coerce this sql fn name to a keyword so we can reference it.
 (def KEY-ID (keyword "SCOPE_IDENTITY()"))
 
@@ -761,7 +766,7 @@
          (clear-by-exp exp)
          (load-related-sources
            experiment_sources :experiments_id exp files)
-         (table-writer "/dev/shm" ; XXX use db dir? root dir? tmp dir?
+         (table-writer *tmp-dir*
                        (partial load-exp-matrix exp matrix-fn)))))))
 
 ; XXX factor out common parts with merge, above?
