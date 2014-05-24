@@ -751,6 +751,11 @@
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
 
+; files: the files this matrix was loaded from, e.g. clinical & genomic matrix, plus their timestamps & file hashes
+; metadata: the metadata for the matrix (should cgdata mix in the clinical metadata?)
+; matrix-fn: function to return seq of data rows
+; features: field metadata. Need a better name for this.
+
 (defn load-exp
   "Load matrix file and metadata. Skips the data load if file hashes are unchanged,
   and 'force' is false. Metadata is always updated."
@@ -817,7 +822,7 @@
                  (not (= (set files) (set (related-sources probemaps pmid)))))
          (load-related-sources
            probemap_sources :probemaps_id pmid files)
-         (dorun (map add-probe probes)))))))
+         (dorun (map add-probe probes))))))) ; XXX change to doseq?
 
 (defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
                           :or {classname "org.h2.Driver"
