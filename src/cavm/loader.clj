@@ -74,7 +74,7 @@
   [db detector docroot]
   (let [a (agent nil)]
     (fn [filename]
-      (send a (fn [n]
+      (send-off a (fn [n]
                 (try
                   (loader db detector docroot filename)
                   (catch Exception e (log-error e)))
