@@ -63,3 +63,19 @@
         reader @(:reader (detector filename))
         loader (get loaders (:datatype reader) ignore)]
     (loader db docroot fname reader)))
+
+(defn- log-error [e]
+  (binding [*err* *out*]
+    (println (.getMessage e))))
+
+(defn loader-agent
+  "Create an agent to serialize bulk loads, returning a function
+  for loading a file via the agent."
+  [db detector docroot]
+  (let [a (agent nil)]
+    (fn [filename]
+      (send a (fn [n]
+                (try
+                  (loader db detector docroot filename)
+                  (catch Exception e (log-error e)))
+                nil)))))

@@ -150,7 +150,7 @@
                   (h2/set-tmp-dir! tmp)
                   (let [db (h2/create-xenadb (:database options))
                         detector (apply cr/detector docroot detectors)
-                        loader (partial cl/loader db detector docroot)]
+                        loader (cl/loader-agent db detector docroot)]
                     (when (:auto options)
                       (watch (partial file-changed loader docroot) docroot))
                     (when (:serve options)
@@ -168,7 +168,7 @@
 ; (def testdb (create-xenadb "test;TRACE_LEVEL_FILE=3"))
 ; (def testdb (create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
 ; (def testdetector (apply cr/detector "/inside/home/craft/xena/files" detectors))
-; (def testloader (partial cl/loader testdb testdetector "/inside/home/craft/xena/files"))
+; (def testloader (cl/loader-agent testdb testdetector "/inside/home/craft/xena/files"))
 ;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
 ; (def app (get-app testdb testloader))
 ; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
