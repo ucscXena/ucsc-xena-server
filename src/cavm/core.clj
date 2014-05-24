@@ -1,11 +1,11 @@
 (ns cavm.core
   (:require [clojure.string :as s])
-  (:require [cavm.h2 :refer [create-xenadb]])
+  (:require [cavm.h2 :as h2])
   (:require [clojure.java.io :as io])
   (:require [ring.adapter.jetty :refer [run-jetty]])
   (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
-  (:require [clojure.tools.cli :refer [cli]])
+  (:require [clojure.tools.cli :refer [parse-opts]])
   (:require [cgdata.core :as cgdata])
   (:require [ring.middleware.resource :refer [wrap-resource]])
   (:require [ring.middleware.content-type :refer [wrap-content-type]])
@@ -111,38 +111,50 @@
 (def xenadir-default (str (io/file (System/getProperty  "user.home") "xena")))
 (def docroot-default (str (io/file xenadir-default "files")))
 (def db-default (str (io/file xenadir-default "database")))
+(def tmp-dir-default
+  (str (io/file (System/getProperty "java.io.tmpdir") "xena-staging")))
 
 (def ^:private argspec
-  [["-s" "--serve" "Start web server" :flag true :default true] ; note --no-s to disable
-   ["-p" "--port" "Server port to listen on" :default 7222]
-   ["-l" "--load" "Load files into running server" :flag true :default false]
-   ["--auto" "Auto-load files" :flag true :default true]
-   ["-h" "--help" "Show help" :flag true :default false]
-   ["-r" "--root" "Set document root directory" :default docroot-default]
-   ["-d" "Database to use" :default db-default]
-   ["-j" "--json" "Fix json" :default false :flag true]])
+  [[nil "--no-serve" "Don't start web server" :id :serve :parse-fn not :default true]
+   ["-p" "--port PORT" "Server port to listen on" :default 7222]
+   ["-l" "--load" "Load files into running server"]
+   [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
+   ["-h" "--help" "Show help"]
+   ["-r" "--root DIR" "Set document root directory" :default docroot-default]
+   ["-d" "--database FILE" "Database to use" :default db-default]
+   ["-j" "--json" "Fix json"]
+   ["-t" "--tmp DIR" "Set tmp dir" :default tmp-dir-default]])
+
+(defn- mkdir [dir]
+  (.mkdirs (io/file dir))
+  (when (not (.exists (io/file dir)))
+    (str "Unable to create directory: " dir)))
 
 ; XXX create dir for database as well?
 (defn -main [& args]
-  (let [[opts extra usage] (apply cli (cons args argspec))
-        docroot (:root opts)
-        port (:port opts)]
-    (cond
-      (:help opts) (println usage)
-      (:json opts) (cgdata/fix-json docroot)
-      (:load opts) (loadfiles port extra)
-      :else (let [db (create-xenadb (:d opts))
-                  detector (apply cr/detector docroot detectors)
-                  loader (partial cl/loader db detector docroot)]
-              (.mkdirs (io/file docroot))
-              (if (not (.exists (io/file docroot)))
+  (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
+        docroot (:root options)
+        port (:port options)
+        tmp (:tmp options)]
+    (if errors
+      (binding [*out* *err*]
+        (println (s/join "\n" errors)))
+      (cond
+        (:help options) (println summary)
+        (:json options) (cgdata/fix-json docroot)
+        (:load options) (loadfiles port arguments)
+        :else (if-let [error (some mkdir [tmp docroot])]
                 (binding [*out* *err*]
-                  (println "Unable to create directory" docroot))
+                  (println error))
                 (do
-                  (when (:auto opts)
-                    (watch (partial file-changed loader docroot) docroot))
-                  (when (:serve opts)
-                    (serv (get-app db loader) port)))))))
+                  (h2/set-tmp-dir! tmp)
+                  (let [db (h2/create-xenadb (:database options))
+                        detector (apply cr/detector docroot detectors)
+                        loader (partial cl/loader db detector docroot)]
+                    (when (:auto options)
+                      (watch (partial file-changed loader docroot) docroot))
+                    (when (:serve options)
+                      (serv (get-app db loader) port))))))))
   (shutdown-agents))
 
 ; When logging to the repl from a future, *err* gets lost.
