@@ -41,6 +41,12 @@
 (defn- normalize-meta-keys [mdata]
   (into {} (map (fn [[k v]] [(normalize-meta-key k) v]) mdata)))
 
+(defn- replace-references
+  "Overwrite file references in the metadata with the resolved paths
+  returned by the cgdata reader."
+  [matrix]
+  (update-in matrix [:metadata] #(merge % (:refs matrix))))
+
 (defmethod reader :cgdata.core/probemap
   [filetype docroot url]
   (-> (cgdata/probemap-file url :docroot docroot)
@@ -49,6 +55,7 @@
 (defn normalized-matrix-reader [filetype docroot url]
   (-> (cgdata/matrix-file url :docroot docroot)
       (assoc :datatype :matrix)
+      (replace-references)
       (update-in [:metadata] normalize-meta-keys)))
 
 (defmethod reader :cgdata.core/genomic
