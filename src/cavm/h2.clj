@@ -583,12 +583,8 @@
           (first s)))))
 
 (defn- sequence-seq [seqname]
-  (let [cmd (format "SELECT NEXT VALUE FOR %s AS i FROM SYSTEM_RANGE(1, 100)" seqname)]
-    (apply concat
-           (repeatedly
-             (fn [] (-> cmd str
-                        (exec-raw :results)
-                        (#(map :I %))))))))
+  (let [[{val :I}] (exec-raw (format "SELECT CURRVAL('%s') AS I" seqname) :results)]
+    (range (+ val 1) Double/POSITIVE_INFINITY 1)))
 
 (defn- insert-scores-out [^java.io.BufferedWriter out seqfn slist]
   (let [sid (seqfn)]
