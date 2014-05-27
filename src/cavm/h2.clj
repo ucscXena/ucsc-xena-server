@@ -286,8 +286,6 @@
    :join probemap_sources
    :columns probemaps-columns})
 
-; if probemap is a file name, we probably want a separate table.
-; Should we reuse the experiments table?? Or duplicate all the fields??
 (def probemap-probes-table
   ["CREATE TABLE IF NOT EXISTS `probemap_probes` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
