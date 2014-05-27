@@ -911,7 +911,7 @@
   out)
 
 (defn- col-arrays [columns n]
-  (zipmap columns (repeatedly (partial float-array n))))
+  (zipmap columns (repeatedly (partial float-array n Double/NaN))))
 
 ; Replaced this with the query below, which applies the bin id filter
 ; earlier.
