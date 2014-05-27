@@ -134,7 +134,7 @@
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
         docroot (:root options)
-        port (:port options)
+        port (Integer/parseInt (:port options))
         tmp (:tmp options)]
     (if errors
       (binding [*out* *err*]
