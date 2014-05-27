@@ -148,7 +148,7 @@
                   (println error))
                 (do
                   (h2/set-tmp-dir! tmp)
-                  (let [db (h2/create-xenadb (str (:database options) ";MVCC=TRUE"))
+                  (let [db (h2/create-xenadb (str (:database options) ";MVCC=TRUE")) ; XXX guard against double semicolon
                         detector (apply cr/detector docroot detectors)
                         loader (cl/loader-agent db detector docroot)]
                     (when (:auto options)
