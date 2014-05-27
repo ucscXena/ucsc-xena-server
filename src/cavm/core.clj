@@ -116,7 +116,7 @@
 
 (def ^:private argspec
   [[nil "--no-serve" "Don't start web server" :id :serve :parse-fn not :default true]
-   ["-p" "--port PORT" "Server port to listen on" :default 7222]
+   ["-p" "--port PORT" "Server port to listen on" :default 7222 :parse-fn #(Integer/parseInt %)]
    ["-l" "--load" "Load files into running server"]
    [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
    ["-h" "--help" "Show help"]
@@ -134,7 +134,7 @@
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
         docroot (:root options)
-        port (Integer/parseInt (:port options))
+        port (:port options)
         tmp (:tmp options)]
     (if errors
       (binding [*out* *err*]
