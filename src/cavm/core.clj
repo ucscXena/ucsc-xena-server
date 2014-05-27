@@ -61,8 +61,8 @@
       (wrap-gzip)
       (wrap-stacktrace)))
 
-(defn- serv [app port]
-  (ring.adapter.jetty/run-jetty app {:port port :join? true}))
+(defn- serv [app host port]
+  (ring.adapter.jetty/run-jetty app {:host host :port port :join? true}))
 
 (comment (defn- load-report [load-fn root file]
    (try
@@ -120,6 +120,7 @@
    ["-l" "--load" "Load files into running server"]
    [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
    ["-h" "--help" "Show help"]
+   ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
    ["-d" "--database FILE" "Database to use" :default db-default]
    ["-j" "--json" "Fix json"]
@@ -135,6 +136,7 @@
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
         docroot (:root options)
         port (:port options)
+        host (:host options)
         tmp (:tmp options)]
     (if errors
       (binding [*out* *err*]
@@ -154,7 +156,7 @@
                     (when (:auto options)
                       (watch (partial file-changed loader docroot) docroot))
                     (when (:serve options)
-                      (serv (get-app db loader) port))))))))
+                      (serv (get-app db loader) host port))))))))
   (shutdown-agents))
 
 ; When logging to the repl from a future, *err* gets lost.
