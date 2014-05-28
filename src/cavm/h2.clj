@@ -836,17 +836,6 @@
 (defn- exec-statements [stmts]
   (dorun (map exec-raw stmts)))
 
-; TODO drop N
-(defn- dataset-transform [ds]
-  (-> ds
-      (clojure.set/rename-keys {:FILE :name :COHORT :cohort})
-      (#(assoc % :longlabel (% :name) :shortlabel (% :name) :N 100))))
-
-; XXX Should this be in a transaction to ensure data consistency?
-(defn datasets []
-  (->> (select experiments (with cohorts) (fields :FILE [:cohorts.name :cohort]))
-       (map dataset-transform)))
-
 ; Intersect experiment samples with the given set of samples.
 (defn exp-samples-in-list [exp samps]
   (select exp_samples (fields :i :name)
@@ -855,31 +844,10 @@
 (defn sample-bins [samps]
   (set (map #(quot (% :I) bin-size) samps)))
 
-(defn select-scores []
-  (-> (select* probes)
-      (fields :name [:scores.expScores :expScores] [:joins.i :i])
-      (join scores)))
-
-(defn with-bins [q bins]
-  (where q (in :i (distinct bins))))
-
-(defn for-experiment [q exp]
-  (where q {:probes.eid exp}))
-
-(defn for-experiment-named [q exp]
-  (for-experiment q (subselect experiments (fields "id") (where {:file exp}))))
-
 (defn exp-by-name [exp]
   (let [[{id :ID}]
         (select experiments (fields "id") (where {:name (str exp)}))] ; XXX shoul str be here, or higher in the call stack?
     id))
-
-; XXX expand model for probes/genes??
-(defn with-genes [q genes]
-  (fields (where q {:probes.name [in genes]}) [:probes.name :gene]))
-
-(defn do-select [q]
-  (exec q))
 
 ; merge bin number and bin offset for a sample.
 (defn- merge-bin-off [sample]
@@ -913,17 +881,6 @@
 (defn- col-arrays [columns n]
   (zipmap columns (repeatedly (partial float-array n Double/NaN))))
 
-; Replaced this with the query below, which applies the bin id filter
-; earlier.
-(comment (def probe-query
-  "SELECT  gene, i, expscores from
-     (SELECT  `probes`.`name` as `gene`, `probes`.`id`  FROM `probes`
-       INNER JOIN TABLE(name varchar=?) T ON T.`name`=`probes`.`name`
-       WHERE (`probes`.`eid` = ?)) P
-   LEFT JOIN `joins` on P.id = `joins`.`pid`
-   LEFT JOIN `scores` ON `sid` = `scores`.`id`
-   WHERE `joins`.`i` in (%s)"))
-
 (def probe-query
   "SELECT  gene, i, expscores from
      (SELECT * FROM (SELECT  `probes`.`name` as `gene`, `probes`.`id`  FROM `probes`
@@ -952,23 +909,6 @@
     (-> (select-scores-full eid columns (distinct bins))
         (#(map cvt-scores %))
         (build-score-arrays bfns (col-arrays columns (count samples))))))
-
-; XXX Need to fill in NAN for unknown samples.
-; XXX call (double-array) to convert to double here, or in genomic-source
-; XXX This query is slow
-(comment (defn genomic-read-req [req]
-  (let [{samples 'samples table 'table columns 'columns} req
-        eid (exp-by-name table)
-        s-in-exp (map merge-bin-off (exp-samples-in-list eid samples))
-        bins (map :bin s-in-exp)
-        bfns (pick-samples-fns samples s-in-exp)]
-
-    (-> (select-scores)
-        (for-experiment eid)
-        (with-genes columns)
-        (with-bins bins)
-        (do-select)
-        (build-score-arrays bfns (col-arrays columns (count samples)))))))
 
 ; Each req is a map of
 ;  'table "tablename"
@@ -1058,7 +998,6 @@
   (close [this]
     (.close (:datasource @(:pool (:db this))) false)))
 
-; XXX rename
 (defn create-xenadb [& args]
   (let [db (apply create-db args)]
     (with-db db (create))
