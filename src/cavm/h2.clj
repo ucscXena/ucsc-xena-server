@@ -570,15 +570,19 @@
     (.write out (str pid "\t" eid "\t" name "\n"))
     pid))
 
-; Iterators are not typical of clojure, but it's a quick way to get sequential ids
-; deep in a call stack. A more conventional way might be to return the data up
-; the stack, then zip with the sequence ids.
-(defn- seq-iterator [s]
-    (let [a (atom s)]
+; This is a stateful iterator. It may not be idiomatic in clojure, but it's a
+; quick way to get sequential ids deep in a call stack. Maybe we should instead
+; return a thunk that generates a seq, then zip with the data?
+
+(defn- seq-iterator
+  "Create iterator for a seq"
+  [s]
+  (let [a (atom s)]
     (fn []
-       (let [s @a]
-          (reset! a (next s))
-          (first s)))))
+      (let [s @a]
+        (reset! a (next s))
+        (first s)))))
+
 
 (defn- sequence-seq [seqname]
   (let [[{val :I}] (exec-raw (format "SELECT CURRVAL('%s') AS I" seqname) :results)]
