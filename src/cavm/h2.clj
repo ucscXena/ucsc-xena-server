@@ -98,16 +98,18 @@
 
 ; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
 (def probes-table
-  ["CREATE TABLE IF NOT EXISTS `probes` (
-   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  ["CREATE SEQUENCE IF NOT EXISTS PROBES_IDS CACHE 2000"
+   "CREATE TABLE IF NOT EXISTS `probes` (
+   `id` INT NOT NULL DEFAULT NEXT VALUE FOR PROBES_IDS PRIMARY KEY,
    `eid` INT NOT NULL,
    `name` VARCHAR(255),
    UNIQUE(`eid`, `name`),
    FOREIGN KEY (`eid`) REFERENCES `experiments` (`id`))"])
 
 (def scores-table
-  [(format "CREATE TABLE IF NOT EXISTS `scores` (
-           `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  ["CREATE SEQUENCE IF NOT EXISTS SCORES_IDS CACHE 2000"
+   (format "CREATE TABLE IF NOT EXISTS `scores` (
+           `id` INT NOT NULL DEFAULT NEXT VALUE FOR SCORES_IDS PRIMARY KEY,
            `expScores` VARBINARY(%d) NOT NULL)" score-size)])
 
 (def join-table
@@ -583,10 +585,27 @@
         (reset! a (next s))
         (first s)))))
 
+; Generates primary keys using range, w/o accessing the db for each next value.
+; This works in h2 when doing a csvread when the sequence has been created
+; automatically by h2 with the column: h2 will update the sequence while reading
+; the rows. It doesn't work if the sequence is create separately from the column.
+; In that case h2 will not update the sequence after a csvread. We have to
+; create the sequence separately in order to set the cache parameter.
 
-(defn- sequence-seq [seqname]
-  (let [[{val :I}] (exec-raw (format "SELECT CURRVAL('%s') AS I" seqname) :results)]
-    (range (+ val 1) Double/POSITIVE_INFINITY 1)))
+(comment (defn- sequence-seq [seqname]
+   (let [[{val :I}] (exec-raw (format "SELECT CURRVAL('%s') AS I" seqname) :results)]
+     (range (+ val 1) Double/POSITIVE_INFINITY 1))))
+
+(defn- sequence-seq
+  "Retrieve primary keys in batches by querying the db"
+  [seqname]
+  (let [cmd (format "SELECT NEXT VALUE FOR %s AS i FROM SYSTEM_RANGE(1, 100)" seqname)]
+    (apply concat
+           (repeatedly
+             (fn [] (-> cmd str
+                        (exec-raw :results)
+                        (#(map :I %))))))))
+
 
 (defn- insert-scores-out [^java.io.BufferedWriter out seqfn slist]
   (let [sid (seqfn)]
@@ -610,8 +629,8 @@
       (exec-raw)))
 
 (defn- table-writer [dir f]
-  (let [probes-seq (-> (sequence-for-column "PROBES" "ID") sequence-seq seq-iterator)
-        scores-seq (-> (sequence-for-column "SCORES" "ID") sequence-seq seq-iterator)
+  (let [probes-seq (-> "PROBES_IDS" sequence-seq seq-iterator)
+        scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
         pfname (fs/file dir "probes.tmp")
         sfname (fs/file dir "scores.tmp")
         jfname (fs/file dir "joins.tmp")]
