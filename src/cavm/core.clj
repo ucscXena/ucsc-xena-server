@@ -131,13 +131,43 @@
   (when (not (.exists (io/file dir)))
     (str "Unable to create directory: " dir)))
 
+; Use MVCC so our bulk writes don't block readers.
+;
+; Use LOG=0 because otherwise bulk writes are pathologically slow, and we don't
+; need to worry about dropping data. A problem with LOG=0 is that we can't tell
+; if the db shut down cleanly, so we don't know when to recover. We might be able
+; to partly mitigate this by periodically closing & opening the db (maybe once or
+; twice a day?). We shouldn't lose transactions committed before the last close,
+; and we can detect files that we've lost due to unclean shutdown.
+;
+; UNDO_LOG allows us to add a dataset atomically (i.e. rollback on error).
+;
+; A more idiomatic usage of h2 would be to break the bulk write into chunks and use
+; LOG=1 or LOG=2. This would require building another "transaction" system over
+; the transaction system, flagging incompletely loaded datasets such that readers
+; could filter those results out of their queries. It would add a lot of complexity.
+(def default-h2-opts ";CACHE_SIZE=65536;UNDO_LOG=1;LOG=0;MVCC=TRUE")
+
+; Might want to allow more piecemeal setting of options, by
+; parsing them & allowing cli overrides. For now, if the
+; user sets options they must be comprehensive. If the user
+; doesn't set options, we use default-h2-opts.
+
+(defn h2-opts
+  "Add default h2 options if none are specified"
+  [database]
+  (if (= -1 (.indexOf database ";"))
+    (str database default-h2-opts)
+    database))
+
 ; XXX create dir for database as well?
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
         docroot (:root options)
         port (:port options)
         host (:host options)
-        tmp (:tmp options)]
+        tmp (:tmp options)
+        database (h2-opts (:database options))]
     (if errors
       (binding [*out* *err*]
         (println (s/join "\n" errors)))
@@ -150,7 +180,7 @@
                   (println error))
                 (do
                   (h2/set-tmp-dir! tmp)
-                  (let [db (h2/create-xenadb (str (:database options) ";MVCC=TRUE")) ; XXX guard against double semicolon
+                  (let [db (h2/create-xenadb database)
                         detector (apply cr/detector docroot detectors)
                         loader (cl/loader-agent db detector docroot)]
                     (when (:auto options)
