@@ -414,7 +414,7 @@
 
 ; Update meta entity record.
 (defn- merge-m-ent [m-ent ename metadata]
-  (let [normmeta (json-text (normalize-meta m-ent (assoc metadata "name" ename)))
+  (let [normmeta (normalize-meta m-ent (json-text (assoc metadata "name" ename)))
         table (:table m-ent)
         [{id :ID}] (select table (fields :id) (where {:name ename}))]
     (if id
