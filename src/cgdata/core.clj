@@ -297,6 +297,7 @@
 
 (def types
   {"clinicalMatrix" ::clinical
+   "clinicalFeature" ::feature
    "genomicMatrix" ::genomic
    "probeMap" ::probemap
    "genomicSegment" ::segment})
