@@ -33,10 +33,10 @@
 (def keymap (into {} (map vector (map clojure.string/lower-case metakeys) metakeys)))
 
 (defn- normalize-meta-key [k]
-  (-> k
-      (clojure.string/lower-case)
-      (clojure.string/replace #"^:" "")
-      (keymap)))
+  (let [k2 (-> k
+               (clojure.string/lower-case)
+               (clojure.string/replace #"^:" ""))]
+    (or (keymap k2) k2)))
 
 (defn- normalize-meta-keys [mdata]
   (into {} (map (fn [[k v]] [(normalize-meta-key k) v]) mdata)))
