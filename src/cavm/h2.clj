@@ -605,7 +605,7 @@
       :SEQUENCE_NAME))
 
 (defn- read-from-tsv [table file & cols]
-  (-> "INSERT INTO %s SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
+  (-> "INSERT INTO %s DIRECT SORTED SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
       (format table file (clojure.string/join "\t" cols))
       (exec-raw)))
 
