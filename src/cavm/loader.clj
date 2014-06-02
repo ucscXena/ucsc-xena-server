@@ -64,9 +64,11 @@
         loader (get loaders (:datatype reader) ignore)]
     (loader db docroot fname reader)))
 
-(defn- log-error [e]
+(defn- log-error [filename e]
   (binding [*err* *out*]
-    (println (.getMessage e))))
+    (println "Error loading file" filename)
+    (println (.getMessage e))
+    (.printStackTrace e)))
 
 (defn loader-agent
   "Create an agent to serialize bulk loads, returning a function
@@ -77,5 +79,5 @@
       (send-off a (fn [n]
                 (try
                   (loader db detector docroot filename)
-                  (catch Exception e (log-error e)))
+                  (catch Exception e (log-error filename e)))
                 nil)))))
