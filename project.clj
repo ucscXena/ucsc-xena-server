@@ -22,7 +22,7 @@
 ;                 [org.codehaus.jsr166-mirror/jsr166y "1.7.0"] ; for core.reducers
                  [clojure-csv/clojure-csv "2.0.1"]
                  [honeysql "0.4.2"]
-                 [com.h2database/h2 "1.3.171"]
+                 [com.h2database/h2 "1.3.175"]
                  [filevents  "0.1.0"]
                  [clj-http  "0.9.1"]]
   :javac-options ["-target" "1.6" "-source" "1.6"]
