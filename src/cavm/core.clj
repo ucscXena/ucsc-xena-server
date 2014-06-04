@@ -101,10 +101,19 @@
   [cgdata/detect-cgdata
    cgdata/detect-tsv])
 
+(defn filter-hidden
+  [s]
+  (filter #(not (.isHidden %)) s))
+
 ; Full reload metadata. The loader will skip
 ; data files with unchanged hashes.
 (defn file-changed [loader docroot kind file]
-  (doseq [f (rest (file-seq (io/file docroot)))] ; skip docroot (the first element)
+  (doseq [f (-> docroot
+                (io/file)
+                (file-seq)
+                (rest) ; skip docroot (the first element)
+                (filter-hidden))]
+    (println "Loading " f)
     (try (loader f)
       (catch Exception e (println (str "caught exception: " (.getMessage e))))))) ; XXX this is unhelpful. Log it somewhere.
 
