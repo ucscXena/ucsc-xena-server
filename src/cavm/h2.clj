@@ -134,16 +134,16 @@
    `hash` VARCHAR(40) NOT NULL)"])
 
 ; XXX FIX NAME
-; XXX Include original json
 (def experiments-table
   ["CREATE TABLE IF NOT EXISTS `experiments` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `name` varchar(255) NOT NULL UNIQUE,
+   `name` varchar(1000) NOT NULL UNIQUE,
    `probeMap` varchar(255),
    `shortTitle` varchar(255),
    `longTitle` varchar(255),
    `groupTitle` varchar(255),
    `platform` varchar(255),
+   `cohort` varchar(1000),
    `security` varchar(255),
    `gain` double DEFAULT NULL,
    `text` varchar (65535),
@@ -199,6 +199,7 @@
     :longTitle
     :groupTitle
     :platform
+    :cohort
     :security
     :dataSubType
     :text
