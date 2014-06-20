@@ -61,63 +61,63 @@
 ; Table models
 ;
 
-(declare experiment_sources features probes scores experiments exp_samples)
+(declare dataset_source feature field scores dataset sample)
 
 (defentity cohorts)
-(defentity sources)
+(defentity source)
 
-(defentity experiments
-  (many-to-many sources :experiment_sources)
-  (has-many exp_samples)
-  (has-many probes))
+(defentity dataset
+  (many-to-many source :dataset_source)
+  (has-many sample)
+  (has-many field))
 
-(defentity exp_samples
-  (belongs-to experiments))
+(defentity sample
+  (belongs-to dataset))
 
 (declare score-decode)
 
-(defn- cvt-scores [{scores :EXPSCORES :as v}]
+(defn- cvt-scores [{scores :SCORES :as v}]
   (if scores
-    (assoc v :EXPSCORES (float-array (score-decode scores)))
+    (assoc v :SCORES (float-array (score-decode scores)))
     v))
 
-(defentity probes
-  (has-one features)
-  (many-to-many scores :joins  {:lfk 'pid :rfk 'sid})
-  (belongs-to experiments {:fk :eid})
+(defentity field
+  (has-one feature)
+  (many-to-many scores :field_score)
+  (belongs-to dataset)
   (transform cvt-scores))
 
 (defentity scores
-  (many-to-many probes :joins  {:lfk 'sid :rfk 'pid}))
+  (many-to-many field :field_score))
 
-(defentity joins)
+(defentity field_score)
 
 ;
 ; Table definitions.
 ;
 
 ; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
-(def probes-table
-  ["CREATE SEQUENCE IF NOT EXISTS PROBES_IDS CACHE 2000"
-   "CREATE TABLE IF NOT EXISTS `probes` (
-   `id` INT NOT NULL DEFAULT NEXT VALUE FOR PROBES_IDS PRIMARY KEY,
-   `eid` INT NOT NULL,
+(def field-table
+  ["CREATE SEQUENCE IF NOT EXISTS FIELD_IDS CACHE 2000"
+   "CREATE TABLE IF NOT EXISTS `field` (
+   `id` INT NOT NULL DEFAULT NEXT VALUE FOR FIELD_IDS PRIMARY KEY,
+   `dataset_id` INT NOT NULL,
    `name` VARCHAR(255),
-   UNIQUE(`eid`, `name`),
-   FOREIGN KEY (`eid`) REFERENCES `experiments` (`id`))"])
+   UNIQUE(`dataset_id`, `name`),
+   FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`))"])
 
 (def scores-table
   ["CREATE SEQUENCE IF NOT EXISTS SCORES_IDS CACHE 2000"
    (format "CREATE TABLE IF NOT EXISTS `scores` (
            `id` INT NOT NULL DEFAULT NEXT VALUE FOR SCORES_IDS PRIMARY KEY,
-           `expScores` VARBINARY(%d) NOT NULL)" score-size)])
+           `scores` VARBINARY(%d) NOT NULL)" score-size)])
 
-(def join-table
-  ["CREATE TABLE IF NOT EXISTS `joins` (
-   `pid` INT,
+(def field-score-table
+  ["CREATE TABLE IF NOT EXISTS `field_score` (
+   `field_id` INT,
    `i` INT,
-   `sid` INT,
-   UNIQUE (`pid`, `i`))"])
+   `score_id` INT,
+   UNIQUE (`field_id`, `i`))"])
 
 (def cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
@@ -126,16 +126,15 @@
 
 ; XXX What should max file name length be?
 ; XXX Unique columns? Indexes?
-(def sources-table
-  ["CREATE TABLE IF NOT EXISTS `sources` (
+(def source-table
+  ["CREATE TABLE IF NOT EXISTS `source` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` VARCHAR(2000) NOT NULL,
    `time` TIMESTAMP NOT NULL,
    `hash` VARCHAR(40) NOT NULL)"])
 
-; XXX FIX NAME
-(def experiments-table
-  ["CREATE TABLE IF NOT EXISTS `experiments` (
+(def dataset-table
+  ["CREATE TABLE IF NOT EXISTS `dataset` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` varchar(1000) NOT NULL UNIQUE,
    `probeMap` varchar(255),
@@ -150,7 +149,7 @@
    `dataSubType` varchar (255))"])
 
 ;
-; experiments in making a macro for metadata tables
+; experiment in making a macro for metadata tables
 ;
 
 ;(defn- create-table [name cols]
@@ -172,7 +171,7 @@
 ;    nil))
 ;
 ;
-;(defmeta experiments
+;(defmeta dataset
 ;  :id "INT NOT NULL AUTO_INCREMENT PRIMARY KEY"
 ;  :name "varchar(255) NOT NULL UNIQUE"
 ;  :probeMap "varchar(255)"
@@ -192,7 +191,7 @@
 ;
 
 
-(def ^:private experiments-columns
+(def ^:private dataset-columns
   #{:name
     :probeMap
     :shortTitle
@@ -205,172 +204,172 @@
     :text
     :gain})
 
-(def ^:private experiments-defaults
-  (into {} (map #(vector % nil) experiments-columns)))
+(def ^:private dataset-defaults
+  (into {} (map #(vector % nil) dataset-columns)))
 
 ; XXX should abstract this to set up the many-to-many
 ; on the defentity. Can we run many-to-many on the existing
 ; sources entity?? Or maybe do defentity sources *after* all
 ; the other tables exist?
-(def experiment-sources-table
-  ["CREATE TABLE IF NOT EXISTS `experiment_sources` (
-   `experiments_id` INT NOT NULL,
-   `sources_id` INT NOT NULL,
-   FOREIGN KEY (experiments_id) REFERENCES `experiments` (`id`),
-   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"])
+(def dataset-source-table
+  ["CREATE TABLE IF NOT EXISTS `dataset_source` (
+   `dataset_id` INT NOT NULL,
+   `source_id` INT NOT NULL,
+   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`),
+   FOREIGN KEY (source_id) REFERENCES `source` (`id`))"])
 
-(defentity experiment_sources)
+(defentity dataset_source)
 
-(def ^:private experiments-meta
-  {:table experiments
-   :defaults experiments-defaults
-   :join experiment_sources
-   :columns experiments-columns})
+(def ^:private dataset-meta
+  {:table dataset
+   :defaults dataset-defaults
+   :join dataset_source
+   :columns dataset-columns})
 
-(def exp-samples-table
-  ["CREATE TABLE IF NOT EXISTS `exp_samples` (
-   `experiments_id` INT NOT NULL,
-   FOREIGN KEY (experiments_id) REFERENCES `experiments` (`id`),
+(def sample-table
+  ["CREATE TABLE IF NOT EXISTS `sample` (
+   `dataset_id` INT NOT NULL,
+   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`),
    `i` INT NOT NULL,
    `name` VARCHAR (1000) NOT NULL,
-   PRIMARY KEY(`experiments_id`, `i`))"]) ; XXX what should this be?
+   PRIMARY KEY(`dataset_id`, `i`))"]) ; XXX what should this be?
 
 ;
 ; Probemap declarations
 ;
 
-(declare probmaps probemap_probes probemap_positions probemap_genes)
-(defentity probemap_sources)
+(declare probe probe_position probe_gene)
+(defentity probemap_source)
 
-(defentity probemaps
-  (has-many probemap_probes)
-  (many-to-many sources :probemap_sources))
+(defentity probemap
+  (has-many probe)
+  (many-to-many source :probemap_source))
 
-(defentity probemap_probes
-  (belongs-to probemaps)
-  (has-many probemap_positions)
-  (has-many probemap_genes))
+(defentity probe
+  (belongs-to probemap)
+  (has-many probe_position)
+  (has-many probe_gene))
 
-(defentity probemap_positions
-  (belongs-to probemap_probes))
+(defentity probe_position
+  (belongs-to probe))
 
-(defentity probemap_genes
-  (belongs-to probemap_probes))
+(defentity probe_gene
+  (belongs-to probe))
 
 
 ; XXX What should max file name length be?
-(def probemaps-table
-  ["CREATE TABLE IF NOT EXISTS `probemaps` (
+(def probemap-table
+  ["CREATE TABLE IF NOT EXISTS `probemap` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` VARCHAR(1000),
    `assembly` VARCHAR(255),
    `version` VARCHAR(255),
    `text` VARCHAR(65535))"])
 
-(def probemap-sources-table
-  ["CREATE TABLE IF NOT EXISTS `probemap_sources` (
-   `probemaps_id` INT NOT NULL,
-   `sources_id` INT NOT NULL,
-   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`),
-   FOREIGN KEY (sources_id) REFERENCES `sources` (`id`))"])
+(def probemap-source-table
+  ["CREATE TABLE IF NOT EXISTS `probemap_source` (
+   `probemap_id` INT NOT NULL,
+   `source_id` INT NOT NULL,
+   FOREIGN KEY (probemap_id) REFERENCES `probemap` (`id`),
+   FOREIGN KEY (source_id) REFERENCES `source` (`id`))"])
 
-(def ^:private probemaps-columns
+(def ^:private probemap-columns
   #{:name
     :assembly
     :version
     :text})
 
-(def ^:private probemaps-defaults
-  (into {} (map #(vector % nil) probemaps-columns)))
+(def ^:private probemap-defaults
+  (into {} (map #(vector % nil) probemap-columns)))
 
-(def ^:private probemaps-meta
-  {:table probemaps
-   :defaults probemaps-defaults
-   :join probemap_sources
-   :columns probemaps-columns})
+(def ^:private probemap-meta
+  {:table probemap
+   :defaults probemap-defaults
+   :join probemap_source
+   :columns probemap-columns})
 
-(def probemap-probes-table
-  ["CREATE TABLE IF NOT EXISTS `probemap_probes` (
+(def probe-table
+  ["CREATE TABLE IF NOT EXISTS `probe` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `probemaps_id` INT NOT NULL,
-   `probe` VARCHAR(1000) NOT NULL,
-   FOREIGN KEY (probemaps_id) REFERENCES `probemaps` (`id`) ON DELETE CASCADE)"])
+   `probemap_id` INT NOT NULL,
+   `name` VARCHAR(1000) NOT NULL,
+   FOREIGN KEY (probemap_id) REFERENCES `probemap` (`id`) ON DELETE CASCADE)"])
 
 ; XXX CASCADE might perform badly. Might need to do this incrementally in application code.
-(def probemap-positions-table
-  ["CREATE TABLE IF NOT EXISTS `probemap_positions` (
-   `probemaps_id` INT NOT NULL,
-   `probemap_probes_id` INT NOT NULL,
+(def probe-position-table
+  ["CREATE TABLE IF NOT EXISTS `probe_position` (
+   `probemap_id` INT NOT NULL,
+   `probe_id` INT NOT NULL,
    `bin` INT,
    `chrom` VARCHAR(255) NOT NULL,
    `chromStart` INT NOT NULL,
    `chromEnd` INT NOT NULL,
    `strand` CHAR(1),
-   FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
-   FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS chrom_bin ON probemap_positions (`probemaps_id`, `chrom`, `bin`)"
+   FOREIGN KEY (`probemap_id`) REFERENCES `probemap` (`id`) ON DELETE CASCADE,
+   FOREIGN KEY (`probe_id`) REFERENCES `probe` (`id`) ON DELETE CASCADE)"
+   "CREATE INDEX IF NOT EXISTS chrom_bin ON probe_position (`probemap_id`, `chrom`, `bin`)"
    ])
 
-(def probemap-genes-table
-  ["CREATE TABLE IF NOT EXISTS `probemap_genes` (
-   `probemaps_id` INT NOT NULL,
-   `probemap_probes_id` INT NOT NULL,
+(def probe-gene-table
+  ["CREATE TABLE IF NOT EXISTS `probe_gene` (
+   `probemap_id` INT NOT NULL,
+   `probe_id` INT NOT NULL,
    `gene` VARCHAR(255),
-    FOREIGN KEY (`probemaps_id`) REFERENCES `probemaps` (`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`probemap_probes_id`) REFERENCES `probemap_probes` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS probemap_gene ON `probemap_genes` (`probemaps_id`, `gene`)"
+    FOREIGN KEY (`probemap_id`) REFERENCES `probemap` (`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`probe_id`) REFERENCES `probe` (`id`) ON DELETE CASCADE)"
+   "CREATE INDEX IF NOT EXISTS probe_gene ON `probe_gene` (`probemap_id`, `gene`)"
    ])
 
 ;
 ; feature tables
 ;
 
-(def features-table
-  ["CREATE TABLE IF NOT EXISTS `features` (
+(def feature-table
+  ["CREATE TABLE IF NOT EXISTS `feature` (
   `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `probes_id` int(11) NOT NULL,
+  `field_id` int(11) NOT NULL,
   `shortTitle` varchar(255),
   `longTitle` varchar(255),
   `priority` double DEFAULT NULL,
   `valueType` varchar(255) NOT NULL,
   `visibility` varchar(255),
-  FOREIGN KEY (`probes_id`) REFERENCES `probes` (`id`) ON DELETE CASCADE)"])
+  FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
-(declare codes)
-(defentity features
-  (belongs-to probes)
-  (has-many codes))
+(declare code)
+(defentity feature
+  (belongs-to field)
+  (has-many code))
 
-(def ^:private features-columns
+(def ^:private feature-columns
   #{:shortTitle
     :longTitle
     :priority
     :valueType
     :visibility})
 
-(def ^:private features-defaults
-  (into {} (map #(vector % nil) features-columns)))
+(def ^:private feature-defaults
+  (into {} (map #(vector % nil) feature-columns)))
 
 
-(def ^:private features-meta
-  {:table features
-   :defaults features-defaults
-   :columns features-columns})
+(def ^:private feature-meta
+  {:table feature
+   :defaults feature-defaults
+   :columns feature-columns})
 
 ; Order is important to avoid creating duplicate indexes. A foreign
 ; key constraint creates an index if one doesn't exist, so create our
 ; index before adding the constraint.
-(def codes-table
-  ["CREATE TABLE IF NOT EXISTS `codes` (
+(def code-table
+  ["CREATE TABLE IF NOT EXISTS `code` (
    `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `features_id` int(11) NOT NULL,
+   `feature_id` int(11) NOT NULL,
    `ordering` int(10) unsigned NOT NULL,
    `value` varchar(255) NOT NULL,
-   UNIQUE (`features_id`, `ordering`),
-   FOREIGN KEY (`features_id`) REFERENCES `features` (`id`) ON DELETE CASCADE)"])
+   UNIQUE (`feature_id`, `ordering`),
+   FOREIGN KEY (`feature_id`) REFERENCES `feature` (`id`) ON DELETE CASCADE)"])
 
-(defentity codes
-  (belongs-to features))
+(defentity code
+  (belongs-to feature))
 
 (defn- normalize-meta [m-ent metadata]
   (-> metadata
@@ -382,38 +381,38 @@
   (assoc md :text (json/write-str md :escape-slash false)))
 
 (defn- load-probe-meta [feature-list]
-  (doseq [[pid feature] feature-list]
-    (let [fmeta (normalize-meta features-meta feature)
-          fmeta (merge fmeta {:probes_id pid})
-          fid (insert features (values fmeta))
+  (doseq [[field-id feature] feature-list]
+    (let [fmeta (normalize-meta feature-meta feature)
+          fmeta (merge fmeta {:field_id field-id})
+          feature-id (insert feature (values fmeta))
           order (:order feature)]
-      (doseq [code (:state feature)]
-        (insert codes (values {:features_id fid
-                               :ordering (order code)
-                               :value code}))))))
+      (doseq [a-code (:state feature)]
+        (insert code (values {:feature_id feature-id
+                               :ordering (order a-code)
+                               :value a-code}))))))
 
 ;
 ;
 ;
 
-(defn- probes-in-exp [exp]
-  (subselect probes (fields :id) (where {:eid exp})))
+(defn- fields-in-exp [exp]
+  (subselect field (fields :id) (where {:dataset_id exp})))
 
-(defn- scores-with-probes [probes]
-  (subselect joins (fields :sid) (where {:pid [in probes]})))
+(defn- scores-with-fields [fs]
+  (subselect field_score (fields :score_id) (where {:field_id [in fs]})))
 
 (defn- clear-by-exp [exp]
-  (let [p (probes-in-exp exp)]
-    (delete exp_samples (where {:experiments_id exp}))
-    (delete scores (where {:id [in (scores-with-probes p)]}))
-    (delete joins (where {:pid [in p]}))
-    (delete probes (where {:id [in p]}))))
+  (let [f (fields-in-exp exp)]
+    (delete sample (where {:dataset_id exp}))
+    (delete scores (where {:id [in (scores-with-fields f)]}))
+    (delete field_score (where {:field_id [in f]}))
+    (delete field (where {:id [in f]}))))
 
 ; Merge cohort, returning id
-(defn- merge-cohort [cohort]
+(comment (defn- merge-cohort [cohort]
   (exec-raw ["MERGE INTO cohorts(name) KEY(name) VALUES (?)" [cohort]])
   (let [[{cid :ID}] (select cohorts (where {:name cohort}))]
-    cid))
+    cid)))
 
 ; Update meta entity record.
 (defn- merge-m-ent [m-ent ename metadata]
@@ -546,21 +545,21 @@
 ;
 
 ; Insert probe & return id
-(defn- insert-probe [exp name]
-  (let [pid (insert probes (values {:eid exp :name name}))]
-    pid))
+(defn- insert-field [exp name]
+  (let [id (insert field (values {:dataset_id exp :name name}))]
+    id))
 
 (defn- insert-scores [slist]
-  (let [sid (insert scores (values {:expScores slist}))]
-    sid))
+  (let [score-id (insert scores (values {:scores slist}))]
+    score-id))
 
-(defn- insert-join [pid i sid]
-  (insert joins (values {:pid pid :i i :sid sid})))
+(defn- insert-field-score [field-id i score-id]
+  (insert field_score (values {:field_id field-id :i i :score_id score-id})))
 
 (defn- table-writer-default [dir f]
-  (f {:insert-probe insert-probe
+  (f {:insert-field insert-field
          :insert-score insert-scores
-         :insert-join insert-join
+         :insert-field-score insert-field-score
          :encode score-encode
          :key ahashable}))
 
@@ -568,10 +567,10 @@
 ; Table writer that updates one table at a time by writing to temporary files.
 ;
 
-(defn- insert-probe-out [^java.io.BufferedWriter out seqfn eid name]
-  (let [pid (seqfn)]
-    (.write out (str pid "\t" eid "\t" name "\n"))
-    pid))
+(defn- insert-field-out [^java.io.BufferedWriter out seqfn dataset-id name]
+  (let [field-id (seqfn)]
+    (.write out (str field-id "\t" dataset-id "\t" name "\n"))
+    field-id))
 
 ; This is a stateful iterator. It may not be idiomatic in clojure, but it's a
 ; quick way to get sequential ids deep in a call stack. Maybe we should instead
@@ -609,12 +608,12 @@
 
 
 (defn- insert-scores-out [^java.io.BufferedWriter out seqfn slist]
-  (let [sid (seqfn)]
-    (.write out (str sid "\t" (:hex slist) "\n"))
-    sid))
+  (let [score-id (seqfn)]
+    (.write out (str score-id "\t" (:hex slist) "\n"))
+    score-id))
 
-(defn- insert-joins-out [^java.io.BufferedWriter out pid i sid]
-  (.write out (str pid "\t" i "\t" sid "\n")))
+(defn- insert-field-score-out [^java.io.BufferedWriter out field-id i score-id]
+  (.write out (str field-id "\t" i "\t" score-id "\n")))
 
 (defn- sequence-for-column [table column]
   (-> (exec-raw
@@ -630,30 +629,30 @@
       (exec-raw)))
 
 (defn- table-writer [dir f]
-  (let [probes-seq (-> "PROBES_IDS" sequence-seq seq-iterator)
+  (let [field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
         scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
-        pfname (fs/file dir "probes.tmp")
+        ffname (fs/file dir "field.tmp") ; XXX add pid to these, or otherwise make them unique
         sfname (fs/file dir "scores.tmp")
-        jfname (fs/file dir "joins.tmp")]
+        fsfname (fs/file dir "field_score.tmp")]
     (try
       (let [finish
             (with-open
-              [probes-file (io/writer pfname)
+              [field-file (io/writer ffname)
                scores-file (io/writer sfname)
-               joins-file (io/writer jfname)]
-              (f {:insert-probe (partial insert-probe-out probes-file probes-seq)
+               field-score-file (io/writer fsfname)]
+              (f {:insert-field (partial insert-field-out field-file field-seq)
                   :insert-score (partial insert-scores-out scores-file scores-seq)
-                  :insert-join (partial insert-joins-out joins-file)
+                  :insert-field-score (partial insert-field-score-out field-score-file)
                   :encode (fn [scores] (let [s (score-encode scores)] {:scores s :hex (bytes->hex s)}))
                   :key #(ahashable (:scores (first %)))}))]
-        (do (read-from-tsv "probes" pfname "PID" "EID" "NAME")
+        (do (read-from-tsv "field" ffname "ID" "DATASET_ID" "NAME")
           (read-from-tsv "scores" sfname "ID" "SCORES")
-          (read-from-tsv "joins" jfname "PID" "I" "SID"))
+          (read-from-tsv "field_score" fsfname "FIELD_ID" "I" "SCORES_ID"))
         (finish))
       (finally
-        (fs/delete pfname)
+        (fs/delete ffname)
         (fs/delete sfname)
-        (fs/delete jfname)))))
+        (fs/delete fsfname)))))
 
 ;
 ; Main loader routines
@@ -665,48 +664,48 @@
 (defn- insert-unique-scores-fn [writer]
   (memoize-key (:key writer) (partial insert-scores-block writer)))
 
-(defn- load-probe [writer insert-scores-fn exp row]
-  (let [pid ((:insert-probe writer) exp (:field row))
+(defn- load-field [writer insert-scores-fn exp row]
+  (let [field-id ((:insert-field writer) exp (:field row))
         blocks (:data row)]
     (doseq [[block i] (mapv vector blocks (range))]
-      (let [sid (insert-scores-fn block)]
-        ((:insert-join writer) pid i sid)))
-    pid))
+      (let [score-id (insert-scores-fn block)]
+        ((:insert-field-score writer) field-id i score-id)))
+    field-id))
 
 (defn- inferred-type
   "Replace the given type with the inferred type"
   [fmeta row]
   (assoc fmeta "valueType" (:valueType row)))
 
-(defn- load-probe-feature [writer insert-scores-fn exp acc row]
-  (let [pid (load-probe writer insert-scores-fn exp row)]
+(defn- load-field-feature [writer insert-scores-fn exp acc row]
+  (let [field-id (load-field writer insert-scores-fn exp row)]
     (if-let [feature (:feature row)]
-      (cons [pid (inferred-type feature row)] acc)
+      (cons [field-id (inferred-type feature row)] acc)
       acc)))
 
-(defn- insert-exp-sample [eid sample i]
-  (insert exp_samples (values {:experiments_id eid :name sample :i i})))
+(defn- insert-exp-sample [dataset-id samp i]
+  (insert sample (values {:dataset_id dataset-id :name samp :i i})))
 
-(defn- load-exp-samples [exp samples]
+(defn- load-samples [exp samples]
   (dorun (map #(apply (partial insert-exp-sample exp) %)
               (map vector samples (range)))))
 
 (defn- encode-scores [writer row]
   (mapv (:encode writer) (partition-all bin-size row)))
 
-; insert matrix, updating scores, probes, and joins tables
+; insert matrix, updating scores, fields, and field-score tables
 (defn- load-exp-matrix [exp matrix-fn writer]
   (let [{:keys [samples fields]} (matrix-fn)]
-    (load-exp-samples exp samples)
+    (load-samples exp samples)
     (let [scores-fn (insert-unique-scores-fn writer)
-          loadp (partial load-probe-feature writer scores-fn exp)
+          loadp (partial load-field-feature writer scores-fn exp)
           fields (chunked-pmap #(assoc % :data (encode-scores writer (:scores %))) fields)
-          probe-meta (reduce loadp '() fields)]
-      #(load-probe-meta probe-meta))))
+          field-meta (reduce loadp '() fields)]
+      #(load-probe-meta field-meta))))
 
 
 ; XXX Update to return all samples in cohort by merging
-; exp_samples.
+; sample.
 ;(defn- cohort-sample-list [cid sample-list]
 ;  (select samples (fields :id :sample)
 ;          (where {:cid cid :sample [in sample-list]})))
@@ -739,22 +738,22 @@
          (. java.sql.Timestamp valueOf (format-timestamp (:time file-meta)))))
 
 (defn clean-sources []
-  (delete sources
+  (delete source
           (where (not (in :id (subselect
                                 (union (queries
                                          (subselect
-                                           experiment_sources
-                                           (fields [:sources_id]))
+                                           dataset_source
+                                           (fields [:source_id]))
                                          (subselect
-                                           probemap_sources
-                                           (fields [:sources_id]))))))))))
+                                           probemap_source
+                                           (fields [:source_id]))))))))))
 
 (defn- load-related-sources [table id-key id files]
   (delete table (where {id-key id}))
-  (let [fids (map #(insert sources (values %)) files)]
-    (doseq [fid fids]
+  (let [sources (map #(insert source (values %)) files)]
+    (doseq [source-id sources]
       (insert table
-              (values {id-key id :sources_id fid})))))
+              (values {id-key id :source_id source-id})))))
 
 ; work around h2 uppercase craziness
 ; XXX review passing naming option to korma
@@ -763,7 +762,7 @@
 
 (defn- related-sources [table id]
   (map keys-lower
-    (select table (join sources) (where {:id id}) (fields :sources.name :sources.hash :sources.time))))
+    (select table (join source) (where {:id id}) (fields :source.name :source.hash :source.time))))
 
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
@@ -782,43 +781,43 @@
 
   ([mname files metadata matrix-fn features force]
    (kdb/transaction
-     (let [exp (merge-m-ent experiments-meta mname metadata)
+     (let [exp (merge-m-ent dataset-meta mname metadata)
            files (map fmt-time files)]
        (when (or force
-                 (not (= (set files) (set (related-sources experiments exp)))))
+                 (not (= (set files) (set (related-sources dataset exp)))))
          (clear-by-exp exp)
          (load-related-sources
-           experiment_sources :experiments_id exp files)
+           dataset_source :dataset_id exp files)
          (table-writer *tmp-dir*
                        (partial load-exp-matrix exp matrix-fn)))))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
   (kdb/transaction
-    (let [[{exp :ID}] (select experiments (where {:file file}))]
+    (let [[{exp :ID}] (select dataset (where {:file file}))]
       (clear-by-exp exp)
-      (delete experiments (where {:id exp})))))
+      (delete dataset (where {:id exp})))))
 
 ;
 ; probemap routines
 ;
 
-(defn- add-probemap-probe [pmid probe]
+(defn- add-probemap-probe [pmid a-probe]
   (let [pmp
-        (insert probemap_probes (values {:probemaps_id pmid
-                                         :probe (probe :name)}))]
-    (insert probemap_positions (values {:probemaps_id pmid
-                                        :probemap_probes_id pmp
-                                        :bin (calc-bin
-                                               (probe :chromStart)
-                                               (probe :chromEnd))
-                                        :chrom (probe :chrom)
-                                        :chromStart (probe :chromStart)
-                                        :chromEnd (probe :chromEnd)
-                                        :strand (probe :strand)}))
-    (dorun (map #(insert probemap_genes (values {:probemaps_id pmid
-                                                 :probemap_probes_id pmp
-                                                 :gene %}))
+        (insert probe (values {:probemap_id pmid
+                               :name (a-probe :name)}))]
+    (insert probe_position (values {:probemap_id pmid
+                                    :probe_id pmp
+                                    :bin (calc-bin
+                                           (a-probe :chromStart)
+                                           (a-probe :chromEnd))
+                                    :chrom (a-probe :chrom)
+                                    :chromStart (a-probe :chromStart)
+                                    :chromEnd (a-probe :chromEnd)
+                                    :strand (a-probe :strand)}))
+    (dorun (map #(insert probe_gene (values {:probemap_id pmid
+                                             :probe_id pmp
+                                             :gene %}))
                 (probe :genes)))))
 
 ; kdb/transaction will create a closure of our parameters,
@@ -833,13 +832,13 @@
   ([pname files metadata probes-fn force]
    (kdb/transaction
      (let [probes (probes-fn)
-           pmid (merge-m-ent probemaps-meta pname metadata)
+           pmid (merge-m-ent probemap-meta pname metadata)
            add-probe (partial add-probemap-probe pmid)
            files (map fmt-time files)]
        (when (or force
-                 (not (= (set files) (set (related-sources probemaps pmid)))))
+                 (not (= (set files) (set (related-sources probemap pmid)))))
          (load-related-sources
-           probemap_sources :probemaps_id pmid files)
+           probemap_source :probemap_id pmid files)
          (dorun (map add-probe probes))))))) ; XXX change to doseq?
 
 (defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
@@ -860,17 +859,17 @@
 (defn- exec-statements [stmts]
   (dorun (map exec-raw stmts)))
 
-; Intersect experiment samples with the given set of samples.
-(defn exp-samples-in-list [exp samps]
-  (select exp_samples (fields :i :name)
-          (where  {:experiments_id exp}) (where (in :name samps))))
+; Intersect dataset samples with the given set of samples.
+(defn samples-in-list [exp samps]
+  (select sample (fields :i :name)
+          (where  {:dataset_id exp}) (where (in :name samps))))
 
 (defn sample-bins [samps]
   (set (map #(quot (% :I) bin-size) samps)))
 
-(defn exp-by-name [exp]
+(defn dataset-by-name [dname]
   (let [[{id :ID}]
-        (select experiments (fields "id") (where {:name (str exp)}))] ; XXX shoul str be here, or higher in the call stack?
+        (select dataset (fields "id") (where {:name (str dname)}))] ; XXX shoul str be here, or higher in the call stack?
     id))
 
 ; merge bin number and bin offset for a sample.
@@ -886,7 +885,7 @@
                 (map (partial bin-mapping order) samples))])
 
 ; Take an ordered list of requested samples, a list of samples (with indexes) in the
-; experiment, and generate fns to copy values from a score bin to an output array.
+; dataset, and generate fns to copy values from a score bin to an output array.
 ; Returns one function for each score bin in the request.
 
 (defn- pick-samples-fns [s-req s-exp]
@@ -897,7 +896,7 @@
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
 (defn- build-score-arrays [rows bfns out]
-  (dorun (map (fn [{i :I scores :EXPSCORES gene :GENE}]
+  (dorun (map (fn [{i :I scores :SCORES gene :GENE}]
                 ((bfns i) (out gene) scores))
               rows))
   out)
@@ -905,32 +904,32 @@
 (defn- col-arrays [columns n]
   (zipmap columns (repeatedly (partial float-array n Double/NaN))))
 
-(def probe-query
+(def field-query
   "SELECT  gene, i, expscores from
-     (SELECT * FROM (SELECT  `probes`.`name` as `gene`, `probes`.`id`  FROM `probes`
-       INNER JOIN TABLE(name varchar=?) T ON T.`name`=`probes`.`name`
-       WHERE (`probes`.`eid` = ?)) P
-   LEFT JOIN `joins` on P.id = `joins`.`pid` WHERE `joins`.`i` in (%s))
-   LEFT JOIN `scores` ON `sid` = `scores`.`id`")
+     (SELECT * FROM (SELECT  `field`.`name` as `gene`, `field`.`id`  FROM `field`
+       INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
+       WHERE (`field`.`dataset_id` = ?)) P
+   LEFT JOIN `field_score` on P.id = `field_score`.`field_id` WHERE `field_score`.`i` in (%s))
+   LEFT JOIN `scores` ON `score_id` = `scores`.`id`")
 
-(defn select-scores-full [eid columns bins]
-  (let [q (format probe-query
+(defn select-scores-full [dataset-id columns bins]
+  (let [q (format field-query
                   (clojure.string/join ","
                                        (repeat (count bins) "?")))
         c (to-array (map str columns))
         i (to-array bins)]
-    (exec-raw [q (concat [c eid] i)] :results)))
+    (exec-raw [q (concat [c dataset-id] i)] :results)))
 
 ; Doing an inner join on a table literal, instead of a big IN clause, so it will hit
 ; the index.
 (defn genomic-read-req [req]
   (let [{samples 'samples table 'table columns 'columns} req
-        eid (exp-by-name table)
-        s-in-exp (map merge-bin-off (exp-samples-in-list eid samples))
+        dataset-id (dataset-by-name table)
+        s-in-exp (map merge-bin-off (samples-in-list dataset-id samples))
         bins (map :bin s-in-exp)
         bfns (pick-samples-fns samples s-in-exp)]
 
-    (-> (select-scores-full eid columns (distinct bins))
+    (-> (select-scores-full dataset-id columns (distinct bins))
         (#(map cvt-scores %))
         (build-score-arrays bfns (col-arrays columns (count samples))))))
 
@@ -943,25 +942,23 @@
 (defn genomic-source [reqs]
   (map #(update-in % ['data] merge (genomic-read-req %)) reqs))
 
-;(sources/register ::genomic genomic-source)
-
 (defn create[]
   (kdb/transaction
     (exec-statements cohorts-table)
-    (exec-statements sources-table)
-    (exec-statements experiments-table)
-    (exec-statements experiment-sources-table)
-    (exec-statements exp-samples-table)
+    (exec-statements source-table)
+    (exec-statements dataset-table)
+    (exec-statements dataset-source-table)
+    (exec-statements sample-table)
     (exec-statements scores-table)
-    (exec-statements join-table)
-    (exec-statements probes-table)
-    (exec-statements features-table)
-    (exec-statements codes-table)
-    (exec-statements probemaps-table)
-    (exec-statements probemap-sources-table)
-    (exec-statements probemap-probes-table)
-    (exec-statements probemap-positions-table)
-    (exec-statements probemap-genes-table)))
+    (exec-statements field-score-table)
+    (exec-statements field-table)
+    (exec-statements feature-table)
+    (exec-statements code-table)
+    (exec-statements probemap-table)
+    (exec-statements probemap-source-table)
+    (exec-statements probe-table)
+    (exec-statements probe-position-table)
+    (exec-statements probe-gene-table)))
 
 (defn run-query [q]
   ; XXX should sanitize the query
