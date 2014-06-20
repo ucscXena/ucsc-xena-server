@@ -244,7 +244,10 @@
   (let [refs (->> md
                   (keys)
                   (filter #(.startsWith % ":")))]
-    (into {} (map vector refs (map #(str (path-from-ref docroot referrer (md %))) refs)))))
+    (into {} (map vector refs (map
+                                #(when-let [path (md %)] ; don't resolve nil
+                                   (str (path-from-ref docroot referrer path)))
+                                refs)))))
 
 (defn matrix-file
   "Return a map describing a cgData matrix file. This will read

@@ -29,6 +29,11 @@
           {":a" "ack"}
           (cgdata/references cwd "one/two/three" {":a" "../../ack"}))))
 
+(ct/deftest test-reference-nil
+  (ct/is (=
+          {":a" "one/two/ack" ":b" nil}
+          (cgdata/references cwd "one/two/three" {":a" "ack" ":b" nil}))))
+
 (ct/deftest test-reference-outside-path
   (ct/is (thrown?
            IllegalArgumentException
