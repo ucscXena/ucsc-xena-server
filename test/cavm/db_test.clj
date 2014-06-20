@@ -31,9 +31,9 @@
                :samples ["sample1" "sample2"]})
       nil
       false)
-    (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
-          samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
-          probes (cdb/run-query db {:select [:*] :from [:probes]})
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})
           data (comment (h2/genomic-read-req {'table "id1"
                           'columns ["probe1" "probe2"]
                           'samples ["sample1" "sample2"]}))]
@@ -42,8 +42,8 @@
                 [{:NAME "sample1"}
                  {:NAME "sample2"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :EID 1}
-                 {:NAME "probe2" :ID 2 :EID 1}]))
+                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 2 :DATASET_ID 1}]))
       (comment (ct/is (= data
                 [[1.1 1.2] [2.1 2.2]]))))))
 
@@ -63,9 +63,9 @@
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
     (loader db detector docroot "test/cavm/test_inputs/matrix") ; odd that loader & detector both require docroot
-    (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
-          samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
-          probes (cdb/run-query db {:select [:*] :from [:probes]})]
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:NAME "matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
@@ -73,11 +73,11 @@
                  {:NAME "sample3"}
                  {:NAME "sample4"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :EID 1}
-                 {:NAME "probe2" :ID 2 :EID 1}
-                 {:NAME "probe3" :ID 3 :EID 1}
-                 {:NAME "probe4" :ID 4 :EID 1}
-                 {:NAME "probe5" :ID 5 :EID 1} ])))))
+                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe3" :ID 3 :DATASET_ID 1}
+                 {:NAME "probe4" :ID 4 :DATASET_ID 1}
+                 {:NAME "probe5" :ID 5 :DATASET_ID 1} ])))))
 
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
@@ -87,9 +87,9 @@
 (defn matrix3 [db]
   (ct/testing "cgdata genomic matrix"
     (loader db detector docroot "test/cavm/test_inputs/cgdata_matrix")
-    (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
-          samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
-          probes (cdb/run-query db {:select [:*] :from [:probes]})]
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:NAME "cgdata_matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
@@ -97,11 +97,11 @@
                  {:NAME "sample3"}
                  {:NAME "sample4"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :EID 1}
-                 {:NAME "probe2" :ID 2 :EID 1}
-                 {:NAME "probe3" :ID 3 :EID 1}
-                 {:NAME "probe4" :ID 4 :EID 1}
-                 {:NAME "probe5" :ID 5 :EID 1}])))))
+                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe3" :ID 3 :DATASET_ID 1}
+                 {:NAME "probe4" :ID 4 :DATASET_ID 1}
+                 {:NAME "probe5" :ID 5 :DATASET_ID 1}])))))
 
 (defn detect-cgdata-probemap [db]
   (ct/testing "detect cgdata probemap"
@@ -111,19 +111,19 @@
 (defn probemap1 [db]
   (ct/testing "cgdata probemap"
     (loader db detector docroot "test/cavm/test_inputs/probes")
-    (let [probemap (cdb/run-query db {:select [:name] :from [:probemaps]})
-          probes (cdb/run-query db {:select [:*] :from [:probemap_probes]})]
+    (let [probemap (cdb/run-query db {:select [:name] :from [:probemap]})
+          probes (cdb/run-query db {:select [:*] :from [:probe]})]
       (ct/is (= probemap [{:NAME "probes"}]))
       (ct/is (= probes
-                [{:PROBE "probe1" :ID 1 :PROBEMAPS_ID 1}
-                 {:PROBE "probe2" :ID 2 :PROBEMAPS_ID 1}
-                 {:PROBE "probe3" :ID 3 :PROBEMAPS_ID 1}
-                 {:PROBE "probe4" :ID 4 :PROBEMAPS_ID 1}
-                 {:PROBE "probe5" :ID 5 :PROBEMAPS_ID 1}
-                 {:PROBE "probe6" :ID 6 :PROBEMAPS_ID 1}
-                 {:PROBE "probe7" :ID 7 :PROBEMAPS_ID 1}
-                 {:PROBE "probe8" :ID 8 :PROBEMAPS_ID 1}
-                 {:PROBE "probe9" :ID 9 :PROBEMAPS_ID 1}])))))
+                [{:NAME "probe1" :ID 1 :PROBEMAP_ID 1}
+                 {:NAME "probe2" :ID 2 :PROBEMAP_ID 1}
+                 {:NAME "probe3" :ID 3 :PROBEMAP_ID 1}
+                 {:NAME "probe4" :ID 4 :PROBEMAP_ID 1}
+                 {:NAME "probe5" :ID 5 :PROBEMAP_ID 1}
+                 {:NAME "probe6" :ID 6 :PROBEMAP_ID 1}
+                 {:NAME "probe7" :ID 7 :PROBEMAP_ID 1}
+                 {:NAME "probe8" :ID 8 :PROBEMAP_ID 1}
+                 {:NAME "probe9" :ID 9 :PROBEMAP_ID 1}])))))
 
 
 (defn detect-cgdata-clinical [db]
@@ -134,9 +134,9 @@
 (defn clinical1 [db]
   (ct/testing "cgdata clinical matrix"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix")
-    (let [exp (cdb/run-query db {:select [:name] :from [:experiments]})
-          samples (cdb/run-query db {:select [:name] :from [:exp_samples] :order-by [:i]})
-          probes (cdb/run-query db {:select [:*] :from [:probes]})]
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:NAME "clinical_matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
@@ -145,10 +145,10 @@
                  {:NAME "sample4"}
                  {:NAME "sample5"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :EID 1}
-                 {:NAME "probe2" :ID 2 :EID 1}
-                 {:NAME "probe3" :ID 3 :EID 1}
-                 {:NAME "probe4" :ID 4 :EID 1}])))))
+                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe3" :ID 3 :DATASET_ID 1}
+                 {:NAME "probe4" :ID 4 :DATASET_ID 1}])))))
 
 ; XXX test that cgdata defaults to genomicMatrix if not specified
 ; XXX test clinical
