@@ -57,9 +57,9 @@
       (wrap-resource "public")
       (wrap-content-type)
       (wrap-not-modified)
-      (wrap-access-control)
       (wrap-gzip)
-      (wrap-stacktrace)))
+      (wrap-stacktrace)
+      (wrap-access-control)))
 
 (defn- serv [app host port]
   (ring.adapter.jetty/run-jetty app {:host host :port port :join? true}))
