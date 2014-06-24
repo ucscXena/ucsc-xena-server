@@ -381,12 +381,12 @@
   (assoc md :text (json/write-str md :escape-slash false)))
 
 (defn- load-probe-meta [feature-list]
-  (doseq [[field-id feature] feature-list]
-    (let [fmeta (normalize-meta feature-meta feature)
+  (doseq [[field-id feat] feature-list]
+    (let [fmeta (normalize-meta feature-meta feat)
           fmeta (merge fmeta {:field_id field-id})
           feature-id (insert feature (values fmeta))
-          order (:order feature)]
-      (doseq [a-code (:state feature)]
+          order (:order feat)]
+      (doseq [a-code (:state feat)]
         (insert code (values {:feature_id feature-id
                                :ordering (order a-code)
                                :value a-code}))))))
@@ -818,7 +818,7 @@
     (dorun (map #(insert probe_gene (values {:probemap_id pmid
                                              :probe_id pmp
                                              :gene %}))
-                (probe :genes)))))
+                (a-probe :genes)))))
 
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
@@ -905,7 +905,7 @@
   (zipmap columns (repeatedly (partial float-array n Double/NaN))))
 
 (def field-query
-  "SELECT  gene, i, expscores from
+  "SELECT  gene, i, scores from
      (SELECT * FROM (SELECT  `field`.`name` as `gene`, `field`.`id`  FROM `field`
        INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
        WHERE (`field`.`dataset_id` = ?)) P

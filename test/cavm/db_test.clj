@@ -34,9 +34,9 @@
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
           samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
           probes (cdb/run-query db {:select [:*] :from [:field]})
-          data (comment (h2/genomic-read-req {'table "id1"
-                          'columns ["probe1" "probe2"]
-                          'samples ["sample1" "sample2"]}))]
+          data (cdb/fetch db [{'table "id1"
+                               'columns ["probe1" "probe2"]
+                               'samples ["sample1" "sample2"]}])]
       (ct/is (= exp [{:NAME "id1"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
@@ -44,8 +44,10 @@
       (ct/is (= probes
                 [{:NAME "probe1" :ID 1 :DATASET_ID 1}
                  {:NAME "probe2" :ID 2 :DATASET_ID 1}]))
-      (comment (ct/is (= data
-                [[1.1 1.2] [2.1 2.2]]))))))
+      (let [[probe1 probe2]
+            (vec (map #(into [] %) (map ((first data) 'data) ["probe1" "probe2"])))]
+        (ct/is (nearly-equal 0.0001 probe1 [1.1 1.2]))
+        (ct/is (nearly-equal 0.0001 probe2 [2.1 2.2]))))))
 
 (def docroot "test/cavm/test_inputs")
 
@@ -112,7 +114,9 @@
   (ct/testing "cgdata probemap"
     (loader db detector docroot "test/cavm/test_inputs/probes")
     (let [probemap (cdb/run-query db {:select [:name] :from [:probemap]})
-          probes (cdb/run-query db {:select [:*] :from [:probe]})]
+          probes (cdb/run-query db {:select [:*] :from [:probe]})
+          genes (cdb/run-query db {:select [:*] :from [:probe_gene]})]
+
       (ct/is (= probemap [{:NAME "probes"}]))
       (ct/is (= probes
                 [{:NAME "probe1" :ID 1 :PROBEMAP_ID 1}
@@ -123,7 +127,16 @@
                  {:NAME "probe6" :ID 6 :PROBEMAP_ID 1}
                  {:NAME "probe7" :ID 7 :PROBEMAP_ID 1}
                  {:NAME "probe8" :ID 8 :PROBEMAP_ID 1}
-                 {:NAME "probe9" :ID 9 :PROBEMAP_ID 1}])))))
+                 {:NAME "probe9" :ID 9 :PROBEMAP_ID 1}]))
+      (ct/is (= genes
+                [
+                 {:PROBEMAP_ID 1 :PROBE_ID 1 :GENE "GENEA"}
+                 {:PROBEMAP_ID 1 :PROBE_ID 2 :GENE "GENEA"}
+                 {:PROBEMAP_ID 1 :PROBE_ID 3 :GENE "GENEB"}
+                 {:PROBEMAP_ID 1 :PROBE_ID 4 :GENE "GENEB"}
+                 {:PROBEMAP_ID 1 :PROBE_ID 4 :GENE "GENEC"}
+                 {:PROBEMAP_ID 1 :PROBE_ID 8 :GENE "GENED"}
+                 {:PROBEMAP_ID 1 :PROBE_ID 9 :GENE "GENEE"}])))))
 
 
 (defn detect-cgdata-clinical [db]
