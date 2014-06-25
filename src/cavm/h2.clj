@@ -14,8 +14,10 @@
   (:require [cavm.query.sources :as sources])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
+  (:require [taoensso.timbre :as timbre])
   (:gen-class))
 
+(timbre/refer-timbre) ; XXX magic requires for timbre
 
 (def ^:dynamic *tmp-dir* (System/getProperty "java.io.tmpdir"))
 
@@ -780,16 +782,22 @@
    (load-exp mname files metadata matrix-fn features false))
 
   ([mname files metadata matrix-fn features force]
-   (kdb/transaction
-     (let [exp (merge-m-ent dataset-meta mname metadata)
-           files (map fmt-time files)]
-       (when (or force
-                 (not (= (set files) (set (related-sources dataset exp)))))
-         (clear-by-exp exp)
-         (load-related-sources
-           dataset_source :dataset_id exp files)
-         (table-writer *tmp-dir*
-                       (partial load-exp-matrix exp matrix-fn)))))))
+   (profile
+     :trace
+     :dataset-load
+     (kdb/transaction
+       (let [exp (merge-m-ent dataset-meta mname metadata)
+             files (map fmt-time files)]
+         (when (or force
+                   (not (= (set files) (set (related-sources dataset exp)))))
+           (p :dataset-clear
+              (clear-by-exp exp))
+           (p :dataset-sources
+              (load-related-sources
+                dataset_source :dataset_id exp files))
+           (p :dataset-table
+              (table-writer *tmp-dir*
+                            (partial load-exp-matrix exp matrix-fn)))))))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
@@ -802,23 +810,26 @@
 ; probemap routines
 ;
 
-(defn- add-probemap-probe [pmid a-probe]
+(defnp add-probemap-probe [pmid a-probe]
   (let [pmp
-        (insert probe (values {:probemap_id pmid
-                               :name (a-probe :name)}))]
-    (insert probe_position (values {:probemap_id pmid
-                                    :probe_id pmp
-                                    :bin (calc-bin
-                                           (a-probe :chromStart)
-                                           (a-probe :chromEnd))
-                                    :chrom (a-probe :chrom)
-                                    :chromStart (a-probe :chromStart)
-                                    :chromEnd (a-probe :chromEnd)
-                                    :strand (a-probe :strand)}))
-    (dorun (map #(insert probe_gene (values {:probemap_id pmid
-                                             :probe_id pmp
-                                             :gene %}))
-                (a-probe :genes)))))
+        (p :probemap-insert-probe
+           (insert probe (values {:probemap_id pmid
+                                  :name (a-probe :name)})))]
+    (p :probemap-insert-position
+       (insert probe_position (values {:probemap_id pmid
+                                       :probe_id pmp
+                                       :bin (calc-bin
+                                              (a-probe :chromStart)
+                                              (a-probe :chromEnd))
+                                       :chrom (a-probe :chrom)
+                                       :chromStart (a-probe :chromStart)
+                                       :chromEnd (a-probe :chromEnd)
+                                       :strand (a-probe :strand)})))
+    (p :probemap-insert-genes
+       (dorun (map #(insert probe_gene (values {:probemap_id pmid ; XXX doseq?
+                                                :probe_id pmp
+                                                :gene %}))
+                   (a-probe :genes))))))
 
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
@@ -830,16 +841,21 @@
    (load-probemap pname files metadata probes-fn false))
 
   ([pname files metadata probes-fn force]
-   (kdb/transaction
-     (let [probes (probes-fn)
-           pmid (merge-m-ent probemap-meta pname metadata)
-           add-probe (partial add-probemap-probe pmid)
-           files (map fmt-time files)]
-       (when (or force
-                 (not (= (set files) (set (related-sources probemap pmid)))))
-         (load-related-sources
-           probemap_source :probemap_id pmid files)
-         (dorun (map add-probe probes))))))) ; XXX change to doseq?
+   (profile
+     :trace
+     :probemap-load
+     (kdb/transaction
+       (let [probes (probes-fn)
+             pmid (merge-m-ent probemap-meta pname metadata)
+             add-probe (partial add-probemap-probe pmid)
+             files (map fmt-time files)]
+         (when (or force
+                   (not (= (set files) (set (related-sources probemap pmid)))))
+           (p :probemap-sources
+              (load-related-sources
+                probemap_source :probemap_id pmid files))
+           (p :probemap-probes
+              (dorun (map add-probe probes))))))))) ; XXX change to doseq?
 
 (defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
                           :or {classname "org.h2.Driver"

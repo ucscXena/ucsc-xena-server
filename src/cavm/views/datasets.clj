@@ -15,6 +15,8 @@
   (:require [compojure.core :refer [defroutes ANY GET POST]])
   (:require [compojure.route :refer [not-found]])
   (:import (java.io PrintWriter))
+  (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
+  (:require [taoensso.timbre :as timbre :refer [info]])
   (:gen-class))
 
 ; disabling old noir pages for now.
@@ -176,8 +178,8 @@
 ; double-array might be a faster solution. Would really like core.matrix to
 ; convert as necessary. Is there a protocol we can extend?
 (defn functions [db]
-  {'fetch #(map vec (apply concat (map collect (cdb/fetch db %)))) ; XXX concat? see below
-   'query #(cdb/run-query db %)
+  {'fetch #(p :fetch (map vec (apply concat (map collect (cdb/fetch db %))))) ; XXX concat? see below
+   'query #(p :query (cdb/run-query db %))
    'filter filter-attr}) ; XXX filter is broken
 
 ; XXX concat is copied from cavm.query.sources. This is something to do with
@@ -191,7 +193,7 @@
   :respond-with-entity? (fn [req] true)
   :multiple-representations? (fn [req] false)
   :handle-ok (fn [{{db :db} :request}]
-               (expr/expression exp f/functions (functions db))))
+               (profile :trace :expression (expr/expression exp f/functions (functions db)))))
 
 (defn- is-local? [ip]
   (or (= ip "0:0:0:0:0:0:0:1")

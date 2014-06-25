@@ -21,6 +21,9 @@
   (:require [cavm.fs-utils :refer [normalized-path]])
   (:require [cavm.cgdata])
   (:require [clj-http.client :as client])
+  (:require [taoensso.timbre :as timbre :refer [info warn]])
+  (:require [taoensso.timbre.profiling :as profiling :refer (profile p)])
+  (:require [cavm.version :refer [version]])
   (:gen-class))
 
 (defn- in-data-path [root path]
@@ -64,15 +67,6 @@
 (defn- serv [app host port]
   (ring.adapter.jetty/run-jetty app {:host host :port port :join? true}))
 
-(comment (defn- load-report [load-fn root file]
-   (try
-     (load-fn root file)
-     (catch java.lang.Exception e
-       (binding [*out* *err*]
-         (println "Error loading file" file)
-         (println (str "message " (.getMessage e)))
-         (.printStackTrace e))))))
-
 ; XXX call clean-sources somewhere?? Should be automated.
 (comment (defn- loadfiles [load-fn root args]
    (when (not (> (count args) 0))
@@ -113,13 +107,13 @@
                 (file-seq)
                 (rest) ; skip docroot (the first element)
                 (filter-hidden))]
-    (println "Loading " f)
     (try (loader f)
-      (catch Exception e (println (str "caught exception: " (.getMessage e))))))) ; XXX this is unhelpful. Log it somewhere.
+      (catch Exception e (warn e "Dispatching load" f)))))
 
 (def xenadir-default (str (io/file (System/getProperty  "user.home") "xena")))
 (def docroot-default (str (io/file xenadir-default "files")))
 (def db-default (str (io/file xenadir-default "database")))
+(def logfile-default (str (io/file xenadir-default "xena.log")))
 (def tmp-dir-default
   (str (io/file (System/getProperty "java.io.tmpdir") "xena-staging")))
 
@@ -132,6 +126,7 @@
    ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
    ["-d" "--database FILE" "Database to use" :default db-default]
+   [nil "--logfile FILE" "Log file to use" :default logfile-default]
    ["-j" "--json" "Fix json"]
    ["-t" "--tmp DIR" "Set tmp dir" :default tmp-dir-default]])
 
@@ -169,6 +164,13 @@
     (str database default-h2-opts)
     database))
 
+(defn log-config [filename]
+  (timbre/set-level! :trace) ; XXX keep everything on for now
+  (timbre/merge-config!
+    {:appenders {:standard-out {:enabled? false}
+                 :spit {:enabled? true}}
+     :shared-appender-config {:spit-filename filename}}))
+
 ; XXX create dir for database as well?
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
@@ -176,6 +178,7 @@
         port (:port options)
         host (:host options)
         tmp (:tmp options)
+        logfile (:logfile options)
         database (h2-opts (:database options))]
     (if errors
       (binding [*out* *err*]
@@ -185,9 +188,11 @@
         (:json options) (cgdata/fix-json docroot)
         (:load options) (loadfiles port arguments)
         :else (if-let [error (some mkdir [tmp docroot])]
-                (binding [*out* *err*]
+                (binding [*out* *err*] ; XXX move below log-config? What if we can't create the log file?
                   (println error))
                 (do
+                  (log-config logfile)
+                  (timbre/info "Xena server starting" (version))
                   (h2/set-tmp-dir! tmp)
                   (let [db (h2/create-xenadb database)
                         detector (apply cr/detector docroot detectors)

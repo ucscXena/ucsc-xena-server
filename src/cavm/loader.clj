@@ -3,7 +3,10 @@
   (:require [clj-time.coerce :refer [from-long]])
   (:require [clojure.java.io :as io])
   (:require [digest])
+  (:require [taoensso.timbre :as timbre])
   (:require [cavm.db :as cdb]))
+
+(timbre/refer-timbre) ; XXX magic requires for timbre
 
 ; Combines file readers with db writers.
 
@@ -65,10 +68,7 @@
     (loader db docroot fname reader)))
 
 (defn- log-error [filename e]
-  (binding [*err* *out*]
-    (println "Error loading file" filename)
-    (println (.getMessage e))
-    (.printStackTrace e)))
+  (timbre/warn e "Loading" filename))
 
 (defn loader-agent
   "Create an agent to serialize bulk loads, returning a function
@@ -77,7 +77,11 @@
   (let [a (agent nil)]
     (fn [filename]
       (send-off a (fn [n]
-                (try
-                  (loader db detector docroot filename)
-                  (catch Exception e (log-error filename e)))
-                nil)))))
+                    (info "Loading dataset" (str filename))
+                    (let [t (read-string
+                              (with-out-str
+                                (time (try
+                                        (loader db detector docroot filename)
+                                        (catch Exception e (log-error filename e))))))]
+                      (info (str "Loaded " filename ", " t)))
+                    nil)))))
