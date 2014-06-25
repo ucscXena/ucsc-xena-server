@@ -32,7 +32,7 @@
 (defmacro insert [& args] `(KEY-ID (kcinsert ~@args)))
 
 (def float-size 4)
-(def bin-size 100)
+(def bin-size 1000)
 (def score-size (* float-size bin-size))
 ; Add 30 for gzip header
 ;( def score-size (+ 30 (* float-size bin-size)))
