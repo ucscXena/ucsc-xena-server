@@ -28,6 +28,7 @@
                  [com.h2database/h2 "1.3.175"]
                  [filevents "0.1.0"]
                  [clj-http "0.9.1"]
+                 [org.clojure/tools.logging  "0.3.0"]
                  [com.taoensso/timbre  "3.2.0"]]
   :javac-options ["-target" "1.6" "-source" "1.6"]
   :aot [cavm.h2-binary cavm.version]

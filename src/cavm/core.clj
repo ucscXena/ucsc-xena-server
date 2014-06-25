@@ -21,8 +21,10 @@
   (:require [cavm.fs-utils :refer [normalized-path]])
   (:require [cavm.cgdata])
   (:require [clj-http.client :as client])
+  (:require  [clojure.tools.logging :as log])
   (:require [taoensso.timbre :as timbre :refer [info warn]])
-  (:require [taoensso.timbre.profiling :as profiling :refer (profile p)])
+  (:require [taoensso.timbre.profiling :as profiling :refer [profile p]])
+  (:require [taoensso.timbre.tools.logging :refer [use-timbre]])
   (:require [cavm.version :refer [version]])
   (:gen-class))
 
@@ -165,6 +167,8 @@
     database))
 
 (defn log-config [filename]
+  (use-timbre) ; redirect clojure.tools.logging to timbre
+  (log/log-capture! 'cavm.core) ; redirect System.out System.error to clojure.tools.logging
   (timbre/set-level! :trace) ; XXX keep everything on for now
   (timbre/merge-config!
     {:appenders {:standard-out {:enabled? false}
