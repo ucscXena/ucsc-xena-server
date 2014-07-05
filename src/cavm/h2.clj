@@ -17,6 +17,12 @@
   (:require [taoensso.timbre :as timbre])
   (:gen-class))
 
+;
+; Note that "bin" in this file is like a "segement" in the column store
+; literature: a column is split into a series of segments (bins) before
+; writing to disk (saving as blob in h2).
+;
+
 (timbre/refer-timbre) ; XXX magic requires for timbre
 
 (def ^:dynamic *tmp-dir* (System/getProperty "java.io.tmpdir"))
