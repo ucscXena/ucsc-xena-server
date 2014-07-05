@@ -207,18 +207,33 @@
   "Return samples and seq of scores, probes X samples"
   (fn [metadata features lines] (metadata "type")))
 
+;
+(defn- ammend-sample-field
+  [line]
+  (let [[_ samples] (s/split line #"\t" 2)]
+    (str "sampleID\t" samples)))
+
+(defn ammend-lines
+  "Coerce first column name to sampleID"
+  [lines]
+  (concat (cons (ammend-sample-field (first lines)) (rest lines))))
+
 (defmethod matrix-data :default
   [metadata features lines]
-  {:fields (chunked-pmap #(data-line features (tabbed %)) (rest lines))
-   :samples (rest (tabbed (first lines)))})
+  (let [lines (ammend-lines lines)]
+    {:fields (chunked-pmap #(data-line features (tabbed %)) lines)
+     :samples (rest (tabbed (first lines)))}))
 
 (defn- transpose [lines]
   (apply mapv vector lines))
 
 (defmethod matrix-data "clinicalMatrix"
   [metadata features lines]
-  (let [lines (transpose (map tabbed lines))]
-    {:fields (chunked-pmap #(data-line features %) (rest lines))
+  (let [lines (->> lines
+                  (ammend-lines)
+                  (map tabbed)
+                  (transpose))]
+    {:fields (chunked-pmap #(data-line features %) lines)
      :samples (rest (first lines))}))
 
 (defn- cgdata-meta [file]
