@@ -315,8 +315,7 @@
    `strand` CHAR(1),
    FOREIGN KEY (`probemap_id`) REFERENCES `probemap` (`id`) ON DELETE CASCADE,
    FOREIGN KEY (`probe_id`) REFERENCES `probe` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS chrom_bin ON probe_position (`probemap_id`, `chrom`, `bin`)"
-   ])
+   "CREATE INDEX IF NOT EXISTS chrom_bin ON probe_position (`probemap_id`, `chrom`, `bin`)"])
 
 (def probe-gene-table
   ["CREATE TABLE IF NOT EXISTS `probe_gene` (
@@ -325,8 +324,7 @@
    `gene` VARCHAR(255),
     FOREIGN KEY (`probemap_id`) REFERENCES `probemap` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`probe_id`) REFERENCES `probe` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS probe_gene ON `probe_gene` (`probemap_id`, `gene`)"
-   ])
+   "CREATE INDEX IF NOT EXISTS probe_gene ON `probe_gene` (`probemap_id`, `gene`)"])
 
 ;
 ; feature tables
@@ -566,10 +564,10 @@
 
 (defn- table-writer-default [dir f]
   (f {:insert-field insert-field
-         :insert-score insert-scores
-         :insert-field-score insert-field-score
-         :encode score-encode
-         :key ahashable}))
+      :insert-score insert-scores
+      :insert-field-score insert-field-score
+      :encode score-encode
+      :key ahashable}))
 
 ;
 ; Table writer that updates one table at a time by writing to temporary files.
