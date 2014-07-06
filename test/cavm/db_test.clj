@@ -12,7 +12,12 @@
 
 (defn- nearly-equal [e a b]
   (and (= (count a) (count b))
-       (reduce (fn [acc pair] (and acc (< (java.lang.Math/abs (apply - pair)) e)))
+       (reduce (fn [acc pair]
+                 (or (let [[x y] pair]
+                       (and
+                         (Double/isNaN x)
+                         (Double/isNaN y)))
+                     (and acc (< (java.lang.Math/abs (apply - pair)) e))))
                true
                (map vector a b))))
 
@@ -26,7 +31,12 @@
       "id1"
       [{:name "id1" :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0) :hash "1234"}]
       {}
-      (fn [] {:fields [{:scores [1.1 1.2] :field "probe1"}
+      (fn [] {:fields [{:scores [0 1]
+                        :field "sampleID"
+                        :valueType "category"
+                        :feature {:state ["sample1" "sample2"]
+                                  :order {"sample1" 0 "sample2" 1}}}
+                       {:scores [1.1 1.2] :field "probe1"}
                        {:scores [2.1 2.2] :field "probe2"}]
                :samples ["sample1" "sample2"]})
       nil
@@ -36,18 +46,26 @@
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{'table "id1"
                                'columns ["probe1" "probe2"]
-                               'samples ["sample1" "sample2"]}])]
+                               'samples ["sample1" "sample2"]}])
+          data2 (cdb/fetch db [{'table "id1"
+                                'columns ["probe1" "probe2"]
+                                'samples ["sample1" "sample3"]}])]
       (ct/is (= exp [{:NAME "id1"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
                  {:NAME "sample2"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 2 :DATASET_ID 1}]))
+                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 3 :DATASET_ID 1}]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) 'data) ["probe1" "probe2"])))]
         (ct/is (nearly-equal 0.0001 probe1 [1.1 1.2]))
-        (ct/is (nearly-equal 0.0001 probe2 [2.1 2.2]))))))
+        (ct/is (nearly-equal 0.0001 probe2 [2.1 2.2])))
+      (let [[probe1 probe2]
+            (vec (map #(into [] %) (map ((first data2) 'data) ["probe1" "probe2"])))]
+        (ct/is (nearly-equal 0.0001 probe1 [1.1 Double/NaN]))
+        (ct/is (nearly-equal 0.0001 probe2 [2.1 Double/NaN]))))))
 
 (def docroot "test/cavm/test_inputs")
 
@@ -75,11 +93,12 @@
                  {:NAME "sample3"}
                  {:NAME "sample4"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 2 :DATASET_ID 1}
-                 {:NAME "probe3" :ID 3 :DATASET_ID 1}
-                 {:NAME "probe4" :ID 4 :DATASET_ID 1}
-                 {:NAME "probe5" :ID 5 :DATASET_ID 1} ])))))
+                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 3 :DATASET_ID 1}
+                 {:NAME "probe3" :ID 4 :DATASET_ID 1}
+                 {:NAME "probe4" :ID 5 :DATASET_ID 1}
+                 {:NAME "probe5" :ID 6 :DATASET_ID 1} ])))))
 
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
@@ -99,11 +118,12 @@
                  {:NAME "sample3"}
                  {:NAME "sample4"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 2 :DATASET_ID 1}
-                 {:NAME "probe3" :ID 3 :DATASET_ID 1}
-                 {:NAME "probe4" :ID 4 :DATASET_ID 1}
-                 {:NAME "probe5" :ID 5 :DATASET_ID 1}])))))
+                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 3 :DATASET_ID 1}
+                 {:NAME "probe3" :ID 4 :DATASET_ID 1}
+                 {:NAME "probe4" :ID 5 :DATASET_ID 1}
+                 {:NAME "probe5" :ID 6 :DATASET_ID 1}])))))
 
 (defn detect-cgdata-probemap [db]
   (ct/testing "detect cgdata probemap"
@@ -158,10 +178,11 @@
                  {:NAME "sample4"}
                  {:NAME "sample5"}]))
       (ct/is (= probes
-                [{:NAME "probe1" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 2 :DATASET_ID 1}
-                 {:NAME "probe3" :ID 3 :DATASET_ID 1}
-                 {:NAME "probe4" :ID 4 :DATASET_ID 1}])))))
+                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
+                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
+                 {:NAME "probe2" :ID 3 :DATASET_ID 1}
+                 {:NAME "probe3" :ID 4 :DATASET_ID 1}
+                 {:NAME "probe4" :ID 5 :DATASET_ID 1}])))))
 
 ; XXX test that cgdata defaults to genomicMatrix if not specified
 ; XXX test clinical

@@ -126,6 +126,7 @@
    `i` INT,
    `score_id` INT,
    UNIQUE (`field_id`, `i`))"])
+; XXX ugh. score_id vs scores.id
 
 (def cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
@@ -877,15 +878,76 @@
 
 ; execute a sequence of sql statements
 (defn- exec-statements [stmts]
-  (dorun (map exec-raw stmts)))
+  (dorun (map exec-raw stmts))) ; XXX doseq
 
-; Intersect dataset samples with the given set of samples.
-(defn samples-in-list [exp samps]
-  (select sample (fields :i :name)
-          (where  {:dataset_id exp}) (where (in :name samps))))
+(defn run-query [q]
+  ; XXX should sanitize the query
+  (let [[qstr & args] (hsql/format q)]
+    (exec-raw [qstr args] :results)))
 
-(defn sample-bins [samps]
-  (set (map #(quot (% :I) bin-size) samps)))
+;
+; Code queries
+;
+
+(defn codes-for-field-query [dataset-id field]
+   {:select [:ordering :value]
+    :from [:field]
+    :left-join [:feature [:= :field_id :field.id]
+                :code [:= :feature_id :feature.id]]
+    :where [:and [:= :name field] [:= :dataset_id dataset-id]]})
+
+(defn codes-for-values-query [dataset-id field values]
+  (merge
+    {:join [{:table  [[[:value2 :varchar values ]] :T]} [:= :value :value2]]}
+    (codes-for-field-query dataset-id field)))
+
+(defn codes-for-values [dataset-id field values]
+  (->> (codes-for-values-query dataset-id field values)
+       (run-query)
+       (map #(mapv % [:VALUE :ORDERING]))
+       (into {})))
+
+;
+; All rows queries.
+;
+
+; All bins for the given fields.
+(defn all-rows-query [dataset-id & fields]
+   {:select [:name :i :scores]
+    :from [{:select [:*]
+            :from [[{:select [:name :id]
+                     :from [:field]
+                     :join  [{:table  [[[:name2 :varchar fields]] :T]}  [:= :name2 :field.name]]
+                     :where [:= :dataset_id dataset-id]} :P]]
+            :left-join [:field_score [:= :P.id :field_score.field_id]]}]
+    :left-join [:scores [:= :score_id :scores.id]]})
+
+; {"foxm1" [{:NAME "foxm1" :SCORES <bytes>} ... ]
+(let [concat-field-bins
+      (fn [bins]
+        (let [sorted (map :SCORES (sort-by :I bins))
+              float-bins (map score-decode sorted)
+              row-count (apply + (map count float-bins))
+              out (float-array row-count)]
+          (loop [bins float-bins offset 0]
+            (let [b (first bins)
+                  c (count b)]
+              (when b
+                (System/arraycopy (first bins) 0 out offset c) ; XXX mutate "out" in place
+                (recur (rest bins) (+ offset c)))))
+          out))]
+
+  ; return float arrays of all rows for the given fields
+  (defn all-rows [dataset-id fields]
+    (let [field-bins (->> fields
+                          (apply all-rows-query dataset-id )
+                          (run-query)
+                          (group-by :NAME))]
+      (into {} (for [[k v] field-bins] [k (concat-field-bins v)])))))
+
+;
+;
+;
 
 (defn dataset-by-name [dname]
   (let [[{id :ID}]
@@ -893,25 +955,33 @@
     id))
 
 ; merge bin number and bin offset for a sample.
-(defn- merge-bin-off [sample]
-  (let [{i :I} sample]
-    (assoc sample :bin (quot i bin-size) :off (rem i bin-size))))
+(defn- merge-bin-off [{i :i :as row}]
+  (merge row
+         {:bin (quot i bin-size)
+          :off (rem i bin-size)}))
 
-(defn- bin-mapping [order {off :off sample :NAME}]
-  [off (order sample)])
+; Returns mapping from input bin offset to output buffer for a
+; given row.
+(defn- bin-mapping [{off :off row :order}]
+  [off row])
 
-(defn- pick-samples-fn [order [bin samples]]
+
+; Gets called once for each bin in the request.
+; order is row -> order in output buffer.
+; bin is the bin for the given set of samples.
+; rows is ({:I 12 :bin 1 :off 1}, ... ), where all :bin are the same
+(defn- pick-samples-fn [[bin rows]]
   [bin (partial ashuffle-float
-                (map (partial bin-mapping order) samples))])
+                (map bin-mapping rows))])
 
-; Take an ordered list of requested samples, a list of samples (with indexes) in the
-; dataset, and generate fns to copy values from a score bin to an output array.
-; Returns one function for each score bin in the request.
-
-(defn- pick-samples-fns [s-req s-exp]
-  (let [order (zipmap s-req (range))
-        by-bin (group-by :bin s-exp)]
-    (apply hash-map (mapcat (partial pick-samples-fn order) by-bin))))
+; Take an ordered list of requested rows, and generate fns to copy
+; values from a score bin to an output array. Returns one function
+; for each score bin in the request.
+;
+; rows ({:I 12 :bin 1 :off 1}, ... )
+(defn- pick-samples-fns [rows]
+  (let [by-bin (group-by :bin rows)]
+    (apply hash-map (mapcat pick-samples-fn by-bin))))
 
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
@@ -924,12 +994,17 @@
 (defn- col-arrays [columns n]
   (zipmap columns (repeatedly (partial float-array n Double/NaN))))
 
+; Doing an inner join on a table literal, instead of a big IN clause, so it will hit
+; the index.
+
+; XXX performance of the :in clause?
+; XXX change "gene" to "field"
 (def field-query
-  "SELECT  gene, i, scores from
+  "SELECT  gene, i, scores FROM
      (SELECT * FROM (SELECT  `field`.`name` as `gene`, `field`.`id`  FROM `field`
        INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
        WHERE (`field`.`dataset_id` = ?)) P
-   LEFT JOIN `field_score` on P.id = `field_score`.`field_id` WHERE `field_score`.`i` in (%s))
+   LEFT JOIN `field_score` ON P.id = `field_score`.`field_id` WHERE `field_score`.`i` IN (%s))
    LEFT JOIN `scores` ON `score_id` = `scores`.`id`")
 
 (defn select-scores-full [dataset-id columns bins]
@@ -940,18 +1015,57 @@
         i (to-array bins)]
     (exec-raw [q (concat [c dataset-id] i)] :results)))
 
-; Doing an inner join on a table literal, instead of a big IN clause, so it will hit
-; the index.
+; Returns rows from (dataset-id column-name) matching
+; values. Returns a hashmap for each matching  row.
+; { :i     The implicit index in the column as stored on disk.
+;   :bin   The bin number on disk.
+;   :off   The offset in the bin number.
+;   ;order The order of the row the result set.
+;   :value The value of the row.
+; }
+(defn rows-matching [dataset-id column-name values]
+  (let [val-set (set values)]
+    (->> column-name
+         (vector)
+         (all-rows dataset-id)                 ; Retrieve the full column
+         (vals)
+         (first)
+                                               ; calculate row index in the column
+         (map #(-> {:i %1 :value %2}) (range)) ; [{:i 0 :value 1.2} ...]
+         (filter (comp val-set :value))        ; filter rows not matching the request.
+         (group-by :value)
+         (#(map (fn [g] (get % g [nil])) values)) ; arrange by output order.
+         (apply concat)                           ; flatten groups.
+         (mapv #(assoc %2 :order %1) (range)))))  ; assoc row output order. 
+
+(defn float-nil [x]
+  (when x (float x)))
+
+; Get codes for samples in request
+; Get the entire sample column
+; Find the rows matching the samples, ordered by sample list
+;   Have to scan the sample column, group by sample, and map over the ordering
+; Build shuffle functions, per bin, to copy bins to output buffer
+; Run scores query
+; Copy to output buffer
+
 (defn genomic-read-req [req]
   (let [{samples 'samples table 'table columns 'columns} req
         dataset-id (dataset-by-name table)
-        s-in-exp (map merge-bin-off (samples-in-list dataset-id samples))
-        bins (map :bin s-in-exp)
-        bfns (pick-samples-fns samples s-in-exp)]
+        samp->code (codes-for-values dataset-id "sampleID" samples)
+        order (map (comp float-nil samp->code) samples)     ; codes in request order
+        rows (rows-matching dataset-id "sampleID" order)
+        rows-to-copy (->> rows
+                          (filter :value)
+                          (mapv merge-bin-off))
+
+        bins (map :bin rows-to-copy)            ; list of bins to pull.
+        bfns (pick-samples-fns rows-to-copy)]   ; make fns that map from input bin to
+                                                ; output buffer, one fn per input bin.
 
     (-> (select-scores-full dataset-id columns (distinct bins))
         (#(map cvt-scores %))
-        (build-score-arrays bfns (col-arrays columns (count samples))))))
+        (build-score-arrays bfns (col-arrays columns (count rows))))))
 
 ; Each req is a map of
 ;  'table "tablename"
@@ -979,11 +1093,6 @@
     (exec-statements probe-table)
     (exec-statements probe-position-table)
     (exec-statements probe-gene-table)))
-
-(defn run-query [q]
-  ; XXX should sanitize the query
-  (let [[qstr & args] (hsql/format q)]
-    (exec-raw [qstr args] :results)))
 
 ;
 ; add TABLE handling for honeysql
