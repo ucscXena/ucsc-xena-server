@@ -986,8 +986,8 @@
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
 (defn- build-score-arrays [rows bfns out]
-  (dorun (map (fn [{i :I scores :SCORES gene :GENE}]
-                ((bfns i) (out gene) scores))
+  (dorun (map (fn [{i :I scores :SCORES field :NAME}]
+                ((bfns i) (out field) scores))
               rows))
   out)
 
@@ -1000,8 +1000,8 @@
 ; XXX performance of the :in clause?
 ; XXX change "gene" to "field"
 (def field-query
-  "SELECT  gene, i, scores FROM
-     (SELECT * FROM (SELECT  `field`.`name` as `gene`, `field`.`id`  FROM `field`
+  "SELECT  name, i, scores FROM
+     (SELECT * FROM (SELECT  `field`.`name`, `field`.`id`  FROM `field`
        INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
        WHERE (`field`.`dataset_id` = ?)) P
    LEFT JOIN `field_score` ON P.id = `field_score`.`field_id` WHERE `field_score`.`i` IN (%s))
