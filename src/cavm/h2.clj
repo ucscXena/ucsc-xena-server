@@ -831,10 +831,10 @@
                                        :chromEnd (a-probe :chromEnd)
                                        :strand (a-probe :strand)})))
     (p :probemap-insert-genes
-       (dorun (map #(insert probe_gene (values {:probemap_id pmid ; XXX doseq?
-                                                :probe_id pmp
-                                                :gene %}))
-                   (a-probe :genes))))))
+       (doseq [gene (a-probe :genes)]
+         (insert probe_gene (values {:probemap_id pmid
+                                     :probe_id pmp
+                                     :gene gene}))))))
 
 ; kdb/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
@@ -860,7 +860,8 @@
               (load-related-sources
                 probemap_source :probemap_id pmid files))
            (p :probemap-probes
-              (dorun (map add-probe probes))))))))) ; XXX change to doseq?
+              (doseq [probe probes]
+                (add-probe probe)))))))))
 
 (defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
                           :or {classname "org.h2.Driver"
@@ -878,7 +879,8 @@
 
 ; execute a sequence of sql statements
 (defn- exec-statements [stmts]
-  (dorun (map exec-raw stmts))) ; XXX doseq
+  (doseq [s stmts]
+    (exec-raw s)))
 
 (defn run-query [q]
   ; XXX should sanitize the query
