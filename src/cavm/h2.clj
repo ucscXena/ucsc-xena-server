@@ -710,32 +710,6 @@
           field-meta (reduce loadp '() fields)]
       #(load-probe-meta field-meta))))
 
-
-; XXX Update to return all samples in cohort by merging
-; sample.
-;(defn- cohort-sample-list [cid sample-list]
-;  (select samples (fields :id :sample)
-;          (where {:cid cid :sample [in sample-list]})))
-;
-;; hash seq of maps by given key
-;(defn- hash-by-key [k s]
-;  (zipmap (map #(% k) s) s))
-;
-;; return values in order of the given keys
-;(defn- in-order [order hm]
-;  (map hm order))
-;
-;; return value of the given key for all objects in seq
-;(defn- select-val [k hms]
-;  (map #(% k) hms))
-;
-;(defn- sample-ids [cid sample-list]
-;  (->> sample-list
-;       (cohort-sample-list cid)
-;       (hash-by-key :SAMPLE)
-;       (in-order sample-list)
-;       (select-val :ID)))
-
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
   (defn- format-timestamp [timestamp]
     (unparse fmtr timestamp)))
