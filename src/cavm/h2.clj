@@ -124,9 +124,8 @@
   ["CREATE TABLE IF NOT EXISTS `field_score` (
    `field_id` INT,
    `i` INT,
-   `score_id` INT,
+   `scores_id` INT,
    UNIQUE (`field_id`, `i`))"])
-; XXX ugh. score_id vs scores.id
 
 (def cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
@@ -406,7 +405,7 @@
   (subselect field (fields :id) (where {:dataset_id exp})))
 
 (defn- scores-with-fields [fs]
-  (subselect field_score (fields :score_id) (where {:field_id [in fs]})))
+  (subselect field_score (fields :scores_id) (where {:field_id [in fs]})))
 
 (defn- clear-by-exp [exp]
   (let [f (fields-in-exp exp)]
@@ -562,7 +561,7 @@
     score-id))
 
 (defn- insert-field-score [field-id i score-id]
-  (insert field_score (values {:field_id field-id :i i :score_id score-id})))
+  (insert field_score (values {:field_id field-id :i i :scores_id score-id})))
 
 (defn- table-writer-default [dir f]
   (f {:insert-field insert-field
@@ -897,7 +896,7 @@
                      :join  [{:table  [[[:name2 :varchar fields]] :T]}  [:= :name2 :field.name]]
                      :where [:= :dataset_id dataset-id]} :P]]
             :left-join [:field_score [:= :P.id :field_score.field_id]]}]
-    :left-join [:scores [:= :score_id :scores.id]]})
+    :left-join [:scores [:= :scores_id :scores.id]]})
 
 ; {"foxm1" [{:NAME "foxm1" :SCORES <bytes>} ... ]
 (let [concat-field-bins
@@ -981,7 +980,7 @@
        INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
        WHERE (`field`.`dataset_id` = ?)) P
    LEFT JOIN `field_score` ON P.id = `field_score`.`field_id` WHERE `field_score`.`i` IN (%s))
-   LEFT JOIN `scores` ON `score_id` = `scores`.`id`")
+   LEFT JOIN `scores` ON `scores_id` = `scores`.`id`")
 
 (defn select-scores-full [dataset-id columns bins]
   (let [q (format field-query
