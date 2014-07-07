@@ -947,7 +947,7 @@
 ; order is row -> order in output buffer.
 ; bin is the bin for the given set of samples.
 ; rows is ({:I 12 :bin 1 :off 1}, ... ), where all :bin are the same
-(defn- pick-samples-fn [[bin rows]]
+(defn- pick-rows-fn [[bin rows]]
   [bin (partial ashuffle-float
                 (map bin-mapping rows))])
 
@@ -956,9 +956,9 @@
 ; for each score bin in the request.
 ;
 ; rows ({:I 12 :bin 1 :off 1}, ... )
-(defn- pick-samples-fns [rows]
+(defn- pick-rows-fns [rows]
   (let [by-bin (group-by :bin rows)]
-    (apply hash-map (mapcat pick-samples-fn by-bin))))
+    (apply hash-map (mapcat pick-rows-fn by-bin))))
 
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
@@ -1036,7 +1036,7 @@
                           (mapv merge-bin-off))
 
         bins (map :bin rows-to-copy)            ; list of bins to pull.
-        bfns (pick-samples-fns rows-to-copy)]   ; make fns that map from input bin to
+        bfns (pick-rows-fns rows-to-copy)]   ; make fns that map from input bin to
                                                 ; output buffer, one fn per input bin.
 
     (-> (select-scores-full dataset-id columns (distinct bins))
