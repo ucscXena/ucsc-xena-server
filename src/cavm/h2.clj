@@ -69,18 +69,14 @@
 ; Table models
 ;
 
-(declare dataset_source feature field scores dataset sample)
+(declare dataset_source feature field scores dataset)
 
 (defentity cohorts)
 (defentity source)
 
 (defentity dataset
   (many-to-many source :dataset_source)
-  (has-many sample)
   (has-many field))
-
-(defentity sample
-  (belongs-to dataset))
 
 (declare score-decode)
 
@@ -233,14 +229,6 @@
    :defaults dataset-defaults
    :join dataset_source
    :columns dataset-columns})
-
-(def sample-table
-  ["CREATE TABLE IF NOT EXISTS `sample` (
-   `dataset_id` INT NOT NULL,
-   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`),
-   `i` INT NOT NULL,
-   `name` VARCHAR (1000) NOT NULL,
-   PRIMARY KEY(`dataset_id`, `i`))"]) ; XXX what should this be?
 
 ;
 ; Probemap declarations
@@ -409,7 +397,6 @@
 
 (defn- clear-by-exp [exp]
   (let [f (fields-in-exp exp)]
-    (delete sample (where {:dataset_id exp}))
     (delete scores (where {:id [in (scores-with-fields f)]}))
     (delete field_score (where {:field_id [in f]}))
     (delete field (where {:id [in f]}))))
@@ -690,20 +677,12 @@
       (cons [field-id (inferred-type feature row)] acc)
       acc)))
 
-(defn- insert-exp-sample [dataset-id samp i]
-  (insert sample (values {:dataset_id dataset-id :name samp :i i})))
-
-(defn- load-samples [exp samples]
-  (dorun (map #(apply (partial insert-exp-sample exp) %)
-              (map vector samples (range)))))
-
 (defn- encode-scores [writer row]
   (mapv (:encode writer) (partition-all bin-size row)))
 
 ; insert matrix, updating scores, fields, and field-score tables
 (defn- load-exp-matrix [exp matrix-fn writer]
-  (let [{:keys [samples fields]} (matrix-fn)]
-    (load-samples exp samples)
+  (let [{:keys [fields]} (matrix-fn)]
     (let [scores-fn (insert-unique-scores-fn writer)
           loadp (partial load-field-feature writer scores-fn exp)
           fields (chunked-pmap #(assoc % :data (encode-scores writer (:scores %))) fields)
@@ -1057,7 +1036,6 @@
     (exec-statements source-table)
     (exec-statements dataset-table)
     (exec-statements dataset-source-table)
-    (exec-statements sample-table)
     (exec-statements scores-table)
     (exec-statements field-score-table)
     (exec-statements field-table)

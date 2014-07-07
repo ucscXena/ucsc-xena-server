@@ -42,7 +42,13 @@
       nil
       false)
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:feature [:= :field_id :field.id]
+                                              :code [:= :feature.id :feature_id]]
+                                  :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{'table "id1"
                                'columns ["probe1" "probe2"]
@@ -84,7 +90,13 @@
   (ct/testing "tsv matrix from file"
     (loader db detector docroot "test/cavm/test_inputs/matrix") ; odd that loader & detector both require docroot
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:feature [:= :field_id :field.id]
+                                              :code [:= :feature.id :feature_id]]
+                                  :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:NAME "matrix"}]))
       (ct/is (= samples
@@ -109,7 +121,13 @@
   (ct/testing "cgdata genomic matrix"
     (loader db detector docroot "test/cavm/test_inputs/cgdata_matrix")
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:feature [:= :field_id :field.id]
+                                              :code [:= :feature.id :feature_id]]
+                                  :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:NAME "cgdata_matrix"}]))
       (ct/is (= samples
@@ -168,7 +186,13 @@
   (ct/testing "cgdata clinical matrix"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix")
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db {:select [:name] :from [:sample] :order-by [:i]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:feature [:= :field_id :field.id]
+                                              :code [:= :feature.id :feature_id]]
+                                  :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:NAME "clinical_matrix"}]))
       (ct/is (= samples

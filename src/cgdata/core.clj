@@ -204,7 +204,7 @@
      :scores vals}))
 
 (defmulti matrix-data
-  "Return samples and seq of scores, probes X samples"
+  "Return seq of scores, probes X samples"
   (fn [metadata features lines] (metadata "type")))
 
 ;
@@ -221,8 +221,7 @@
 (defmethod matrix-data :default
   [metadata features lines]
   (let [lines (ammend-lines lines)]
-    {:fields (chunked-pmap #(data-line features (tabbed %)) lines)
-     :samples (rest (tabbed (first lines)))}))
+    {:fields (chunked-pmap #(data-line features (tabbed %)) lines)}))
 
 (defn- transpose [lines]
   (apply mapv vector lines))
@@ -233,8 +232,7 @@
                   (ammend-lines)
                   (map tabbed)
                   (transpose))]
-    {:fields (chunked-pmap #(data-line features %) lines)
-     :samples (rest (first lines))}))
+    {:fields (chunked-pmap #(data-line features %) lines)}))
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
