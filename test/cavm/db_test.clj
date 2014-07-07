@@ -46,7 +46,7 @@
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{'table "id1"
                                'columns ["probe1" "probe2"]
-                               'samples ["sample1" "sample2"]}])
+                               'samples ["sample2" "sample1"]}])
           data2 (cdb/fetch db [{'table "id1"
                                 'columns ["probe1" "probe2"]
                                 'samples ["sample1" "sample3"]}])]
@@ -60,8 +60,8 @@
                  {:NAME "probe2" :ID 3 :DATASET_ID 1}]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) 'data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal 0.0001 probe1 [1.1 1.2]))
-        (ct/is (nearly-equal 0.0001 probe2 [2.1 2.2])))
+        (ct/is (nearly-equal 0.0001 probe1 [1.2 1.1]))
+        (ct/is (nearly-equal 0.0001 probe2 [2.2 2.1])))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data2) 'data) ["probe1" "probe2"])))]
         (ct/is (nearly-equal 0.0001 probe1 [1.1 Double/NaN]))
