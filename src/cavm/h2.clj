@@ -483,9 +483,10 @@
  (let [ia (float-array idxs)]
   (amap ia i ret (aget a i))))
 
-(defn ashuffle-float [mapping ^floats out ^floats in]
-  (dorun (map #(aset out (% 1) (aget in (% 0))) mapping))
-  out)
+(defn ashuffle-float [mappings ^floats out ^floats in]
+   (doseq [[i-in i-out] mappings]
+     (aset out i-out (aget in i-in)))
+   out)
 
 (defn bytes-to-floats [^bytes barr]
   (let [bb (java.nio.ByteBuffer/allocate (alength barr))
@@ -962,9 +963,8 @@
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
 (defn- build-score-arrays [rows bfns out]
-  (dorun (map (fn [{i :I scores :SCORES field :NAME}]
-                ((bfns i) (out field) scores))
-              rows))
+  (doseq [{i :I scores :SCORES field :NAME} rows]
+    ((bfns i) (out field) scores))
   out)
 
 (defn- col-arrays [columns n]
