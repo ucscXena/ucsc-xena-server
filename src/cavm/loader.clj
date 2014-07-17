@@ -38,22 +38,10 @@
         features
         false))))
 
-
-(defn write-probemap [db docroot filename reader]
-  (let [{:keys [metadata refs data-fn]} reader
-        files (mapv #(file-stats docroot %) [filename])]
-    (with-open [in (io/reader (io/file docroot filename))]
-      (cdb/write-probemap
-        db
-        filename
-        files
-        metadata
-        (partial data-fn in) 
-        false))))
-
 (def loaders
-  {:probemap write-probemap
-   :matrix write-matrix})
+  {:probemap write-matrix
+   :matrix write-matrix
+   :mutation write-matrix})
 
 (defn- ignore [& args])
 

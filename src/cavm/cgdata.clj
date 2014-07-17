@@ -52,6 +52,11 @@
   (-> (cgdata/probemap-file url :docroot docroot)
       (assoc :datatype :probemap)))
 
+(defmethod reader :cgdata.core/mutation
+  [filetype docroot url]
+  (-> (cgdata/mutation-file url :docroot docroot)
+      (assoc :datatype :mutation)))
+
 (defn normalized-matrix-reader [filetype docroot url]
   (-> (cgdata/matrix-file url :docroot docroot)
       (assoc :datatype :matrix)

@@ -284,18 +284,36 @@
   (filter #(not (= "" %)) (s/split in pat)))
 
 (defn- probemap-row [row]
-  (let [[name genes chrom start end strand] (s/split row #"\t")]
-    {:name name
+  (let [[probe genes chrom start end strand] (s/split row #"\t")]
+    {:name probe
      :genes (split-no-empty genes #",")
      :chrom chrom
      :chromStart (. Integer parseInt start)
      :chromEnd (. Integer parseInt end)
      :strand strand}))
 
+
+(defn- chr-order [position]
+  (mapv position [:chrom :chromStart]))
+
 (defn probemap-data
   "Return seq of probes entries as maps"
   [rows]
-  (map probemap-row rows))
+  (let [columns (sort-by chr-order (map probemap-row rows)) ; XXX move sort to cavm
+        probe-names (map :name columns)
+        probe-feature (ad-hoc-order {} probe-names)
+        probe-vals (map (:order probe-feature) probe-names)]
+    {:fields
+     [{:field "name"
+       :valueType "category"
+       :feature probe-feature
+       :scores probe-vals}
+      {:field "position"
+       :valueType "position"
+       :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
+      {:field "genes"
+       :valueType "genes"
+       :rows (map :genes columns)}]}))
 
 (defn probemap-file
   "Return a map describing a cgData probemap file. This will read
@@ -307,12 +325,71 @@
      :refs refs
      :data-fn (fn [in] (probemap-data (line-seq in)))}))
 
+;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
+
+(defn- mutation-row [row]
+  (let [[sample chrom start end genes reference alt effect dna-af rna-af amino-acid]
+        (s/split row #"\t")]
+    {:sample sample
+     :chrom chrom
+     :chromStart (. Integer parseInt start)
+     :chromEnd (. Integer parseInt end)
+     :strand "+"
+     :genes (split-no-empty genes #",")
+     :reference reference
+     :alt alt
+     :effect effect
+     :dna-af (parseFloatNA dna-af)
+     :rna-af (parseFloatNA rna-af)
+     :amino-acid amino-acid}))
+
+(defn category-field [field-name rows]
+  (let [feature (ad-hoc-order {} rows)
+        row-vals (map (:order feature) rows)]
+    {:field field-name
+     :valueType "category"
+     :feature feature
+     :scores row-vals}))
+
+(defn mutation-data
+  "Return seq of probes entries as maps"
+  [rows]
+  (let [columns (sort-by chr-order (map mutation-row rows))] ; XXX move sort to cavm
+    {:fields
+     [(category-field "sampleID" (map :sample columns))
+      {:field "position"
+       :valueType "position"
+       :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
+      {:field "genes"
+       :valueType "genes"
+       :rows (map :genes columns)}
+      (category-field "reference" (map :reference columns))
+      (category-field "alt" (map :alt columns))
+      (category-field "effect" (map :effect columns))
+      {:field "dna-af"
+       :valueType "float"
+       :scores (map :dna-af columns)}
+      {:field "rna-af"
+       :valueType "float"
+       :scores (map :rna-af columns)}
+      (category-field "amino-acid" (map :amino-acid columns))]}))
+
+(defn mutation-file
+  "Return a map describing a cgData mutation file. This will read
+  any assoicated json."
+  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+  (let [metadata (cgdata-meta file)
+        refs (references docroot file metadata)]
+    {:metadata metadata
+     :refs refs
+     :data-fn (fn [in] (mutation-data (line-seq in)))}))
 ;
 ; cgdata file detector
 ;
 
 (def types
-  {"clinicalMatrix" ::clinical
+  {"mutationVector" ::mutation
+   "clinicalMatrix" ::clinical
    "clinicalFeature" ::feature
    "genomicMatrix" ::genomic
    "probeMap" ::probemap

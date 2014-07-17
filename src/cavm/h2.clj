@@ -1,6 +1,7 @@
 (ns cavm.h2
   (:require [korma.db :as kdb])
   (:require [korma.config :as kconf])
+  (:require [clojure.java.jdbc.deprecated :as jdbc])
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:require [honeysql.core :as hsql])
@@ -15,6 +16,9 @@
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
   (:require [taoensso.timbre :as timbre])
+  (:require [clojure.core.cache :as cache])
+  (:require [cavm.h2-unpack-rows :as unpack])
+  (:require [cavm.statement :refer [sql-stmt cached-statement]])
   (:gen-class))
 
 ;
@@ -71,7 +75,6 @@
 
 (declare dataset_source feature field scores dataset)
 
-(defentity cohorts)
 (defentity source)
 
 (defentity dataset
@@ -152,49 +155,6 @@
    `text` varchar (65535),
    `dataSubType` varchar (255))"])
 
-;
-; experiment in making a macro for metadata tables
-;
-
-;(defn- create-table [name cols]
-;  (format "CREATE TABLE IF NOT EXISTS `%s` (%s)"
-;          name
-;          cols))
-;
-;(defn- format-cols [cols]
-;  (->> cols
-;       (map (fn [[k v]] (format "`%s` %s" (name k) v)))
-;       (clojure.string/join ", ")))
-;
-;(defmacro defmeta [table & columns]
-;;  (let [cols (array-map (into {} (map vec (partition 2 columns))))]
-;  (let [kv (map vec (partition 2 columns))
-;        create-cmd (create-table
-;                     (str table "-table")
-;                     (format-cols kv))]
-;    nil))
-;
-;
-;(defmeta dataset
-;  :id "INT NOT NULL AUTO_INCREMENT PRIMARY KEY"
-;  :name "varchar(255) NOT NULL UNIQUE"
-;  :probeMap "varchar(255)"
-;  :shortTitle "varchar(255)"
-;  :longTitle "varchar(255)"
-;  :groupTitle "varchar(255)"
-;  :platform "varchar(255)"
-;  :security "varchar(255)"
-;  :gain "double DEFAULT NULL"
-;  :url "varchar(255) DEFAULT NULL"
-;  :description "longtext"
-;  :notes "longtext"
-;  :wrangling_procedure "longtext")
-
-;
-;
-;
-
-
 (def ^:private dataset-columns
   #{:name
     :probeMap
@@ -230,104 +190,42 @@
    :join dataset_source
    :columns dataset-columns})
 
-;
-; Probemap declarations
-;
-
-(declare probe probe_position probe_gene)
-(defentity probemap_source)
-
-(defentity probemap
-  (has-many probe)
-  (many-to-many source :probemap_source))
-
-(defentity probe
-  (belongs-to probemap)
-  (has-many probe_position)
-  (has-many probe_gene))
-
-(defentity probe_position
-  (belongs-to probe))
-
-(defentity probe_gene
-  (belongs-to probe))
-
-
-; XXX What should max file name length be?
-(def probemap-table
-  ["CREATE TABLE IF NOT EXISTS `probemap` (
-   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `name` VARCHAR(1000),
-   `assembly` VARCHAR(255),
-   `version` VARCHAR(255),
-   `text` VARCHAR(65535))"])
-
-(def probemap-source-table
-  ["CREATE TABLE IF NOT EXISTS `probemap_source` (
-   `probemap_id` INT NOT NULL,
-   `source_id` INT NOT NULL,
-   FOREIGN KEY (probemap_id) REFERENCES `probemap` (`id`),
-   FOREIGN KEY (source_id) REFERENCES `source` (`id`))"])
-
-(def ^:private probemap-columns
-  #{:name
-    :assembly
-    :version
-    :text})
-
-(def ^:private probemap-defaults
-  (into {} (map #(vector % nil) probemap-columns)))
-
-(def ^:private probemap-meta
-  {:table probemap
-   :defaults probemap-defaults
-   :join probemap_source
-   :columns probemap-columns})
-
-(def probe-table
-  ["CREATE TABLE IF NOT EXISTS `probe` (
-   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `probemap_id` INT NOT NULL,
-   `name` VARCHAR(1000) NOT NULL,
-   FOREIGN KEY (probemap_id) REFERENCES `probemap` (`id`) ON DELETE CASCADE)"])
-
 ; XXX CASCADE might perform badly. Might need to do this incrementally in application code.
-(def probe-position-table
-  ["CREATE TABLE IF NOT EXISTS `probe_position` (
-   `probemap_id` INT NOT NULL,
-   `probe_id` INT NOT NULL,
+(def field-position-table
+  ["CREATE TABLE IF NOT EXISTS `field_position` (
+   `field_id` INT NOT NULL,
+   `row` INT NOT NULL,
    `bin` INT,
    `chrom` VARCHAR(255) NOT NULL,
    `chromStart` INT NOT NULL,
    `chromEnd` INT NOT NULL,
    `strand` CHAR(1),
-   FOREIGN KEY (`probemap_id`) REFERENCES `probemap` (`id`) ON DELETE CASCADE,
-   FOREIGN KEY (`probe_id`) REFERENCES `probe` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS chrom_bin ON probe_position (`probemap_id`, `chrom`, `bin`)"])
+   FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"
+   "CREATE INDEX IF NOT EXISTS chrom_bin ON field_position (`field_id`, `chrom`, `bin`)"]) ; XXX index on row?
 
-(def probe-gene-table
-  ["CREATE TABLE IF NOT EXISTS `probe_gene` (
-   `probemap_id` INT NOT NULL,
-   `probe_id` INT NOT NULL,
+(def field-gene-table
+  ["CREATE TABLE IF NOT EXISTS `field_gene` (
+   `field_id` INT NOT NULL,
+   `row` INT NOT NULL,
    `gene` VARCHAR(255),
-    FOREIGN KEY (`probemap_id`) REFERENCES `probemap` (`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`probe_id`) REFERENCES `probe` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS probe_gene ON `probe_gene` (`probemap_id`, `gene`)"])
+    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"
+   "CREATE INDEX IF NOT EXISTS field_gene ON `field_gene` (`field_id`, `gene`)"]) ; XXX index on row?
 
 ;
 ; feature tables
 ;
 
 (def feature-table
-  ["CREATE TABLE IF NOT EXISTS `feature` (
-  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `field_id` int(11) NOT NULL,
-  `shortTitle` varchar(255),
-  `longTitle` varchar(255),
-  `priority` double DEFAULT NULL,
-  `valueType` varchar(255) NOT NULL,
-  `visibility` varchar(255),
-  FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
+  ["CREATE SEQUENCE IF NOT EXISTS FEATURE_IDS CACHE 2000"
+   "CREATE TABLE IF NOT EXISTS `feature` (
+   `id` INT NOT NULL DEFAULT NEXT VALUE FOR FEATURE_IDS PRIMARY KEY,
+   `field_id` int(11) NOT NULL,
+   `shortTitle` varchar(255),
+   `longTitle` varchar(255),
+   `priority` double DEFAULT NULL,
+   `valueType` varchar(255) NOT NULL,
+   `visibility` varchar(255),
+   FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
 (declare code)
 (defentity feature
@@ -374,17 +272,16 @@
 (defn- json-text [md]
   (assoc md :text (json/write-str md :escape-slash false)))
 
-(defn- load-probe-meta [feature-list]
-  (doseq [[field-id feat] feature-list]
-    (let [fmeta (normalize-meta feature-meta feat)
-          fmeta (merge fmeta {:field_id field-id})
-          feature-id (insert feature (values fmeta))
-          order (:order feat)]
-      (doseq [a-code (:state feat)]
-        (insert code (values {:feature_id feature-id
-                               :ordering (order a-code)
-                               :value a-code}))))))
-
+(defn load-probe-meta
+  [feature-seq field-id {:keys [order state] :as feat}]
+  (let [feature-id (feature-seq)
+        fmeta (merge (normalize-meta feature-meta feat)
+                     {:field_id field-id :id feature-id})]
+    (cons [:insert-feature (assoc fmeta :id feature-id)]
+          (for [a-code state]
+            [:insert-code {:feature_id feature-id
+                           :ordering (order a-code)
+                           :value a-code}]))))
 ;
 ;
 ;
@@ -400,12 +297,6 @@
     (delete scores (where {:id [in (scores-with-fields f)]}))
     (delete field_score (where {:field_id [in f]}))
     (delete field (where {:id [in f]}))))
-
-; Merge cohort, returning id
-(comment (defn- merge-cohort [cohort]
-  (exec-raw ["MERGE INTO cohorts(name) KEY(name) VALUES (?)" [cohort]])
-  (let [[{cid :ID}] (select cohorts (where {:name cohort}))]
-    cid)))
 
 ; Update meta entity record.
 (defn- merge-m-ent [m-ent ename metadata]
@@ -534,37 +425,16 @@
 
 (def score-encode score-encode-orig)
 
-;
-; Table writer that updates tables as rows are read.
-;
+(defn- encode-row [encode row]
+  (mapv encode (partition-all bin-size row)))
 
-; Insert probe & return id
-(defn- insert-field [exp name]
-  (let [id (insert field (values {:dataset_id exp :name name}))]
-    id))
-
-(defn- insert-scores [slist]
-  (let [score-id (insert scores (values {:scores slist}))]
-    score-id))
-
-(defn- insert-field-score [field-id i score-id]
-  (insert field_score (values {:field_id field-id :i i :scores_id score-id})))
-
-(defn- table-writer-default [dir f]
-  (f {:insert-field insert-field
-      :insert-score insert-scores
-      :insert-field-score insert-field-score
-      :encode score-encode
-      :key ahashable}))
+(defn- encode-fields [encoder matrix-fn]
+  (chunked-pmap #(assoc % :data (encode-row encoder (:scores %)))
+                (:fields (matrix-fn))))
 
 ;
-; Table writer that updates one table at a time by writing to temporary files.
-;
+; sequence utilities
 
-(defn- insert-field-out [^java.io.BufferedWriter out seqfn dataset-id name]
-  (let [field-id (seqfn)]
-    (.write out (str field-id "\t" dataset-id "\t" name "\n"))
-    field-id))
 
 ; This is a stateful iterator. It may not be idiomatic in clojure, but it's a
 ; quick way to get sequential ids deep in a call stack. Maybe we should instead
@@ -600,6 +470,120 @@
                         (exec-raw :results)
                         (#(map :I %))))))))
 
+;
+; Main loader routines. Here we build a sequence of vectors describing rows to be
+; inserted, e.g.
+; [:insert-score {:id 1 :scores #<byte[] [B@12345>}]
+;
+
+(defmulti load-field
+  (fn [dataset-id field-id column score-seq]
+    (-> column :valueType)))
+
+(defmethod load-field :default [dataset-id field-id {:keys [field data]} scores-seq]
+  (conj (mapcat (fn [[block i]]
+                  (let [scores-id (scores-seq)]
+                    [[:insert-score {:id scores-id :scores block}]
+                     [:insert-field-score {:field_id field-id
+                                           :i i
+                                           :scores_id scores-id}]]))
+                (mapv vector data (range)))
+        [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
+
+(defmethod load-field "position" [dataset-id field-id column scores-seq]
+  (conj (for [[position row] (mapv vector (:rows column) (range))]
+          [:insert-position (assoc position
+                                   :field_id field-id
+                                   :row row
+                                   :bin (calc-bin
+                                          (:chromStart position)
+                                          (:chromEnd position)))])
+        [:insert-field {:id field-id :dataset_id dataset-id :name (:field column)}]))
+
+(defmethod load-field "genes" [dataset-id field-id {:keys [field rows]} scores-seq]
+  (conj (mapcat (fn [[genes row]]
+                  (for [gene genes]
+                    [:insert-gene {:field_id field-id :row row :gene gene}]))
+                (mapv vector rows (range)))
+        [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
+
+(defn- inferred-type
+  "Replace the given type with the inferred type"
+  [fmeta row]
+  (assoc fmeta "valueType" (:valueType row)))
+
+(defn- load-field-feature [feature-seq field-seq scores-seq dataset-id field]
+  (let [field-id (field-seq)]
+    (concat (load-field dataset-id field-id field scores-seq)
+            (when-let [feature (:feature field)]
+              (load-probe-meta feature-seq field-id (inferred-type feature field))))))
+;
+;
+;
+; Table writer that updates tables as rows are read.
+;
+;
+
+(defn quote-ent [x]
+  (str \` (name x) \`))
+
+(defn insert-stmt ^cavm.statement.PStatement [table fields]
+   (let [field-str (clojure.string/join ", " (map quote-ent fields))
+         val-str (clojure.string/join ", " (repeat (count fields), "?"))
+         stmt-str (format "INSERT INTO %s(%s) VALUES (%s)"
+                      (quote-ent table) field-str val-str)]
+     (sql-stmt (jdbc/find-connection) stmt-str fields)))
+
+(def batch-size 1000)
+
+(defn- table-writer-default [dir dataset-id matrix-fn]
+  (with-open [code-stmt (insert-stmt :code [:value :id :ordering :feature_id])
+              position-stmt (insert-stmt :field_position
+                                         [:field_id :row :bin :chrom :chromStart
+                                          :chromEnd :strand])
+              gene-stmt (insert-stmt :field_gene [:field_id :row :gene])
+              feature-stmt (insert-stmt :feature [:id :field_id :shortTitle
+                                                  :longTitle :priority
+                                                  :valueType :visibility])
+              score-stmt (insert-stmt :scores [:id :scores])
+              field-stmt (insert-stmt :field [:id :dataset_id :name])
+              field-score-stmt (insert-stmt :field_score [:field_id :scores_id :i])]
+    (let [feature-seq (-> "FEATURE_IDS" sequence-seq seq-iterator)
+          field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
+          scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
+          ; XXX try memoization again?
+          ;        score-id-fn (memoize-key (comp ahashable first) scores-seq)
+
+          writer {:insert-field field-stmt
+                  :insert-score score-stmt
+                  :insert-field-score field-score-stmt
+                  :insert-position position-stmt
+                  :insert-feature feature-stmt
+                  :insert-code code-stmt
+                  :insert-gene gene-stmt}
+          fields (encode-fields score-encode matrix-fn)
+          inserts (mapcat #(load-field-feature
+                             feature-seq
+                             field-seq
+                             scores-seq
+                             dataset-id
+                             %)
+                          fields)]
+
+      (doseq [insert-batch (partition-all batch-size inserts)]
+        (jdbc/transaction
+          (doseq [[insert-type values] insert-batch]
+            ((writer insert-type) values)))))))
+;
+;
+; Table writer that updates one table at a time by writing to temporary files.
+;
+; Currently not functioning. Needs update for new schema.
+
+(defn- insert-field-out [^java.io.BufferedWriter out seqfn dataset-id name]
+  (let [field-id (seqfn)]
+    (.write out (str field-id "\t" dataset-id "\t" name "\n"))
+    field-id))
 
 (defn- insert-scores-out [^java.io.BufferedWriter out seqfn slist]
   (let [score-id (seqfn)]
@@ -609,85 +593,50 @@
 (defn- insert-field-score-out [^java.io.BufferedWriter out field-id i score-id]
   (.write out (str field-id "\t" i "\t" score-id "\n")))
 
-(defn- sequence-for-column [table column]
-  (-> (exec-raw
-        ["SELECT SEQUENCE_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=? AND COLUMN_NAME=?"
-         [table column]]
-        :results)
-      first
-      :SEQUENCE_NAME))
-
 (defn- read-from-tsv [table file & cols]
   (-> "INSERT INTO %s DIRECT SORTED SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
       (format table file (clojure.string/join "\t" cols))
       (exec-raw)))
 
-(defn- table-writer [dir f]
+(defn- tsv-encoder [scores]
+  (let [s (score-encode scores)]
+    {:scores s :hex (bytes->hex s)}))
+
+(defn- table-writer-csv [dir dataset-id matrix-fn]
   (let [field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
         scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
         ffname (fs/file dir "field.tmp") ; XXX add pid to these, or otherwise make them unique
         sfname (fs/file dir "scores.tmp")
-        fsfname (fs/file dir "field_score.tmp")]
+        fsfname (fs/file dir "field_score.tmp")
+
+        fields (encode-fields tsv-encoder matrix-fn)]
     (try
-      (let [finish
-            (with-open
-              [field-file (io/writer ffname)
-               scores-file (io/writer sfname)
-               field-score-file (io/writer fsfname)]
-              (f {:insert-field (partial insert-field-out field-file field-seq)
-                  :insert-score (partial insert-scores-out scores-file scores-seq)
-                  :insert-field-score (partial insert-field-score-out field-score-file)
-                  :encode (fn [scores] (let [s (score-encode scores)] {:scores s :hex (bytes->hex s)}))
-                  :key #(ahashable (:scores (first %)))}))]
-        (do (read-from-tsv "field" ffname "ID" "DATASET_ID" "NAME")
-          (read-from-tsv "scores" sfname "ID" "SCORES")
-          (read-from-tsv "field_score" fsfname "FIELD_ID" "I" "SCORES_ID"))
-        (finish))
+      (let [field-meta (with-open
+                         [field-file (io/writer ffname)
+                          scores-file (io/writer sfname)
+                          field-score-file (io/writer fsfname)]
+                         (let [writer
+                               {:insert-field (partial
+                                                insert-field-out
+                                                field-file field-seq)
+                                :insert-score (memoize-key
+                                                #(ahashable (:scores (first %)))
+                                                #(insert-scores-out scores-file scores-seq %))
+                                :insert-field-score (partial
+                                                      insert-field-score-out
+                                                      field-score-file)}]
+                           (reduce #(load-field-feature writer dataset-id %1 %2) '() fields)))]
+        (read-from-tsv "field" ffname "ID" "DATASET_ID" "NAME")
+        (read-from-tsv "scores" sfname "ID" "SCORES")
+        (read-from-tsv "field_score" fsfname "FIELD_ID" "I" "SCORES_ID")
+        (kdb/transaction
+          (load-probe-meta field-meta)))
       (finally
         (fs/delete ffname)
         (fs/delete sfname)
         (fs/delete fsfname)))))
 
-;
-; Main loader routines
-;
-
-(defn- insert-scores-block [writer block]
-  ((:insert-score writer) block))
-
-(defn- insert-unique-scores-fn [writer]
-  (memoize-key (:key writer) (partial insert-scores-block writer)))
-
-(defn- load-field [writer insert-scores-fn exp row]
-  (let [field-id ((:insert-field writer) exp (:field row))
-        blocks (:data row)]
-    (doseq [[block i] (mapv vector blocks (range))]
-      (let [score-id (insert-scores-fn block)]
-        ((:insert-field-score writer) field-id i score-id)))
-    field-id))
-
-(defn- inferred-type
-  "Replace the given type with the inferred type"
-  [fmeta row]
-  (assoc fmeta "valueType" (:valueType row)))
-
-(defn- load-field-feature [writer insert-scores-fn exp acc row]
-  (let [field-id (load-field writer insert-scores-fn exp row)]
-    (if-let [feature (:feature row)]
-      (cons [field-id (inferred-type feature row)] acc)
-      acc)))
-
-(defn- encode-scores [writer row]
-  (mapv (:encode writer) (partition-all bin-size row)))
-
-; insert matrix, updating scores, fields, and field-score tables
-(defn- load-exp-matrix [exp matrix-fn writer]
-  (let [{:keys [fields]} (matrix-fn)]
-    (let [scores-fn (insert-unique-scores-fn writer)
-          loadp (partial load-field-feature writer scores-fn exp)
-          fields (chunked-pmap #(assoc % :data (encode-scores writer (:scores %))) fields)
-          field-meta (reduce loadp '() fields)]
-      #(load-probe-meta field-meta))))
+(def table-writer #'table-writer-default)
 
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
   (defn- format-timestamp [timestamp]
@@ -703,9 +652,6 @@
                                 (union (queries
                                          (subselect
                                            dataset_source
-                                           (fields [:source_id]))
-                                         (subselect
-                                           probemap_source
                                            (fields [:source_id]))))))))))
 
 (defn- load-related-sources [table id-key id files]
@@ -733,29 +679,29 @@
 ; matrix-fn: function to return seq of data rows
 ; features: field metadata. Need a better name for this.
 
-(defn load-exp
+(defn load-dataset
   "Load matrix file and metadata. Skips the data load if file hashes are unchanged,
   and 'force' is false. Metadata is always updated."
   ([mname files metadata matrix-fn features]
-   (load-exp mname files metadata matrix-fn features false))
+   (load-dataset mname files metadata matrix-fn features false))
 
   ([mname files metadata matrix-fn features force]
    (profile
      :trace
      :dataset-load
-     (kdb/transaction
-       (let [exp (merge-m-ent dataset-meta mname metadata)
+     (let [dataset-id (merge-m-ent dataset-meta mname metadata)
              files (map fmt-time files)]
          (when (or force
-                   (not (= (set files) (set (related-sources dataset exp)))))
-           (p :dataset-clear
-              (clear-by-exp exp))
-           (p :dataset-sources
-              (load-related-sources
-                dataset_source :dataset_id exp files))
+                   (not (= (set files) (set (related-sources dataset dataset-id)))))
+           (kdb/transaction ; XXX add flag for when dataset is fully loaded. Maybe just updating timestamp?
+             (p :dataset-clear
+                (clear-by-exp dataset-id))
+             (p :dataset-sources
+                (load-related-sources
+                  dataset_source :dataset_id dataset-id files)))
            (p :dataset-table
-              (table-writer *tmp-dir*
-                            (partial load-exp-matrix exp matrix-fn)))))))))
+              (jdbc/with-connection (korma.db/get-connection @korma.db/_default)
+                (table-writer *tmp-dir* dataset-id matrix-fn))))))))
 
 ; XXX factor out common parts with merge, above?
 (defn del-exp [file]
@@ -764,68 +710,30 @@
       (clear-by-exp exp)
       (delete dataset (where {:id exp})))))
 
-;
-; probemap routines
-;
+; XXX probemap meta??? What do we do with it now?
 
-(defnp add-probemap-probe [pmid a-probe]
-  (let [pmp
-        (p :probemap-insert-probe
-           (insert probe (values {:probemap_id pmid
-                                  :name (a-probe :name)})))]
-    (p :probemap-insert-position
-       (insert probe_position (values {:probemap_id pmid
-                                       :probe_id pmp
-                                       :bin (calc-bin
-                                              (a-probe :chromStart)
-                                              (a-probe :chromEnd))
-                                       :chrom (a-probe :chrom)
-                                       :chromStart (a-probe :chromStart)
-                                       :chromEnd (a-probe :chromEnd)
-                                       :strand (a-probe :strand)})))
-    (p :probemap-insert-genes
-       (doseq [gene (a-probe :genes)]
-         (insert probe_gene (values {:probemap_id pmid
-                                     :probe_id pmp
-                                     :gene gene}))))))
-
-; kdb/transaction will create a closure of our parameters,
-; so we can't pass in the matrix seq w/o blowing the heap. We
-; pass in a function to return the seq, instead.
-(defn load-probemap
-  "Load probemap file and metadata. Skips the data load if the file hashes are unchanged,
-  and 'force' is false."
-  ([pname files metadata probes-fn]
-   (load-probemap pname files metadata probes-fn false))
-
-  ([pname files metadata probes-fn force]
-   (profile
-     :trace
-     :probemap-load
-     (kdb/transaction
-       (let [probes (probes-fn)
-             pmid (merge-m-ent probemap-meta pname metadata)
-             add-probe (partial add-probemap-probe pmid)
-             files (map fmt-time files)]
-         (when (or force
-                   (not (= (set files) (set (related-sources probemap pmid)))))
-           (p :probemap-sources
-              (load-related-sources
-                probemap_source :probemap_id pmid files))
-           (p :probemap-probes
-              (doseq [probe probes]
-                (add-probe probe)))))))))
+; XXX Horrible work-around to call .setConnectionCustomizerClassName. Need
+; to drop korma.
+(defn kcreate-db
+  [spec]
+  {:pool (if (:make-pool? spec)
+           (delay (let [cp (kdb/connection-pool spec)]
+                    (.setConnectionCustomizerClassName (:datasource cp)
+                                                       "conn_customizer")
+                    cp))
+           spec)
+   :options (kconf/extract-options spec)})
 
 (defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
                           :or {classname "org.h2.Driver"
                                subprotocol "h2"
                                delimiters "`"
                                make-pool? true}}]]
-  (kdb/create-db  {:classname classname
-                   :subprotocol subprotocol
-                   :subname file
-                   :delimiters delimiters
-                   :make-pool? make-pool?}))
+  (kcreate-db {:classname classname
+               :subprotocol subprotocol
+               :subname file
+               :delimiters delimiters
+               :make-pool? make-pool?}))
 
 (defmacro with-db [db & body]
   `(kdb/with-db ~db ~@body))
@@ -909,7 +817,7 @@
         (select dataset (fields "id") (where {:name (str dname)}))] ; XXX shoul str be here, or higher in the call stack?
     id))
 
-; merge bin number and bin offset for a sample.
+; merge bin number and bin offset for a row
 (defn- merge-bin-off [{i :i :as row}]
   (merge row
          {:bin (quot i bin-size)
@@ -923,7 +831,7 @@
 
 ; Gets called once for each bin in the request.
 ; order is row -> order in output buffer.
-; bin is the bin for the given set of samples.
+; bin is the bin for the given set of rows
 ; rows is ({:I 12 :bin 1 :off 1}, ... ), where all :bin are the same
 (defn- pick-rows-fn [[bin rows]]
   [bin (partial ashuffle-float
@@ -953,16 +861,19 @@
 
 ; XXX performance of the :in clause?
 ; XXX change "gene" to "field"
-(def field-query
-  "SELECT  name, i, scores FROM
-     (SELECT * FROM (SELECT  `field`.`name`, `field`.`id`  FROM `field`
-       INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
-       WHERE (`field`.`dataset_id` = ?)) P
-   LEFT JOIN `field_score` ON P.id = `field_score`.`field_id` WHERE `field_score`.`i` IN (%s))
+(def dataset-fields-query
+  "SELECT  name, i, scores
+   FROM (SELECT *
+         FROM (SELECT  `field`.`name`, `field`.`id`
+               FROM `field`
+               INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
+               WHERE (`field`.`dataset_id` = ?)) P
+         LEFT JOIN `field_score` ON P.id = `field_score`.`field_id`
+         WHERE `field_score`.`i` IN (%s))
    LEFT JOIN `scores` ON `scores_id` = `scores`.`id`")
 
 (defn select-scores-full [dataset-id columns bins]
-  (let [q (format field-query
+  (let [q (format dataset-fields-query
                   (clojure.string/join ","
                                        (repeat (count bins) "?")))
         c (to-array (map str columns))
@@ -972,8 +883,6 @@
 ; Returns rows from (dataset-id column-name) matching
 ; values. Returns a hashmap for each matching  row.
 ; { :i     The implicit index in the column as stored on disk.
-;   :bin   The bin number on disk.
-;   :off   The offset in the bin number.
 ;   ;order The order of the row the result set.
 ;   :value The value of the row.
 ; }
@@ -990,7 +899,7 @@
          (group-by :value)
          (#(map (fn [g] (get % g [nil])) values)) ; arrange by output order.
          (apply concat)                           ; flatten groups.
-         (mapv #(assoc %2 :order %1) (range)))))  ; assoc row output order. 
+         (mapv #(assoc %2 :order %1) (range)))))  ; assoc row output order.
 
 (defn float-nil [x]
   (when x (float x)))
@@ -1007,18 +916,18 @@
   (let [{samples 'samples table 'table columns 'columns} req
         dataset-id (dataset-by-name table)
         samp->code (codes-for-values dataset-id "sampleID" samples)
-        order (map (comp float-nil samp->code) samples)     ; codes in request order
+        order (mapv (comp float-nil samp->code) samples)     ; codes in request order
         rows (rows-matching dataset-id "sampleID" order)
         rows-to-copy (->> rows
                           (filter :value)
                           (mapv merge-bin-off))
 
-        bins (map :bin rows-to-copy)            ; list of bins to pull.
+        bins (mapv :bin rows-to-copy)            ; list of bins to pull.
         bfns (pick-rows-fns rows-to-copy)]   ; make fns that map from input bin to
                                                 ; output buffer, one fn per input bin.
 
     (-> (select-scores-full dataset-id columns (distinct bins))
-        (#(map cvt-scores %))
+        (#(mapv cvt-scores %))
         (build-score-arrays bfns (col-arrays columns (count rows))))))
 
 ; Each req is a map of
@@ -1041,11 +950,8 @@
     (exec-statements field-table)
     (exec-statements feature-table)
     (exec-statements code-table)
-    (exec-statements probemap-table)
-    (exec-statements probemap-source-table)
-    (exec-statements probe-table)
-    (exec-statements probe-position-table)
-    (exec-statements probe-gene-table)))
+    (exec-statements field-position-table)
+    (exec-statements field-gene-table)))
 
 ;
 ; add TABLE handling for honeysql
@@ -1088,10 +994,7 @@
 (extend-protocol XenaDb H2Db
   (write-matrix [this mname files metadata data-fn features always]
     (with-db (:db this)
-      (load-exp mname files metadata data-fn features always)))
-  (write-probemap [this pname files metadata data-fn always]
-    (with-db (:db this)
-      (load-probemap pname files metadata data-fn always)))
+      (load-dataset mname files metadata data-fn features always)))
   (run-query [this query]
     (with-db (:db this)
       (run-query query)))
