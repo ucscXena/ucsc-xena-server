@@ -1008,3 +1008,55 @@
   (let [db (apply create-db args)]
     (with-db db (create))
     (H2Db. db)))
+
+;
+; Support for pulling a row from a blob column. Implements
+; an LRU cache of retrieved blobs.
+;
+
+(def field-bin-query
+  (cached-statement
+    "SELECT `scores` FROM `field_score`
+     JOIN `scores` ON `scores_id` = `scores`.`id`
+     WHERE `field_id` = ? AND `i` = ?"
+    true))
+
+(def feature-value-query
+  (cached-statement
+    "SELECT `value` FROM `feature`
+     JOIN `code` ON `feature`.`id` = `feature_id`
+     WHERE `field_id` = ? AND `ordering` = ?"
+    true))
+
+(defn fetch-bin [conn field-id bin]
+  (-> (field-bin-query conn field-id bin)
+      first
+      :scores ; XXX check for null before trying to unpack
+      bytes-to-floats))
+
+(def cache-size (int (/ (* 128 1024) bin-size))) ; 128k bin cache
+
+(def bin-cache-state (atom (cache/lru-cache-factory {} :threshold cache-size)))
+
+(defn update-bin-cache [c conn args]
+  (if (cache/has? c args)
+    (cache/hit c args)
+    (cache/miss c args (apply fetch-bin conn args))))
+
+(defn bin-cache [conn & args]
+  (cache/lookup (swap! bin-cache-state update-bin-cache conn args) args))
+
+(defn lookup-row [conn field-id row]
+  (let [^floats bin (bin-cache conn field-id (quot row bin-size))
+        i (rem row bin-size)]
+    (aget bin i)))
+
+(defn lookup-value [conn field-id row]
+  (let [ordering (int (lookup-row conn field-id row))]
+    (-> (feature-value-query conn field-id ordering)
+        first
+        :value))) ; XXX check for null before trying to unpack
+
+
+(unpack/set-lookup-row! lookup-row)
+(unpack/set-lookup-value! lookup-value)
