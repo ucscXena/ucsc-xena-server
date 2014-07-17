@@ -31,6 +31,6 @@
                  [org.clojure/tools.logging  "0.3.0"]
                  [com.taoensso/timbre  "3.2.0"]]
   :javac-options ["-target" "1.6" "-source" "1.6"]
-  :aot [cavm.h2-binary cavm.version]
+  :aot [cavm.h2-binary cavm.version cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
   :main cavm.core)
