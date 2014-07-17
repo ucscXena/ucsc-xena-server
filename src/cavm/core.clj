@@ -137,22 +137,8 @@
   (when (not (.exists (io/file dir)))
     (str "Unable to create directory: " dir)))
 
-; Use MVCC so our bulk writes don't block readers.
-;
-; Use LOG=0 because otherwise bulk writes are pathologically slow, and we don't
-; need to worry about dropping data. A problem with LOG=0 is that we can't tell
-; if the db shut down cleanly, so we don't know when to recover. We might be able
-; to partly mitigate this by periodically closing & opening the db (maybe once or
-; twice a day?). We shouldn't lose transactions committed before the last close,
-; and we can detect files that we've lost due to unclean shutdown.
-;
-; UNDO_LOG allows us to add a dataset atomically (i.e. rollback on error).
-;
-; A more idiomatic usage of h2 would be to break the bulk write into chunks and use
-; LOG=1 or LOG=2. This would require building another "transaction" system over
-; the transaction system, flagging incompletely loaded datasets such that readers
-; could filter those results out of their queries. It would add a lot of complexity.
-(def default-h2-opts ";CACHE_SIZE=65536;UNDO_LOG=1;LOG=0;MVCC=TRUE")
+; Enable transaction log, rollback log, and MVCC (so we can load w/o blocking readers).
+(def default-h2-opts ";CACHE_SIZE=65536;UNDO_LOG=1;LOG=1;MVCC=TRUE")
 
 ; Might want to allow more piecemeal setting of options, by
 ; parsing them & allowing cli overrides. For now, if the
