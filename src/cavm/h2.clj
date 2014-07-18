@@ -227,6 +227,15 @@
    `visibility` varchar(255),
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
+;
+; blob unpacking
+;
+
+(def unpack-aliases
+  ["CREATE ALIAS IF NOT EXISTS unpack FOR \"unpack_rows.unpack\""
+   "CREATE ALIAS IF NOT EXISTS unpackCode FOR \"unpack_rows.unpackCode\""
+   "CREATE ALIAS IF NOT EXISTS unpackValue FOR \"unpack_rows.unpackValue\""])
+
 (declare code)
 (defentity feature
   (belongs-to field)
@@ -951,7 +960,8 @@
     (exec-statements feature-table)
     (exec-statements code-table)
     (exec-statements field-position-table)
-    (exec-statements field-gene-table)))
+    (exec-statements field-gene-table)
+    (exec-statements unpack-aliases)))
 
 ;
 ; add TABLE handling for honeysql
