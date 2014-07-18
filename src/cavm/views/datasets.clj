@@ -162,11 +162,14 @@
 (defn- simple-as-response [this ctx]
   (liberator.representation/as-response (str this) ctx))
 
-(extend Double liberator.representation/Representation
+(extend Number liberator.representation/Representation
   {:as-response simple-as-response})
 
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/json"}})
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/edn"}})
+; (liberator.representation/as-response 1 {:representation {:media-type "application/edn"}})
+; (liberator.representation/as-response (Integer. 1) {:representation {:media-type "application/edn"}})
+; (liberator.representation/as-response (Float. 1.0) {:representation {:media-type "application/edn"}})
 
 ;
 ;
