@@ -1,6 +1,7 @@
 (ns cavm.query.expression
   (:require [clojure.edn :as edn])
   (:require [honeysql.types :as hsqltypes])
+  (:require [taoensso.timbre :as timbre :refer [info]])
   (:refer-clojure :exclude [eval letfn]))
 
 (def eval)
@@ -38,17 +39,19 @@
       (contains? specialfns func) (func node scope)
       :else (apply func (map #(eval % scope) (rest node))))))
 
+(def as-is #{keyword? string? #(instance? honeysql.types.SqlCall %)})
+
 (defn eval [node scope]
   (cond
     (symbol? node) ((first (filter #(contains? % node) scope)) node)
     (seq? node) (fn-node node scope)
     (instance? Number node) (double node)
-    (keyword? node) node
-    (string? node) node
+    (some #(% node) as-is) node
     ; due to weird (empty <clojure.lang.MapEntry>) behavior, we have
     ; to handle map? separate from coll?
     (map? node) (into {} (mapv #(eval (vec %) scope) node))
-    (coll? node) (into (empty node) (mapv #(eval % scope) node))))
+    (coll? node) (into (empty node) (mapv #(eval % scope) node))
+    :else (info "Unknown node type " (type node))))
 
 (defn expression [exp & globals]
   (eval (edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}} exp) (cons specials globals)))
