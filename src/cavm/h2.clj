@@ -1039,10 +1039,10 @@
     true))
 
 (defn fetch-bin [conn field-id bin]
-  (-> (field-bin-query conn field-id bin)
-      first
-      :scores ; XXX check for null before trying to unpack
-      bytes-to-floats))
+  (when-let [scores (-> (field-bin-query conn field-id bin)
+                        first
+                        :scores)]
+    (bytes-to-floats scores)))
 
 (def cache-size (int (/ (* 128 1024) bin-size))) ; 128k bin cache
 
@@ -1059,13 +1059,13 @@
 (defn lookup-row [conn field-id row]
   (let [^floats bin (bin-cache conn field-id (quot row bin-size))
         i (rem row bin-size)]
-    (aget bin i)))
+    (when bin (aget bin i))))
 
 (defn lookup-value [conn field-id row]
-  (let [ordering (int (lookup-row conn field-id row))]
-    (-> (feature-value-query conn field-id ordering)
-        first
-        :value))) ; XXX check for null before trying to unpack
+  (let [ordering (lookup-row conn field-id row)]
+    (when ordering
+      (when-let [value (feature-value-query conn field-id (int ordering))]
+        (-> value first :value)))))
 
 
 (unpack/set-lookup-row! lookup-row)

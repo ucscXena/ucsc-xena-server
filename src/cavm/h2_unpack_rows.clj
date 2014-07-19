@@ -29,7 +29,10 @@
 (defn- -unpackValue [conn field-id row]
   (lookup-value conn field-id row))
 
+; Return types must be boxed to support NULL. Primitive types will throw if we
+; return nil.
+; Alternatively, we could return NaN. h2 probably boxes the returns, anyway.
 (gen-class :name unpack_rows
-           :methods [^:static [unpackCode [java.sql.Connection int int] int]
-                     ^:static [unpack [java.sql.Connection int int] float]
+           :methods [^:static [unpackCode [java.sql.Connection int int] java.lang.Integer]
+                     ^:static [unpack [java.sql.Connection int int] java.lang.Float]
                      ^:static [unpackValue [java.sql.Connection int int] String]])
