@@ -175,7 +175,7 @@
 ;
 ; collect data in order of columns
 ; copied from cavm.query.sources
-(defn- collect [{data 'data columns 'columns}]
+(defn- collect [{:keys [data columns]}]
   (map data columns))
 
 ; XXX map vec is being used to convert the [F so core.matrix can work on them.

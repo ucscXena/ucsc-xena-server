@@ -922,7 +922,7 @@
 ; Copy to output buffer
 
 (defn genomic-read-req [req]
-  (let [{samples 'samples table 'table columns 'columns} req
+  (let [{:keys [samples table columns]} req
         dataset-id (dataset-by-name table)
         samp->code (codes-for-values dataset-id "sampleID" samples)
         order (mapv (comp float-nil samp->code) samples)     ; codes in request order
@@ -940,13 +940,13 @@
         (build-score-arrays bfns (col-arrays columns (count rows))))))
 
 ; Each req is a map of
-;  'table "tablename"
-;  'columns '("column1" "column2")
-;  'samples '("sample1" "sample2")
+;  :table "tablename"
+;  :columns '("column1" "column2")
+;  :samples '("sample1" "sample2")
 ; We merge into 'data the columns that we can resolve, like
-;  'data { 'column1 [1.1 1.2] 'column2 [2.1 2.2] }
+;  :data { 'column1 [1.1 1.2] 'column2 [2.1 2.2] }
 (defn genomic-source [reqs]
-  (map #(update-in % ['data] merge (genomic-read-req %)) reqs))
+  (map #(update-in % [:data] merge (genomic-read-req %)) reqs))
 
 (defn create[]
   (kdb/transaction
