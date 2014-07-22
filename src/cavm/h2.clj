@@ -18,7 +18,7 @@
   (:require [taoensso.timbre :as timbre])
   (:require [clojure.core.cache :as cache])
   (:require [cavm.h2-unpack-rows :as unpack])
-  (:require [cavm.statement :refer [sql-stmt cached-statement]])
+  (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
   (:gen-class))
 
 ;
@@ -543,6 +543,10 @@
                       (quote-ent table) field-str val-str)]
      (sql-stmt (jdbc/find-connection) stmt-str fields)))
 
+(defn sequence-stmt ^cavm.statement.PStatement [db-seq]
+  (sql-stmt-result (jdbc/find-connection)
+                         (format "SELECT NEXT VALUE FOR %s AS i" db-seq)))
+
 (def batch-size 1000)
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
@@ -556,10 +560,13 @@
                                                   :valueType :visibility])
               score-stmt (insert-stmt :scores [:id :scores])
               field-stmt (insert-stmt :field [:id :dataset_id :name])
-              field-score-stmt (insert-stmt :field_score [:field_id :scores_id :i])]
-    (let [feature-seq (-> "FEATURE_IDS" sequence-seq seq-iterator)
-          field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
-          scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
+              field-score-stmt (insert-stmt :field_score [:field_id :scores_id :i])
+              field-seq-stmt (sequence-stmt "FIELD_IDS")
+              scores-seq-stmt (sequence-stmt "SCORES_IDS")
+              feature-seq-stmt (sequence-stmt "FEATURE_IDS")]
+    (let [feature-seq #(-> (feature-seq-stmt []) first :i)
+          field-seq #(-> (field-seq-stmt []) first :i)
+          scores-seq #(-> (scores-seq-stmt []) first :i)
           ; XXX try memoization again?
           ;        score-id-fn (memoize-key (comp ahashable first) scores-seq)
 
