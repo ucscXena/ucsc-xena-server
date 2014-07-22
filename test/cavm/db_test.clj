@@ -68,12 +68,12 @@
           probes (cdb/run-query db {:select [:*] :from [:field]})
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
           genes (cdb/run-query db {:select [:*] :from [:field_gene]})
-          data (cdb/fetch db [{'table "id1"
-                               'columns ["probe1" "probe2"]
-                               'samples ["sample2" "sample1"]}])
-          data2 (cdb/fetch db [{'table "id1"
-                                'columns ["probe1" "probe2"]
-                                'samples ["sample1" "sample3"]}])]
+          data (cdb/fetch db [{:table "id1"
+                               :columns ["probe1" "probe2"]
+                               :samples ["sample2" "sample1"]}])
+          data2 (cdb/fetch db [{:table "id1"
+                                :columns ["probe1" "probe2"]
+                                :samples ["sample1" "sample3"]}])]
       (ct/is (= exp [{:NAME "id1"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
@@ -105,11 +105,11 @@
                  {:FIELD_ID 3 :ROW 1 :GENE "ACK"}
                  {:FIELD_ID 3 :ROW 1 :GENE "BLAH"}]))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data) 'data) ["probe1" "probe2"])))]
+            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
         (ct/is (nearly-equal 0.0001 probe1 [1.2 1.1]))
         (ct/is (nearly-equal 0.0001 probe2 [2.2 2.1])))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data2) 'data) ["probe1" "probe2"])))]
+            (vec (map #(into [] %) (map ((first data2) :data) ["probe1" "probe2"])))]
         (ct/is (nearly-equal 0.0001 probe1 [1.1 Double/NaN]))
         (ct/is (nearly-equal 0.0001 probe2 [2.1 Double/NaN]))))))
 
@@ -272,12 +272,12 @@
                    (cdb/run-query db)
                    (#(for [{:keys [ORDERING VALUE]} %] [ORDERING VALUE]))
                    (into {}))]
-    (->> [{'table table
-           'columns [field]
-           'samples samples}]
+    (->> [{:table table
+           :columns [field]
+           :samples samples}]
          (cdb/fetch db)
          (first)
-         (#(% 'data))
+         (#(% :data))
          (#(% field))
          (into [])
          (map (comp codes int)))))
