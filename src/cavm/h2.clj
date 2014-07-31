@@ -489,15 +489,16 @@
   (fn [dataset-id field-id column score-seq]
     (-> column :valueType)))
 
-(defmethod load-field :default [dataset-id field-id {:keys [field data]} scores-seq]
-  (conj (mapcat (fn [[block i]]
-                  (let [scores-id (scores-seq)]
-                    [[:insert-score {:id scores-id :scores block}]
-                     [:insert-field-score {:field_id field-id
-                                           :i i
-                                           :scores_id scores-id}]]))
-                (mapv vector data (range)))
-        [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
+(defmethod load-field :default [dataset-id field-id {:keys [field rows]} scores-seq]
+  (let [data (encode-row score-encode rows)]
+    (conj (mapcat (fn [[block i]]
+                    (let [scores-id (scores-seq)]
+                      [[:insert-score {:id scores-id :scores block}]
+                       [:insert-field-score {:field_id field-id
+                                             :i i
+                                             :scores_id scores-id}]]))
+                  (mapv vector data (range)))
+          [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
 
 (defmethod load-field "position" [dataset-id field-id column scores-seq]
   (conj (for [[position row] (mapv vector (:rows column) (range))]
@@ -577,14 +578,14 @@
                   :insert-feature feature-stmt
                   :insert-code code-stmt
                   :insert-gene gene-stmt}
-          fields (encode-fields score-encode matrix-fn)
-          inserts (mapcat #(load-field-feature
-                             feature-seq
-                             field-seq
-                             scores-seq
-                             dataset-id
-                             %)
-                          fields)]
+          inserts (apply concat
+                         (chunked-pmap #(load-field-feature
+                                          feature-seq
+                                          field-seq
+                                          scores-seq
+                                          dataset-id
+                                          %)
+                                       (:fields (matrix-fn))))]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
         (jdbc/transaction
