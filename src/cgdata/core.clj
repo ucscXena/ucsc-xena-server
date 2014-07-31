@@ -281,7 +281,7 @@
 ;
 
 (defn- split-no-empty [in pat] ; XXX Does this need to handle quotes?
-  (filter #(not (= "" %)) (s/split in pat)))
+  (filter #(not (= "" %)) (map s/trim (s/split in pat))))
 
 (defn- probemap-row [row]
   (let [[probe genes chrom start end strand] (s/split row #"\t")]
