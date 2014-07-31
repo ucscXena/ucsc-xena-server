@@ -21,6 +21,14 @@
 (defn- tabbed [line]
   (s/split line #"\t"))
 
+(defn- not-blank? [line]
+  (not (re-matches #"\s*" line)))
+
+(defn- comment? [line]
+  (re-matches #"\s*#.*" line))
+
+(def not-comment? (comp not comment?))
+
 ;
 ; cgData metadata
 ;
@@ -325,6 +333,10 @@
      :refs refs
      :data-fn (fn [in] (probemap-data (line-seq in)))}))
 
+;
+; mutationVector
+;
+
 ;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
 
 (defn- mutation-row [row]
@@ -343,36 +355,143 @@
      :rna-af (parseFloatNA rna-af)
      :amino-acid amino-acid}))
 
-(defn category-field [field-name rows]
-  (let [feature (ad-hoc-order {} rows)
-        row-vals (map (:order feature) rows)]
-    {:field field-name
+(defmulti field-spec (fn [field _] (:type field)))
+
+(defmethod field-spec :category
+  [{:keys [name i]} rows]
+  (let [row-vals (mapv #(s/trim (% i)) rows)
+        feature (ad-hoc-order {} row-vals)]
+    {:field name
      :valueType "category"
      :feature feature
-     :scores row-vals}))
+     :rows (mapv (:order feature) row-vals)}))
+
+(defmethod field-spec :float
+  [{:keys [name i]} rows]
+  {:field name
+   :valueType "float" ; XXX why strings instead of keywords?
+   :rows (mapv #(parseFloatNA (% i)) rows)}) ;
+
+(defmethod field-spec :gene
+  [{:keys [name i]} rows]
+  {:field name
+   :valueType "genes"
+   :rows (mapv #(split-no-empty (% i) #",") rows)})
+
+(let [parsers
+      {:chrom s/trim
+       :chromStart #(. Integer parseInt (s/trim %))
+       :chromEnd #(. Integer parseInt (s/trim %))
+       :strand s/trim}]
+
+  (defmethod field-spec :position
+    [{:keys [name columns]} rows] ; XXX rename columns to fields
+    (let [tlist (mapv :header columns)   ; vec of field header
+          ilist (mapv :i columns)      ; vec of indexes in row
+          plist (mapv #(parsers (:header %)) columns)] ; vec of parsers for fields
+      {:field name
+       :valueType "position"
+       :rows (mapv #(apply merge
+                           (mapv (fn [t i parse] {t (parse (% i))}) tlist ilist plist))
+                   rows)})))
+
+(def mutation-column-types
+  {:sampleID :category
+   :chrom :category
+   :ref :category
+   :chromStart :float
+   :chromEnd :float
+   :position :position
+   :genes :gene
+   :reference :category
+   :alt :category
+   :effect :category
+   :dna-vaf :float
+   :rna-vaf :float
+   :amino-acid :category})
+
+(def mutation-columns
+  {#"(?i)sample[ _]*(name|id)?" :sampleID
+   #"(?i)chr(om)?" :chrom
+   #"(?i)start" :chromStart
+   #"(?i)end" :chromEnd
+   #"(?i)genes?" :genes
+   #"(?i)alt(ernate)?" :alt
+   #"(?i)ref(erence)?" :ref
+   #"(?i)effect" :effect
+   #"(?i)dna[-_ ]*v?af" :dna-vaf
+   #"(?i)rna[-_ ]*v?af" :rna-vaf
+   #"(?i)amino[-_ ]*acid[-_ ]*(change)?" :amino-acid})
+
+(def mutation-default-columns
+  [:sampleID :chrom :chromStart :chromEnd :genes :ref :alt :effect :dna-vaf :rna-vaf :amino-acid])
+
+(defn columns-from-header [header patterns]
+  (when header
+    (map (fn [c] (second (first (filter #(re-find (first %) c) patterns))))
+         (tabbed header))))
+
+(defn pick-header
+  "Pick first non-blank line if it starts with #. Don't scan more
+  than 20 lines."
+  [lines]
+  (when-let [header (first (filter not-blank? (take 20 lines)))]
+    (when (comment? header)
+      header)))
+
+(def position-columns #{:chrom :chromStart :chromEnd :strand})
+
+; [{:name :chrom :i 2} {:name :chromStart :i 3}.. ]
+; -> [{:name :position :columns ({:name :chrom :i 2}... )}...]
+(defn find-position-field
+  "Rewrite a list of column objects having a :header attribute,
+  collating chrom position columns into a single object. Only
+  checks for a single set of position columns. Duplicates are
+  passed through."
+  [columns]
+  (let [unique (into {} (for [[k v] (group-by :header columns)] [k (first v)]))
+        matches (select-keys unique position-columns)
+        match-set (set (vals matches))]
+    (if (every? matches [:chrom :chromStart :chromEnd])
+      (into [{:type :position :header :position :columns match-set}]
+            (filter (comp not match-set) columns))
+      columns)))
+
+(defn numbered-suffix [n]
+  (if (== 0 n) "" (str " (" n ")")))
+
+(defn add-field [fields field]
+  (update-in fields [field] (fnil inc 1)))
+
+(defn assign-unique-names
+  ([fields] (assign-unique-names fields {}))
+  ([fields counts]
+   (when-let [{header :header :as field} (first fields)]
+       (cons (assoc field :name (str (name header) (numbered-suffix (counts header 0))))
+             (lazy-seq (assign-unique-names (rest fields)
+                                            (add-field counts header)))))))
+
+(defn resort [rows order]
+  (mapv rows order))
 
 (defn mutation-data
-  "Return seq of probes entries as maps"
+  "Return the fields of a mutationVector file."
   [rows]
-  (let [columns (sort-by chr-order (map mutation-row rows))] ; XXX move sort to cavm
-    {:fields
-     [(category-field "sampleID" (map :sample columns))
-      {:field "position"
-       :valueType "position"
-       :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
-      {:field "genes"
-       :valueType "genes"
-       :rows (map :genes columns)}
-      (category-field "reference" (map :reference columns))
-      (category-field "alt" (map :alt columns))
-      (category-field "effect" (map :effect columns))
-      {:field "dna-af"
-       :valueType "float"
-       :scores (map :dna-af columns)}
-      {:field "rna-af"
-       :valueType "float"
-       :scores (map :rna-af columns)}
-      (category-field "amino-acid" (map :amino-acid columns))]}))
+  (let [header (-> (or (columns-from-header (pick-header rows) mutation-columns)
+                        mutation-default-columns)
+                    (#(for [[c i] (map vector % (range))]
+                        {:header c :type (mutation-column-types c) :i i}))
+                    find-position-field
+                    assign-unique-names)
+         data-rows (map tabbed (filter #(and (not-blank? %)
+                                             (not-comment? %)) rows))
+         fields (mapv #(field-spec % data-rows) header)]
+    (if (= "position" (get-in fields [0 :valueType]))
+      (let [pos-rows (get-in fields [0 :rows])
+            order (sort-by #(chr-order (pos-rows %)) (range (count pos-rows)))
+            sorted-fields (map #(update-in % [:rows] resort order) fields)]
+        {:fields sorted-fields})
+      {:fields fields})))
 
 (defn mutation-file
   "Return a map describing a cgData mutation file. This will read

@@ -32,7 +32,7 @@
       "id1"
       [{:name "id1" :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0) :hash "1234"}]
       {}
-      (fn [] {:fields [{:scores [0 1]
+      (fn [] {:fields [{:rows [0 1]
                         :field "sampleID"
                         :valueType "category"
                         :feature {:state ["sample1" "sample2"]
@@ -51,8 +51,8 @@
                         :valueType "genes"
                         :rows [["FOXM1" "CUL2"]
                                ["ACK" "BLAH"]]}
-                       {:scores [1.1 1.2] :field "probe1"}
-                       {:scores [2.1 2.2] :field "probe2"}]
+                       {:rows [1.1 1.2] :field "probe1"}
+                       {:rows [2.1 2.2] :field "probe2"}]
                :samples ["sample1" "sample2"]})
       nil
       false)
@@ -286,7 +286,7 @@
   (ct/testing "cgdata mutation"
     (loader db detector docroot "test/cavm/test_inputs/mutation")
     (let [effect (get-categorical db "mutation" "effect" ["sample1" "sample2"])
-          reference (get-categorical db "mutation" "reference" ["sample1" "sample2"])
+          reference (get-categorical db "mutation" "ref" ["sample1" "sample2"])
           alt (get-categorical db "mutation" "alt" ["sample1" "sample2"])
           amino-acid (get-categorical db "mutation" "amino-acid" ["sample1" "sample2"])]
 
