@@ -421,7 +421,7 @@
   [lines]
   (when-let [header (first (filter not-blank? (take 20 lines)))]
     (when (comment? header)
-      header)))
+      (subs header (inc (.indexOf header "#"))))))
 
 (def position-columns #{:chrom :chromStart :chromEnd :strand})
 
