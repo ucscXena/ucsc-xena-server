@@ -339,22 +339,6 @@
 
 ;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
 
-(defn- mutation-row [row]
-  (let [[sample chrom start end genes reference alt effect dna-af rna-af amino-acid]
-        (s/split row #"\t")]
-    {:sample sample
-     :chrom chrom
-     :chromStart (. Integer parseInt start)
-     :chromEnd (. Integer parseInt end)
-     :strand "+"
-     :genes (split-no-empty genes #",")
-     :reference reference
-     :alt alt
-     :effect effect
-     :dna-af (parseFloatNA dna-af)
-     :rna-af (parseFloatNA rna-af)
-     :amino-acid amino-acid}))
-
 (defmulti field-spec (fn [field _] (:type field)))
 
 (defmethod field-spec :category
