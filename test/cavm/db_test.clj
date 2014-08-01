@@ -297,6 +297,25 @@
       (ct/is (= alt ["A" "T" "T"]))
       (ct/is (= amino-acid ["R151W" "F1384L" "R1011K"])))))
 
+(defn mutation2 [db]
+  (ct/testing "cgdata mutation"
+    (loader db detector docroot "test/cavm/test_inputs/mutation2")
+    (let [effect (get-categorical db "mutation2" "effect" ["TCGA-F2-6879-01"])
+          reference (get-categorical db "mutation2" "ref" ["TCGA-F2-6879-01"])
+          alt (get-categorical db "mutation2" "alt" ["TCGA-F2-6879-01"])
+          amino-acid (get-categorical db "mutation2" "amino-acid" ["TCGA-F2-6879-01"])]
+
+      (ct/is (= effect ["Splice_Site"
+                        "Missense_Mutation"
+                        "RNA"
+                        "Missense_Mutation"
+                        "Missense_Mutation"
+                        "Missense_Mutation"
+                        "RNA"
+                        "Silent"
+                        "Missense_Mutation"]))
+      (ct/is (= reference ["C" "A" "A" "G" "T" "C" "T" "C" "G"]))
+      (ct/is (= alt ["T" "T" "G" "A" "C" "A" "C" "T" "A"])))))
 ; XXX test that cgdata defaults to genomicMatrix if not specified
 
 ; clojure.test fixtures don't work with nested tests, so we
@@ -305,7 +324,7 @@
   (doseq [t [matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3
              detect-cgdata-probemap probemap1
              detect-cgdata-clinical clinical1
-             detect-cgdata-mutation mutation1]]
+             detect-cgdata-mutation mutation1 mutation2]]
     (fixture t)))
 
 (ct/deftest test-h2
