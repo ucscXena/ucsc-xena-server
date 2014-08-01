@@ -6,6 +6,7 @@
   (:require [cgdata.core :as cgdata])
   (:require [cavm.loader :refer [loader]])
   (:require [cavm.cgdata]) ; register reader methods
+  (:require [honeysql.types :as hsqltypes])
   (:use cavm.query.sources)
   (:require [clojure.test :as ct]))
 
@@ -137,7 +138,10 @@
                                   :left-join [:feature [:= :field_id :field.id]
                                               :code [:= :feature.id :feature_id]]
                                   :order-by [:ordering]})
-          probes (cdb/run-query db {:select [:*] :from [:field]})]
+          probes (cdb/run-query db {:select [:*] :from [:field]})
+          data (cdb/fetch db [{:table "matrix"
+                               :columns ["probe1" "probe2"]
+                               :samples ["sample2" "sample1"]}])]
       (ct/is (= exp [{:NAME "matrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
@@ -150,7 +154,11 @@
                  {:NAME "probe2" :ID 3 :DATASET_ID 1}
                  {:NAME "probe3" :ID 4 :DATASET_ID 1}
                  {:NAME "probe4" :ID 5 :DATASET_ID 1}
-                 {:NAME "probe5" :ID 6 :DATASET_ID 1} ])))))
+                 {:NAME "probe5" :ID 6 :DATASET_ID 1} ]))
+      (let [[probe1 probe2]
+            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
+        (ct/is (nearly-equal 0.0001 probe1 [2.1 1.1]))
+        (ct/is (nearly-equal 0.0001 probe2 [2.2 1.2]))))))
 
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
@@ -195,7 +203,10 @@
           fields (cdb/run-query db {:select [:*] :from [:field]})
           probes (cdb/run-query db {:select [:value] :from [:code]})
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
-          genes (cdb/run-query db {:select [:*] :from [:field_gene]})]
+          genes (cdb/run-query db {:select [:*] :from [:field_gene]})
+          probe-field (:ID (first (cdb/run-query db {:select [:id] :from [:field] :where [:= :name "name"]})))
+          data (map :PID (cdb/run-query db {:select [[(hsqltypes/read-sql-call [:unpackValue probe-field :row]) :pid]]
+                                            :from [:field_position]}))]
 
       (ct/is (= probemap [{:NAME "probes"}]))
       (ct/is (= (set probes)
@@ -216,7 +227,8 @@
                    {:FIELD_ID 3 :ROW 6 :GENE "GENEB"}
                    {:FIELD_ID 3 :ROW 6 :GENE "GENEC"}
                    {:FIELD_ID 3 :ROW 7 :GENE "GENED"}
-                   {:FIELD_ID 3 :ROW 8 :GENE "GENEE"}]))))))
+                   {:FIELD_ID 3 :ROW 8 :GENE "GENEE"}])))
+      (ct/is (= data ["probe1" "probe5" "probe2" "probe6" "probe3" "probe7" "probe4" "probe8" "probe9"])))))
 
 (defn detect-cgdata-clinical [db]
   (ct/testing "detect cgdata clinical"
