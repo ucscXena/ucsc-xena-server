@@ -359,7 +359,7 @@
 
 (defmethod field-spec :category
   [{:keys [name i]} rows]
-  (let [row-vals (mapv #(s/trim (% i)) rows)
+  (let [row-vals (mapv #(s/trim (get % i "")) rows)
         feature (ad-hoc-order {} row-vals)]
     {:field name
      :valueType "category"
@@ -370,13 +370,13 @@
   [{:keys [name i]} rows]
   {:field name
    :valueType "float" ; XXX why strings instead of keywords?
-   :rows (mapv #(parseFloatNA (% i)) rows)}) ;
+   :rows (mapv #(parseFloatNA (get % i "")) rows)}) ;
 
 (defmethod field-spec :gene
   [{:keys [name i]} rows]
   {:field name
    :valueType "genes"
-   :rows (mapv #(split-no-empty (% i) #",") rows)})
+   :rows (mapv #(split-no-empty (get % i "") #",") rows)})
 
 (let [parsers
       {:chrom s/trim
@@ -392,7 +392,7 @@
       {:field name
        :valueType "position"
        :rows (mapv #(apply merge
-                           (mapv (fn [t i parse] {t (parse (% i))}) tlist ilist plist))
+                           (mapv (fn [t i parse] {t (parse (get % i ""))}) tlist ilist plist))
                    rows)})))
 
 (def mutation-column-types
