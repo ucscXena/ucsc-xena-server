@@ -550,6 +550,9 @@
 
 (def batch-size 1000)
 
+(defn run-delays [m]
+  (into {} (for [[k v] m] [k (if (delay? v) @v v)])))
+
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :feature_id])
               position-stmt (insert-stmt :field_position
@@ -565,9 +568,13 @@
               field-seq-stmt (sequence-stmt "FIELD_IDS")
               scores-seq-stmt (sequence-stmt "SCORES_IDS")
               feature-seq-stmt (sequence-stmt "FEATURE_IDS")]
-    (let [feature-seq #(-> (feature-seq-stmt []) first :i)
-          field-seq #(-> (field-seq-stmt []) first :i)
-          scores-seq #(-> (scores-seq-stmt []) first :i)
+    ; XXX change these -seq functions to do queries returning vectors &
+    ; simplify the destructuring. Or better, stop asking the db for ids and
+    ; generate them ourselves. Getting ids is the slowest bit, even with a large
+    ; cache.
+    (let [feature-seq #(delay (-> (feature-seq-stmt []) first :i))
+          field-seq #(delay (-> (field-seq-stmt []) first :i))
+          scores-seq #(delay (-> (scores-seq-stmt []) first :i))
           ; XXX try memoization again?
           ;        score-id-fn (memoize-key (comp ahashable first) scores-seq)
 
@@ -579,18 +586,18 @@
                   :insert-code code-stmt
                   :insert-gene gene-stmt}
           inserts (apply concat
-                         (map #(load-field-feature
-                                 feature-seq
-                                 field-seq ; XXX pmap loses our db connection
-                                 scores-seq
-                                 dataset-id
-                                 %)
-                              (:fields (matrix-fn))))]
+                         (chunked-pmap #(load-field-feature
+                                          feature-seq
+                                          field-seq
+                                          scores-seq
+                                          dataset-id
+                                          %)
+                                       (:fields (matrix-fn))))]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
         (jdbc/transaction
           (doseq [[insert-type values] insert-batch]
-            ((writer insert-type) values)))))))
+            ((writer insert-type) (run-delays values))))))))
 ;
 ;
 ; Table writer that updates one table at a time by writing to temporary files.
