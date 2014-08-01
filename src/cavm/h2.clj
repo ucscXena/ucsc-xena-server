@@ -500,7 +500,7 @@
                   (mapv vector data (range)))
           [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
 
-(defmethod load-field "position" [dataset-id field-id column scores-seq]
+(defmethod load-field "position" [dataset-id field-id column _]
   (conj (for [[position row] (mapv vector (:rows column) (range))]
           [:insert-position (assoc position
                                    :field_id field-id
@@ -510,7 +510,7 @@
                                           (:chromEnd position)))])
         [:insert-field {:id field-id :dataset_id dataset-id :name (:field column)}]))
 
-(defmethod load-field "genes" [dataset-id field-id {:keys [field rows]} scores-seq]
+(defmethod load-field "genes" [dataset-id field-id {:keys [field rows]} _]
   (conj (mapcat (fn [[genes row]]
                   (for [gene genes]
                     [:insert-gene {:field_id field-id :row row :gene gene}]))
