@@ -264,7 +264,7 @@
   [docroot referrer md]
   (let [refs (->> md
                   (keys)
-                  (filter #(.startsWith % ":")))]
+                  (filter #(.startsWith ^String % ":")))]
     (into {} (map vector refs (map
                                 #(when-let [path (md %)] ; don't resolve nil
                                    (str (path-from-ref docroot referrer path)))
@@ -419,7 +419,7 @@
   "Pick first non-blank line if it starts with #. Don't scan more
   than 20 lines."
   [lines]
-  (when-let [header (first (filter not-blank? (take 20 lines)))]
+  (when-let [^String header (first (filter not-blank? (take 20 lines)))]
     (when (comment? header)
       (subs header (inc (.indexOf header "#"))))))
 
