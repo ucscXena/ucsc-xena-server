@@ -579,13 +579,13 @@
                   :insert-code code-stmt
                   :insert-gene gene-stmt}
           inserts (apply concat
-                         (chunked-pmap #(load-field-feature
-                                          feature-seq
-                                          field-seq
-                                          scores-seq
-                                          dataset-id
-                                          %)
-                                       (:fields (matrix-fn))))]
+                         (map #(load-field-feature
+                                 feature-seq
+                                 field-seq ; XXX pmap loses our db connection
+                                 scores-seq
+                                 dataset-id
+                                 %)
+                              (:fields (matrix-fn))))]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
         (jdbc/transaction
