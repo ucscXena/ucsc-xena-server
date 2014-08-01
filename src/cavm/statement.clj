@@ -63,3 +63,29 @@
     (watch-destroy (fn [conn] (swap! cache dissoc conn))) ; XXX leak stmt?
     (fn [conn & args]
       ((lookup conn) args))))
+
+;
+; monkey-patch jdbc to fix performance bug
+(in-ns 'clojure.java.jdbc)
+(defn- db-do-execute-prepared-statement [db ^PreparedStatement stmt param-groups transaction?]
+  (if (empty? param-groups)
+    (if transaction?
+      (with-db-transaction [t-db (add-connection db (.getConnection stmt))]
+        (vector (.executeUpdate stmt)))
+      (try
+        (vector (.executeUpdate stmt))
+        (catch Exception e
+          (throw-non-rte e))))
+    (do
+      (doseq [param-group param-groups]
+              ((or (:set-parameters db) set-parameters) stmt param-group)
+              (.addBatch stmt))
+      (if transaction?
+        (with-db-transaction [t-db (add-connection db (.getConnection stmt))]
+          (execute-batch stmt))
+        (try
+          (execute-batch stmt)
+          (catch Exception e
+            (throw-non-rte e)))))))
+
+(in-ns 'cavm.statement)
