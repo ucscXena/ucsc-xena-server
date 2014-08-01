@@ -173,7 +173,7 @@
       {:field (String. ^String (first cols)) ; copy, because split is evil.
        :feature feature
        :valueType "float"
-       :scores (mapv parseFloatNA (rest cols))}) ; eager
+       :rows (mapv parseFloatNA (rest cols))}) ; eager
     (catch NumberFormatException e
       (data-line features cols "category"))))
 
@@ -209,7 +209,7 @@
     {:field (String. ^String name) ; copy the string. string/split is evil.
      :feature feature
      :valueType "category"
-     :scores vals}))
+     :rows vals}))
 
 (defmulti matrix-data
   "Return seq of scores, probes X samples"
@@ -315,7 +315,7 @@
      [{:field "name"
        :valueType "category"
        :feature probe-feature
-       :scores probe-vals}
+       :rows probe-vals}
       {:field "position"
        :valueType "position"
        :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
