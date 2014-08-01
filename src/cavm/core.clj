@@ -89,9 +89,10 @@
                  (range (count in-path) 0 -1)))
      (clean-sources))))
 
-(defn- loadfiles [port files]
+(defn- loadfiles [port always files]
   (client/post (str "http://localhost:" port "/update/")
-               {:form-params {:file files}}))
+               {:form-params (merge {:file files}
+                                    (when always {:always "true"}))}))
 
 (def detectors
   [cgdata/detect-cgdata
@@ -123,6 +124,7 @@
   [[nil "--no-serve" "Don't start web server" :id :serve :parse-fn not :default true]
    ["-p" "--port PORT" "Server port to listen on" :default 7222 :parse-fn #(Integer/parseInt %)]
    ["-l" "--load" "Load files into running server"]
+   [nil "--force" "Force reload of unchanged files (with -l)"]
    [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
    ["-h" "--help" "Show help"]
    ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
@@ -169,6 +171,7 @@
         host (:host options)
         tmp (:tmp options)
         logfile (:logfile options)
+        always (:force options)
         database (h2-opts (:database options))]
     (if errors
       (binding [*out* *err*]
@@ -176,7 +179,7 @@
       (cond
         (:help options) (println summary)
         (:json options) (cgdata/fix-json docroot)
-        (:load options) (loadfiles port arguments)
+        (:load options) (loadfiles port always arguments)
         :else (if-let [error (some mkdir [tmp docroot])]
                 (binding [*out* *err*] ; XXX move below log-config? What if we can't create the log file?
                   (println error))

@@ -205,16 +205,16 @@
       (= ip "127.0.0.1")))
 
 ; Return immediately, queuing a loader job.
-(defn loader-request [ip loader files]
+(defn loader-request [ip loader files always]
   (when (is-local? ip)
     (future (doseq [f (if (coll? files) files [files])]
-       (loader f)))
+       (loader f {:always (= "true" always)})))
     "ok"))
 
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
   (GET "/data/:exp" [exp] (expression exp))
   (POST "/data/" r (expression (body-string r)))
-  (POST "/update/" [file :as {ip :remote-addr
-                              loader :loader}] (loader-request ip loader file))
+  (POST "/update/" [file always :as {ip :remote-addr loader :loader}]
+        (loader-request ip loader file always))
   (not-found "not found"))

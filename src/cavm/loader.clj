@@ -22,7 +22,7 @@
         h (file-hash full-path)]
     {:name file :time ts :hash h}))
 
-(defn write-matrix [db docroot filename reader]
+(defn write-matrix [db docroot filename reader always]
   (let [{:keys [metadata refs features data-fn]} reader
         dependencies (if features
                        [(refs ":clinicalFeature") filename]
@@ -36,7 +36,7 @@
         metadata
         (partial data-fn in)
         features
-        false))))
+        always))))
 
 (def loaders
   {:probemap write-matrix
@@ -49,11 +49,11 @@
 ; one file type may contain mutiple xena data types.
 (defn loader
   "Load a data file into the database"
-  [db detector docroot filename]
+  [db detector docroot filename & [always]]
   (let [fname  (str (relativize docroot filename))
         reader @(:reader (detector filename))
         loader (get loaders (:datatype reader) ignore)]
-    (loader db docroot fname reader)))
+    (loader db docroot fname reader (or always false))))
 
 (defn- log-error [filename e]
   (timbre/warn e "Loading" filename))
@@ -63,13 +63,13 @@
   for loading a file via the agent."
   [db detector docroot]
   (let [a (agent nil)]
-    (fn [filename]
+    (fn [filename & [{always :always :or {always false}}]]
       (send-off a (fn [n]
                     (info "Loading dataset" (str filename))
                     (let [t (read-string
                               (with-out-str
                                 (time (try
-                                        (loader db detector docroot filename)
+                                        (loader db detector docroot filename always)
                                         (catch Exception e (log-error filename e))))))]
                       (info (str "Loaded " filename ", " t)))
                     nil)))))
