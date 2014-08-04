@@ -300,14 +300,17 @@
     (let [effect (get-categorical db "mutation" "effect" ["sample1" "sample2"])
           reference (get-categorical db "mutation" "ref" ["sample1" "sample2"])
           alt (get-categorical db "mutation" "alt" ["sample1" "sample2"])
-          amino-acid (get-categorical db "mutation" "amino-acid" ["sample1" "sample2"])]
+          amino-acid (get-categorical db "mutation" "amino-acid" ["sample1" "sample2"])
+          dataset (first (cdb/run-query db {:select [:*] :from [:dataset]}))]
 
       (ct/is (= effect ["frameshift_variant"
                         "missense_variant"
                         "missense_variant"]))
       (ct/is (= reference ["G" "G" "C"]))
       (ct/is (= alt ["A" "T" "T"]))
-      (ct/is (= amino-acid ["R151W" "F1384L" "R1011K"])))))
+      (ct/is (= amino-acid ["R151W" "F1384L" "R1011K"]))
+      (ct/is (= (select-keys dataset [:NAME :DATASUBTYPE])
+                {:NAME "mutation" :DATASUBTYPE "somatic mutation"})))))
 
 (defn mutation2 [db]
   (ct/testing "cgdata mutation"

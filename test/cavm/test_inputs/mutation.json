@@ -1,3 +1,4 @@
 {
-	"type": "mutationVector"
+	"type": "mutationVector",
+	":dataSubtype": "somatic mutation"
 }
