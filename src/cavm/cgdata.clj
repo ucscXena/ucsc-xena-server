@@ -50,12 +50,16 @@
 (defmethod reader :cgdata.core/probemap
   [filetype docroot url]
   (-> (cgdata/probemap-file url :docroot docroot)
-      (assoc :datatype :probemap)))
+      (assoc :datatype :probemap)
+      (replace-references)
+      (update-in [:metadata] normalize-meta-keys)))
 
 (defmethod reader :cgdata.core/mutation
   [filetype docroot url]
   (-> (cgdata/mutation-file url :docroot docroot)
-      (assoc :datatype :mutation)))
+      (assoc :datatype :mutation)
+      (replace-references)
+      (update-in [:metadata] normalize-meta-keys)))
 
 (defn normalized-matrix-reader [filetype docroot url]
   (-> (cgdata/matrix-file url :docroot docroot)
