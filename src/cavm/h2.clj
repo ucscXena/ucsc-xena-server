@@ -201,7 +201,8 @@
    `chromEnd` INT NOT NULL,
    `strand` CHAR(1),
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS chrom_bin ON field_position (`field_id`, `chrom`, `bin`)"]) ; XXX index on row?
+   "CREATE INDEX IF NOT EXISTS chrom_bin ON field_position (`field_id`, `chrom`, `bin`)"
+   "CREATE INDEX IF NOT EXISTS position_row ON field_position (`field_id`, `row`)"])
 
 (def field-gene-table
   ["CREATE TABLE IF NOT EXISTS `field_gene` (
@@ -209,7 +210,8 @@
    `row` INT NOT NULL,
    `gene` VARCHAR(255),
     FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"
-   "CREATE INDEX IF NOT EXISTS field_gene ON `field_gene` (`field_id`, `gene`)"]) ; XXX index on row?
+   "CREATE INDEX IF NOT EXISTS field_gene ON `field_gene` (`field_id`, `gene`)"
+   "CREATE INDEX IF NOT EXISTS gene_row ON `field_gene` (`field_id`, `row`)"])
 
 ;
 ; feature tables
