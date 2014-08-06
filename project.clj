@@ -35,8 +35,7 @@
   :javac-options ["-target" "1.6" "-source" "1.6"]
   :aot [cavm.h2-binary cavm.version cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
-  :plugins [[lein-sphinx  "1.0.0"]]
-  :sphinx {:foo :bar ; setting-values can't be the only key, or the setting doesn't take.
-           :setting-values {:version ~version
+  :plugins [[lein-sphinx  "1.0.1"]]
+  :sphinx {:setting-values {:version ~version
                             :project ~(str  "UCSC Xena Server " version)}}
   :main cavm.core)
