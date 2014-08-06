@@ -7,5 +7,5 @@
   (write-probemap [this pname files metadata data-fn always]
                   "Write a probemap to storage")
   (run-query [this query] "Execute a metadata sql query")
-  (fetch [this reqs] "Retrieve data") ; data reqs. data card??
+  (fetch [this reqs] "Retrieve data")
   (close [this] "Close the database"))
