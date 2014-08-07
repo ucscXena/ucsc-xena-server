@@ -113,8 +113,8 @@
 
 (def field-score-table
   [(format  "CREATE TABLE IF NOT EXISTS `field_score` (
-            `field_id` INT,
-            `i` INT,
+            `field_id` INT NOT NULL,
+            `i` INT NOT NULL,
             `scores` VARBINARY(%d) NOT NULL,
             UNIQUE (`field_id`, `i`),
             FOREIGN KEY (`field_id`) REFERENCES `field` (`id`))" score-size)])
@@ -202,7 +202,7 @@
   ["CREATE TABLE IF NOT EXISTS `field_gene` (
    `field_id` INT NOT NULL,
    `row` INT NOT NULL,
-   `gene` VARCHAR(255),
+   `gene` VARCHAR(255) NOT NULL,
     FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"
    "CREATE INDEX IF NOT EXISTS field_gene ON `field_gene` (`field_id`, `gene`)"
    "CREATE INDEX IF NOT EXISTS gene_row ON `field_gene` (`field_id`, `row`)"])
