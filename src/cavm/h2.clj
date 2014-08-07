@@ -146,6 +146,7 @@
    `security` varchar(255),
    `gain` double DEFAULT NULL,
    `text` varchar (65535),
+   `type` varchar (255),
    `dataSubType` varchar (255))"])
 
 (def ^:private dataset-columns
@@ -158,8 +159,8 @@
     :cohort
     :security
     :dataSubType
-    :text
-    :gain})
+    :type
+    :text})
 
 (def ^:private dataset-defaults
   (into {} (map #(vector % nil) dataset-columns)))

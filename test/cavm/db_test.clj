@@ -238,7 +238,7 @@
 (defn clinical1 [db]
   (ct/testing "cgdata clinical matrix"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix")
-    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+    (let [exp (cdb/run-query db {:select [:name :type] :from [:dataset]})
           samples (cdb/run-query db
                                  {:select [[:value :name]]
                                   :from [:field]
@@ -247,7 +247,7 @@
                                               :code [:= :feature.id :feature_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
-      (ct/is (= exp [{:NAME "clinical_matrix"}]))
+      (ct/is (= exp [{:NAME "clinical_matrix" :TYPE "clinicalMatrix"}]))
       (ct/is (= samples
                 [{:NAME "sample1"}
                  {:NAME "sample2"}
