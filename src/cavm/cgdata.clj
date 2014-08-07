@@ -61,6 +61,13 @@
       (replace-references)
       (update-in [:metadata] normalize-meta-keys)))
 
+(defmethod reader :cgdata.core/gene-pred
+  [filetype docroot url]
+  (-> (cgdata/gene-pred-file url :docroot docroot)
+      (assoc :datatype :mutation)
+      (replace-references)
+      (update-in [:metadata] normalize-meta-keys)))
+
 (defn normalized-matrix-reader [filetype docroot url]
   (-> (cgdata/matrix-file url :docroot docroot)
       (assoc :datatype :matrix)

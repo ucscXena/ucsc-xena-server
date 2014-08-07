@@ -100,7 +100,7 @@
 ;
 
 (defmulti ^:private feature-line
-  (fn [acc line] () (second line)))
+  (fn [acc line] () (second line))) ; XXX why the nil?
 
 (defmethod ^:private feature-line :default
   [acc [feature attr value]]
@@ -458,18 +458,18 @@
 (defn resort [rows order]
   (mapv rows order))
 
-(defn mutation-data
-  "Return the fields of a mutationVector file."
-  [rows]
-  (let [header (-> (or (columns-from-header (pick-header rows) mutation-columns)
-                        mutation-default-columns)
-                    (#(for [[c i] (map vector % (range))]
-                        {:header c :type (mutation-column-types c) :i i}))
-                    find-position-field
-                    assign-unique-names)
-         data-rows (map tabbed (filter #(and (not-blank? %)
-                                             (not-comment? %)) rows))
-         fields (mapv #(field-spec % data-rows) header)]
+(defn tsv-data
+  "Return the fields of a tsv file."
+  [columns default-columns column-types rows]
+  (let [header (-> (or (columns-from-header (pick-header rows) columns)
+                       default-columns)
+                   (#(for [[c i] (map vector % (range))]
+                       {:header c :type (column-types c) :i i}))
+                   find-position-field
+                   assign-unique-names)
+        data-rows (map tabbed (filter #(and (not-blank? %)
+                                            (not-comment? %)) rows))
+        fields (mapv #(field-spec % data-rows) header)]
     (if (= "position" (get-in fields [0 :valueType]))
       (let [pos-rows (get-in fields [0 :rows])
             order (sort-by #(chr-order (pos-rows %)) (range (count pos-rows)))
@@ -485,8 +485,66 @@
         refs (references docroot file metadata)]
     {:metadata metadata
      :refs refs
-     :data-fn (fn [in] (mutation-data (line-seq in)))}))
-;
+     :data-fn (fn [in] (tsv-data
+                         mutation-columns
+                         mutation-default-columns
+                         mutation-column-types
+                         (line-seq in)))}))
+
+
+(def gene-pred-column-types
+  {:bin :float
+   :name :category
+   :strand :category
+   :chrom :category
+   :txStart :float
+   :txEnd :float
+   :cdsStart :category
+   :cdsEnd :category
+   :exonCount :float
+   :exonStarts :category
+   :exonEnds :category
+   :score :float
+   :name2 :gene
+   :cdsStartStat :category
+   :cdsEndStat :category
+   :exonFrames :category})
+
+(def gene-pred-columns
+  {#"(?i)bin" :bin
+   #"(?i)name" :name
+   #"(?i)strand" :strand
+   #"(?i)chr(om)?" :chrom
+   #"(?i)txStart" :txStart
+   #"(?i)txEnd" :txEnd
+   #"(?i)cdsStart" :cdsStart
+   #"(?i)cdsEnd" :cdsEnd
+   #"(?i)exonCount" :exonCount
+   #"(?i)exonStarts" :exonStarts
+   #"(?i)exonEnds" :exonEnds
+   #"(?i)score" :score
+   #"(?i)name2" :name2
+   #"(?i)cdsStartStat" :cdsStartStat
+   #"(?i)cdsEndStat" :cdsEndStat
+   #"(?i)exonFrames" :exonFrames})
+
+(def gene-pred-default-columns
+  [:bin :name :strand :chrom :txStart :txEnd :cdsStart :cdsEnd :exonCount
+   :exonStarts :exonEnds :score :name2 :cdsStartStat :cdsEndStat :exonFrames])
+
+(defn gene-pred-file
+  "Return a map describing a cgData mutation file. This will read
+  any assoicated json."
+  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+  (let [metadata (cgdata-meta file)
+        refs (references docroot file metadata)]
+    {:metadata metadata
+     :refs refs
+     :data-fn (fn [in] (tsv-data
+                         gene-pred-columns
+                         gene-pred-default-columns
+                         gene-pred-column-types
+                         (line-seq in)))}));
 ; cgdata file detector
 ;
 
@@ -496,7 +554,9 @@
    "clinicalFeature" ::feature
    "genomicMatrix" ::genomic
    "probeMap" ::probemap
-   "genomicSegment" ::segment})
+   "genomicSegment" ::segment
+   "genePredExt" ::gene-pred
+   "genePred" ::gene-pred})
 
 (defn detect-cgdata
   "Detect cgdata files by presence of json metadata. If no type

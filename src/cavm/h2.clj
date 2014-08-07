@@ -255,12 +255,14 @@
 ; Order is important to avoid creating duplicate indexes. A foreign
 ; key constraint creates an index if one doesn't exist, so create our
 ; index before adding the constraint.
+; XXX varchar size is pushing it. Do we need another type for clob-valued
+; fields?
 (def code-table
   ["CREATE TABLE IF NOT EXISTS `code` (
    `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `feature_id` int(11) NOT NULL,
    `ordering` int(10) unsigned NOT NULL,
-   `value` varchar(255) NOT NULL,
+   `value` varchar(16384) NOT NULL,
    UNIQUE (`feature_id`, `ordering`),
    FOREIGN KEY (`feature_id`) REFERENCES `feature` (`id`) ON DELETE CASCADE)"])
 

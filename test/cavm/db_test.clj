@@ -331,6 +331,32 @@
                         "Missense_Mutation"]))
       (ct/is (= reference ["C" "A" "A" "G" "T" "C" "T" "C" "G"]))
       (ct/is (= alt ["T" "T" "G" "A" "C" "A" "C" "T" "A"])))))
+
+(defn gene-pred1 [db]
+  (ct/testing "gene predition file"
+    (loader db detector docroot "test/cavm/test_inputs/refGene")
+    (let [chrom-field (:ID (first (cdb/run-query db
+                                                 {:select [:id]
+                                                  :from [:field]
+                                                  :where [:= :name "chrom"]})))
+
+          data (cdb/run-query
+                 db
+                 {:select [:gene [(hsqltypes/read-sql-call
+                                    [:unpackValue chrom-field :row]) :chrom]]
+                  :from [:field-gene]})]
+
+      (ct/is (= (set data)
+                #{{:GENE "MTVR2" :CHROM "chr17"}
+                  {:GENE "LOC100506860" :CHROM "chr7"}
+                  {:GENE "CHMP1B" :CHROM "chr18"}
+                  {:GENE "LOC441204" :CHROM "chr7"}
+                  {:GENE "TCOF1" :CHROM "chr5"}
+                  {:GENE "NSRP1" :CHROM "chr17"}
+                  {:GENE "SPPL3" :CHROM "chr12"}
+                  {:GENE "OPA3" :CHROM "chr19"}
+                  {:GENE "OPA1" :CHROM "chr3"}})))))
+
 ; XXX test that cgdata defaults to genomicMatrix if not specified
 
 ; clojure.test fixtures don't work with nested tests, so we
@@ -339,7 +365,9 @@
   (doseq [t [matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3
              detect-cgdata-probemap probemap1
              detect-cgdata-clinical clinical1
-             detect-cgdata-mutation mutation1 mutation2]]
+             detect-cgdata-mutation mutation1 mutation2
+             gene-pred1
+             ]]
     (fixture t)))
 
 (ct/deftest test-h2
