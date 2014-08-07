@@ -73,7 +73,7 @@
 ; Table models
 ;
 
-(declare dataset_source feature field scores dataset)
+(declare dataset_source feature field dataset)
 
 (defentity source)
 
@@ -88,16 +88,14 @@
     (assoc v :SCORES (float-array (score-decode scores)))
     v))
 
+(defentity field_score)
+
 (defentity field
   (has-one feature)
-  (many-to-many scores :field_score)
   (belongs-to dataset)
+  (has-many field_score)
   (transform cvt-scores))
 
-(defentity scores
-  (many-to-many field :field_score))
-
-(defentity field_score)
 
 ;
 ; Table definitions.
@@ -113,18 +111,13 @@
    UNIQUE(`dataset_id`, `name`),
    FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`))"])
 
-(def scores-table
-  ["CREATE SEQUENCE IF NOT EXISTS SCORES_IDS CACHE 2000"
-   (format "CREATE TABLE IF NOT EXISTS `scores` (
-           `id` INT NOT NULL DEFAULT NEXT VALUE FOR SCORES_IDS PRIMARY KEY,
-           `scores` VARBINARY(%d) NOT NULL)" score-size)])
-
 (def field-score-table
-  ["CREATE TABLE IF NOT EXISTS `field_score` (
-   `field_id` INT,
-   `i` INT,
-   `scores_id` INT,
-   UNIQUE (`field_id`, `i`))"])
+  [(format  "CREATE TABLE IF NOT EXISTS `field_score` (
+            `field_id` INT,
+            `i` INT,
+            `scores` VARBINARY(%d) NOT NULL,
+            UNIQUE (`field_id`, `i`),
+            FOREIGN KEY (`field_id`) REFERENCES `field` (`id`))" score-size)])
 
 (def cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
@@ -300,12 +293,8 @@
 (defn- fields-in-exp [exp]
   (subselect field (fields :id) (where {:dataset_id exp})))
 
-(defn- scores-with-fields [fs]
-  (subselect field_score (fields :scores_id) (where {:field_id [in fs]})))
-
 (defn- clear-by-exp [exp]
   (let [f (fields-in-exp exp)]
-    (delete scores (where {:id [in (scores-with-fields f)]}))
     (delete field_score (where {:field_id [in f]}))
     (delete field (where {:id [in f]}))))
 
@@ -488,21 +477,19 @@
 ;
 
 (defmulti load-field
-  (fn [dataset-id field-id column score-seq]
+  (fn [dataset-id field-id column]
     (-> column :valueType)))
 
-(defmethod load-field :default [dataset-id field-id {:keys [field rows]} scores-seq]
+(defmethod load-field :default [dataset-id field-id {:keys [field rows]}]
   (let [data (encode-row score-encode rows)]
     (conj (mapcat (fn [[block i]]
-                    (let [scores-id (scores-seq)]
-                      [[:insert-score {:id scores-id :scores block}]
-                       [:insert-field-score {:field_id field-id
-                                             :i i
-                                             :scores_id scores-id}]]))
+                    [[:insert-field-score {:field_id field-id
+                                           :i i
+                                           :scores block}]])
                   (mapv vector data (range)))
           [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
 
-(defmethod load-field "position" [dataset-id field-id column _]
+(defmethod load-field "position" [dataset-id field-id column]
   (conj (for [[position row] (mapv vector (:rows column) (range))]
           [:insert-position (assoc position
                                    :field_id field-id
@@ -512,7 +499,7 @@
                                           (:chromEnd position)))])
         [:insert-field {:id field-id :dataset_id dataset-id :name (:field column)}]))
 
-(defmethod load-field "genes" [dataset-id field-id {:keys [field rows]} _]
+(defmethod load-field "genes" [dataset-id field-id {:keys [field rows]}]
   (conj (mapcat (fn [[genes row]]
                   (for [gene genes]
                     [:insert-gene {:field_id field-id :row row :gene gene}]))
@@ -524,9 +511,9 @@
   [fmeta row]
   (assoc fmeta "valueType" (:valueType row)))
 
-(defn- load-field-feature [feature-seq field-seq scores-seq dataset-id field]
+(defn- load-field-feature [feature-seq field-seq dataset-id field]
   (let [field-id (field-seq)]
-    (concat (load-field dataset-id field-id field scores-seq)
+    (concat (load-field dataset-id field-id field)
             (when-let [feature (:feature field)]
               (load-probe-meta feature-seq field-id (inferred-type feature field))))))
 ;
@@ -564,11 +551,9 @@
               feature-stmt (insert-stmt :feature [:id :field_id :shortTitle
                                                   :longTitle :priority
                                                   :valueType :visibility])
-              score-stmt (insert-stmt :scores [:id :scores])
               field-stmt (insert-stmt :field [:id :dataset_id :name])
-              field-score-stmt (insert-stmt :field_score [:field_id :scores_id :i])
+              field-score-stmt (insert-stmt :field_score [:field_id :scores :i])
               field-seq-stmt (sequence-stmt "FIELD_IDS")
-              scores-seq-stmt (sequence-stmt "SCORES_IDS")
               feature-seq-stmt (sequence-stmt "FEATURE_IDS")]
     ; XXX change these -seq functions to do queries returning vectors &
     ; simplify the destructuring. Or better, stop asking the db for ids and
@@ -576,12 +561,10 @@
     ; cache.
     (let [feature-seq #(delay (-> (feature-seq-stmt []) first :i))
           field-seq #(delay (-> (field-seq-stmt []) first :i))
-          scores-seq #(delay (-> (scores-seq-stmt []) first :i))
           ; XXX try memoization again?
           ;        score-id-fn (memoize-key (comp ahashable first) scores-seq)
 
           writer {:insert-field field-stmt
-                  :insert-score score-stmt
                   :insert-field-score field-score-stmt
                   :insert-position position-stmt
                   :insert-feature feature-stmt
@@ -591,7 +574,6 @@
                          (chunked-pmap #(load-field-feature
                                           feature-seq
                                           field-seq
-                                          scores-seq
                                           dataset-id
                                           %)
                                        (:fields (matrix-fn))))]
@@ -802,14 +784,12 @@
 
 ; All bins for the given fields.
 (defn all-rows-query [dataset-id & fields]
-   {:select [:name :i :scores]
-    :from [{:select [:*]
-            :from [[{:select [:name :id]
-                     :from [:field]
-                     :join  [{:table  [[[:name2 :varchar fields]] :T]}  [:= :name2 :field.name]]
-                     :where [:= :dataset_id dataset-id]} :P]]
-            :left-join [:field_score [:= :P.id :field_score.field_id]]}]
-    :left-join [:scores [:= :scores_id :scores.id]]})
+  {:select [:name :i :scores]
+   :from [[{:select [:name :id]
+            :from [:field]
+            :join  [{:table  [[[:name2 :varchar fields]] :T]}  [:= :name2 :field.name]]
+            :where [:= :dataset_id dataset-id]} :P]]
+   :left-join [:field_score [:= :P.id :field_score.field_id]]})
 
 ; {"foxm1" [{:NAME "foxm1" :SCORES <bytes>} ... ]
 (let [concat-field-bins
@@ -886,17 +866,15 @@
 ; the index.
 
 ; XXX performance of the :in clause?
-; XXX change "gene" to "field"
+; XXX make a prepared statement
 (def dataset-fields-query
-  "SELECT  name, i, scores
-   FROM (SELECT *
-         FROM (SELECT  `field`.`name`, `field`.`id`
-               FROM `field`
-               INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
-               WHERE (`field`.`dataset_id` = ?)) P
-         LEFT JOIN `field_score` ON P.id = `field_score`.`field_id`
-         WHERE `field_score`.`i` IN (%s))
-   LEFT JOIN `scores` ON `scores_id` = `scores`.`id`")
+  "SELECT name, i, scores
+   FROM (SELECT  `field`.`name`, `field`.`id`
+         FROM `field`
+         INNER JOIN TABLE(name varchar=?) T ON T.`name`=`field`.`name`
+         WHERE (`field`.`dataset_id` = ?)) P
+   LEFT JOIN `field_score` ON P.id = `field_score`.`field_id`
+   WHERE `field_score`.`i` IN (%s)")
 
 (defn select-scores-full [dataset-id columns bins]
   (let [q (format dataset-fields-query
@@ -971,9 +949,8 @@
     (exec-statements source-table)
     (exec-statements dataset-table)
     (exec-statements dataset-source-table)
-    (exec-statements scores-table)
-    (exec-statements field-score-table)
     (exec-statements field-table)
+    (exec-statements field-score-table)
     (exec-statements feature-table)
     (exec-statements code-table)
     (exec-statements field-position-table)
@@ -1044,7 +1021,6 @@
 (def field-bin-query
   (cached-statement
     "SELECT `scores` FROM `field_score`
-     JOIN `scores` ON `scores_id` = `scores`.`id`
      WHERE `field_id` = ? AND `i` = ?"
     true))
 
