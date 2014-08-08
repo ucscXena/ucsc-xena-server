@@ -75,36 +75,36 @@
           data2 (cdb/fetch db [{:table "id1"
                                 :columns ["probe1" "probe2"]
                                 :samples ["sample1" "sample3"]}])]
-      (ct/is (= exp [{:NAME "id1"}]))
+      (ct/is (= exp [{:name "id1"}]))
       (ct/is (= samples
-                [{:NAME "sample1"}
-                 {:NAME "sample2"}]))
+                [{:name "sample1"}
+                 {:name "sample2"}]))
       (ct/is (= probes
-                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
-                 {:NAME "position" :ID 2 :DATASET_ID 1}
-                 {:NAME "genes"    :ID 3 :DATASET_ID 1}
-                 {:NAME "probe1"   :ID 4 :DATASET_ID 1}
-                 {:NAME "probe2"   :ID 5 :DATASET_ID 1}]))
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "position" :id 2 :dataset_id 1}
+                 {:name "genes"    :id 3 :dataset_id 1}
+                 {:name "probe1"   :id 4 :dataset_id 1}
+                 {:name "probe2"   :id 5 :dataset_id 1}]))
       (ct/is (= positions
-                [{:FIELD_ID 2
-                  :ROW 0
-                  :CHROM "chr1"
-                  :CHROMSTART 1200
-                  :CHROMEND 1300
-                  :BIN 4681
-                  :STRAND "-"}
-                 {:FIELD_ID 2
-                  :ROW 1
-                  :CHROM "chr2"
-                  :CHROMSTART 300
-                  :CHROMEND 1200
-                  :BIN 4681
-                  :STRAND "+"}]))
+                [{:field_id 2
+                  :row 0
+                  :chrom "chr1"
+                  :chromstart 1200
+                  :chromend 1300
+                  :bin 4681
+                  :strand "-"}
+                 {:field_id 2
+                  :row 1
+                  :chrom "chr2"
+                  :chromstart 300
+                  :chromend 1200
+                  :bin 4681
+                  :strand "+"}]))
       (ct/is (= genes
-                [{:FIELD_ID 3 :ROW 0 :GENE "FOXM1"}
-                 {:FIELD_ID 3 :ROW 0 :GENE "CUL2"}
-                 {:FIELD_ID 3 :ROW 1 :GENE "ACK"}
-                 {:FIELD_ID 3 :ROW 1 :GENE "BLAH"}]))
+                [{:field_id 3 :row 0 :gene "FOXM1"}
+                 {:field_id 3 :row 0 :gene "CUL2"}
+                 {:field_id 3 :row 1 :gene "ACK"}
+                 {:field_id 3 :row 1 :gene "BLAH"}]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
         (ct/is (nearly-equal 0.0001 probe1 [1.2 1.1]))
@@ -142,19 +142,53 @@
           data (cdb/fetch db [{:table "matrix"
                                :columns ["probe1" "probe2"]
                                :samples ["sample2" "sample1"]}])]
-      (ct/is (= exp [{:NAME "matrix"}]))
+      (ct/is (= exp [{:name "matrix"}]))
       (ct/is (= samples
-                [{:NAME "sample1"}
-                 {:NAME "sample2"}
-                 {:NAME "sample3"}
-                 {:NAME "sample4"}]))
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}]))
       (ct/is (= probes
-                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 3 :DATASET_ID 1}
-                 {:NAME "probe3" :ID 4 :DATASET_ID 1}
-                 {:NAME "probe4" :ID 5 :DATASET_ID 1}
-                 {:NAME "probe5" :ID 6 :DATASET_ID 1} ]))
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "probe1" :id 2 :dataset_id 1}
+                 {:name "probe2" :id 3 :dataset_id 1}
+                 {:name "probe3" :id 4 :dataset_id 1}
+                 {:name "probe4" :id 5 :dataset_id 1}
+                 {:name "probe5" :id 6 :dataset_id 1} ]))
+      (let [[probe1 probe2]
+            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
+        (ct/is (nearly-equal 0.0001 probe1 [2.1 1.1]))
+        (ct/is (nearly-equal 0.0001 probe2 [2.2 1.2]))))))
+
+(defn matrix2-reload [db]
+  (ct/testing "reload tsv matrix from file"
+    (loader db detector docroot "test/cavm/test_inputs/matrix")
+    (loader db detector docroot "test/cavm/test_inputs/matrix" true)
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:feature [:= :field_id :field.id]
+                                              :code [:= :feature.id :feature_id]]
+                                  :order-by [:ordering]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})
+          data (cdb/fetch db [{:table "matrix"
+                               :columns ["probe1" "probe2"]
+                               :samples ["sample2" "sample1"]}])]
+      (ct/is (= exp [{:name "matrix"}]))
+      (ct/is (= samples
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}]))
+      (ct/is (= probes
+                [{:name "sampleID" :id 7 :dataset_id 1}
+                 {:name "probe1" :id 8 :dataset_id 1}
+                 {:name "probe2" :id 9 :dataset_id 1}
+                 {:name "probe3" :id 10 :dataset_id 1}
+                 {:name "probe4" :id 11 :dataset_id 1}
+                 {:name "probe5" :id 12 :dataset_id 1} ]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
         (ct/is (nearly-equal 0.0001 probe1 [2.1 1.1]))
@@ -177,19 +211,19 @@
                                               :code [:= :feature.id :feature_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
-      (ct/is (= exp [{:NAME "cgdata_matrix"}]))
+      (ct/is (= exp [{:name "cgdata_matrix"}]))
       (ct/is (= samples
-                [{:NAME "sample1"}
-                 {:NAME "sample2"}
-                 {:NAME "sample3"}
-                 {:NAME "sample4"}]))
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}]))
       (ct/is (= probes
-                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 3 :DATASET_ID 1}
-                 {:NAME "probe3" :ID 4 :DATASET_ID 1}
-                 {:NAME "probe4" :ID 5 :DATASET_ID 1}
-                 {:NAME "probe5" :ID 6 :DATASET_ID 1}])))))
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "probe1" :id 2 :dataset_id 1}
+                 {:name "probe2" :id 3 :dataset_id 1}
+                 {:name "probe3" :id 4 :dataset_id 1}
+                 {:name "probe4" :id 5 :dataset_id 1}
+                 {:name "probe5" :id 6 :dataset_id 1}])))))
 
 (defn detect-cgdata-probemap [db]
   (ct/testing "detect cgdata probemap"
@@ -204,30 +238,30 @@
           probes (cdb/run-query db {:select [:value] :from [:code]})
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
           genes (cdb/run-query db {:select [:*] :from [:field_gene]})
-          probe-field (:ID (first (cdb/run-query db {:select [:id] :from [:field] :where [:= :name "name"]})))
-          data (map :PID (cdb/run-query db {:select [[(hsqltypes/read-sql-call [:unpackValue probe-field :row]) :pid]]
+          probe-field (:id (first (cdb/run-query db {:select [:id] :from [:field] :where [:= :name "name"]})))
+          data (map :pid (cdb/run-query db {:select [[(hsqltypes/read-sql-call [:unpackValue probe-field :row]) :pid]]
                                             :from [:field_position]}))]
 
-      (ct/is (= probemap [{:NAME "probes"}]))
+      (ct/is (= probemap [{:name "probes"}]))
       (ct/is (= (set probes)
-                (set [{:VALUE "probe1"}
-                      {:VALUE "probe2"}
-                      {:VALUE "probe3"}
-                      {:VALUE "probe4"}
-                      {:VALUE "probe5"}
-                      {:VALUE "probe6"}
-                      {:VALUE "probe7"}
-                      {:VALUE "probe8"}
-                      {:VALUE "probe9"}])))
+                (set [{:value "probe1"}
+                      {:value "probe2"}
+                      {:value "probe3"}
+                      {:value "probe4"}
+                      {:value "probe5"}
+                      {:value "probe6"}
+                      {:value "probe7"}
+                      {:value "probe8"}
+                      {:value "probe9"}])))
       (ct/is (= (set genes)
                 (set
-                  [{:FIELD_ID 3 :ROW 0 :GENE "GENEA"}
-                   {:FIELD_ID 3 :ROW 2 :GENE "GENEA"}
-                   {:FIELD_ID 3 :ROW 4 :GENE "GENEB"}
-                   {:FIELD_ID 3 :ROW 6 :GENE "GENEB"}
-                   {:FIELD_ID 3 :ROW 6 :GENE "GENEC"}
-                   {:FIELD_ID 3 :ROW 7 :GENE "GENED"}
-                   {:FIELD_ID 3 :ROW 8 :GENE "GENEE"}])))
+                  [{:field_id 3 :row 0 :gene "GENEA"}
+                   {:field_id 3 :row 2 :gene "GENEA"}
+                   {:field_id 3 :row 4 :gene "GENEB"}
+                   {:field_id 3 :row 6 :gene "GENEB"}
+                   {:field_id 3 :row 6 :gene "GENEC"}
+                   {:field_id 3 :row 7 :gene "GENED"}
+                   {:field_id 3 :row 8 :gene "GENEE"}])))
       (ct/is (= data ["probe1" "probe5" "probe2" "probe6" "probe3" "probe7" "probe4" "probe8" "probe9"])))))
 
 (defn detect-cgdata-clinical [db]
@@ -247,19 +281,19 @@
                                               :code [:= :feature.id :feature_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
-      (ct/is (= exp [{:NAME "clinical_matrix" :TYPE "clinicalMatrix"}]))
+      (ct/is (= exp [{:name "clinical_matrix" :type "clinicalMatrix"}]))
       (ct/is (= samples
-                [{:NAME "sample1"}
-                 {:NAME "sample2"}
-                 {:NAME "sample3"}
-                 {:NAME "sample4"}
-                 {:NAME "sample5"}]))
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}
+                 {:name "sample5"}]))
       (ct/is (= probes
-                [{:NAME "sampleID" :ID 1 :DATASET_ID 1}
-                 {:NAME "probe1" :ID 2 :DATASET_ID 1}
-                 {:NAME "probe2" :ID 3 :DATASET_ID 1}
-                 {:NAME "probe3" :ID 4 :DATASET_ID 1}
-                 {:NAME "probe4" :ID 5 :DATASET_ID 1}])))))
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "probe1" :id 2 :dataset_id 1}
+                 {:name "probe2" :id 3 :dataset_id 1}
+                 {:name "probe3" :id 4 :dataset_id 1}
+                 {:name "probe4" :id 5 :dataset_id 1}])))))
 
 (defn detect-cgdata-mutation [db]
   (ct/testing "detect cgdata mutation"
@@ -275,14 +309,14 @@
                                [:= :dataset.name table]]}
                       (cdb/run-query db)
                       (first)
-                      (:ID))
+                      (:id))
         codes (->> {:select [:ordering :value]
                     :from [:field]
                     :left-join [:feature [:= :field.id :field_id]
                                 :code [:= :feature.id :feature_id]]
                     :where [:= :field_id field-id]}
                    (cdb/run-query db)
-                   (#(for [{:keys [ORDERING VALUE]} %] [ORDERING VALUE]))
+                   (#(for [{:keys [ordering value]} %] [ordering value]))
                    (into {}))]
     (->> [{:table table
            :columns [field]
@@ -309,8 +343,8 @@
       (ct/is (= reference ["G" "G" "C"]))
       (ct/is (= alt ["A" "T" "T"]))
       (ct/is (= amino-acid ["R151W" "F1384L" "R1011K"]))
-      (ct/is (= (select-keys dataset [:NAME :DATASUBTYPE])
-                {:NAME "mutation" :DATASUBTYPE "somatic mutation"})))))
+      (ct/is (= (select-keys dataset [:name :datasubtype])
+                {:name "mutation" :datasubtype "somatic mutation"})))))
 
 (defn mutation2 [db]
   (ct/testing "cgdata mutation"
@@ -335,7 +369,7 @@
 (defn gene-pred1 [db]
   (ct/testing "gene predition file"
     (loader db detector docroot "test/cavm/test_inputs/refGene")
-    (let [chrom-field (:ID (first (cdb/run-query db
+    (let [chrom-field (:id (first (cdb/run-query db
                                                  {:select [:id]
                                                   :from [:field]
                                                   :where [:= :name "chrom"]})))
@@ -347,15 +381,15 @@
                   :from [:field-gene]})]
 
       (ct/is (= (set data)
-                #{{:GENE "MTVR2" :CHROM "chr17"}
-                  {:GENE "LOC100506860" :CHROM "chr7"}
-                  {:GENE "CHMP1B" :CHROM "chr18"}
-                  {:GENE "LOC441204" :CHROM "chr7"}
-                  {:GENE "TCOF1" :CHROM "chr5"}
-                  {:GENE "NSRP1" :CHROM "chr17"}
-                  {:GENE "SPPL3" :CHROM "chr12"}
-                  {:GENE "OPA3" :CHROM "chr19"}
-                  {:GENE "OPA1" :CHROM "chr3"}})))))
+                #{{:gene "MTVR2" :chrom "chr17"}
+                  {:gene "LOC100506860" :chrom "chr7"}
+                  {:gene "CHMP1B" :chrom "chr18"}
+                  {:gene "LOC441204" :chrom "chr7"}
+                  {:gene "TCOF1" :chrom "chr5"}
+                  {:gene "NSRP1" :chrom "chr17"}
+                  {:gene "SPPL3" :chrom "chr12"}
+                  {:gene "OPA3" :chrom "chr19"}
+                  {:gene "OPA1" :chrom "chr3"}})))))
 
 ; XXX test that cgdata defaults to genomicMatrix if not specified
 
@@ -363,6 +397,7 @@
 ; have to invoke fixtures ourselves.
 (defn run-tests [fixture]
   (doseq [t [matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3
+             matrix2-reload
              detect-cgdata-probemap probemap1
              detect-cgdata-clinical clinical1
              detect-cgdata-mutation mutation1 mutation2

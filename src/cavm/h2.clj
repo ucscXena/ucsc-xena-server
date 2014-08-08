@@ -1,7 +1,6 @@
 (ns cavm.h2
-  (:require [korma.db :as kdb])
-  (:require [korma.config :as kconf])
-  (:require [clojure.java.jdbc.deprecated :as jdbc])
+  (:require [clojure.java.jdbc.deprecated :as jdbcd])
+  (:require [clojure.java.jdbc :as jdbc])
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:require [honeysql.core :as hsql])
@@ -11,7 +10,6 @@
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable)])
-  (:use [korma.core :rename {insert kcinsert}])
   (:require [cavm.query.sources :as sources])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
@@ -19,6 +17,7 @@
   (:require [clojure.core.cache :as cache])
   (:require [cavm.h2-unpack-rows :as unpack])
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
+  (:require [cavm.conn-pool :refer [pool]])
   (:gen-class))
 
 ;
@@ -35,11 +34,7 @@
   (alter-var-root #'*tmp-dir* (constantly dir)))
 
 ; Coerce this sql fn name to a keyword so we can reference it.
-(def KEY-ID (keyword "SCOPE_IDENTITY()"))
-
-; provide an insert macro that directly returns an id, instead of a hash
-; on SCOPE_IDENTITY().
-(defmacro insert [& args] `(KEY-ID (kcinsert ~@args)))
+(def KEY-ID (keyword "scope_identity()"))
 
 (def float-size 4)
 (def bin-size 1000)
@@ -73,29 +68,12 @@
 ; Table models
 ;
 
-(declare dataset_source feature field dataset)
-
-(defentity source)
-
-(defentity dataset
-  (many-to-many source :dataset_source)
-  (has-many field))
-
 (declare score-decode)
 
-(defn- cvt-scores [{scores :SCORES :as v}]
+(defn- cvt-scores [{scores :scores :as v}]
   (if scores
-    (assoc v :SCORES (float-array (score-decode scores)))
+    (assoc v :scores (float-array (score-decode scores)))
     v))
-
-(defentity field_score)
-
-(defentity field
-  (has-one feature)
-  (belongs-to dataset)
-  (has-many field_score)
-  (transform cvt-scores))
-
 
 ;
 ; Table definitions.
@@ -109,7 +87,7 @@
    `dataset_id` INT NOT NULL,
    `name` VARCHAR(255),
    UNIQUE(`dataset_id`, `name`),
-   FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`))"])
+   FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`) ON DELETE CASCADE)"])
 
 (def field-score-table
   [(format  "CREATE TABLE IF NOT EXISTS `field_score` (
@@ -117,7 +95,7 @@
             `i` INT NOT NULL,
             `scores` VARBINARY(%d) NOT NULL,
             UNIQUE (`field_id`, `i`),
-            FOREIGN KEY (`field_id`) REFERENCES `field` (`id`))" score-size)])
+            FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)" score-size)])
 
 (def cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
@@ -165,10 +143,6 @@
 (def ^:private dataset-defaults
   (into {} (map #(vector % nil) dataset-columns)))
 
-; XXX should abstract this to set up the many-to-many
-; on the defentity. Can we run many-to-many on the existing
-; sources entity?? Or maybe do defentity sources *after* all
-; the other tables exist?
 (def dataset-source-table
   ["CREATE TABLE IF NOT EXISTS `dataset_source` (
    `dataset_id` INT NOT NULL,
@@ -176,12 +150,8 @@
    FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`),
    FOREIGN KEY (source_id) REFERENCES `source` (`id`))"])
 
-(defentity dataset_source)
-
 (def ^:private dataset-meta
-  {:table dataset
-   :defaults dataset-defaults
-   :join dataset_source
+  {:defaults dataset-defaults
    :columns dataset-columns})
 
 ; XXX CASCADE might perform badly. Might need to do this incrementally in application code.
@@ -232,11 +202,6 @@
    "CREATE ALIAS IF NOT EXISTS unpackCode FOR \"unpack_rows.unpackCode\""
    "CREATE ALIAS IF NOT EXISTS unpackValue FOR \"unpack_rows.unpackValue\""])
 
-(declare code)
-(defentity feature
-  (belongs-to field)
-  (has-many code))
-
 (def ^:private feature-columns
   #{:shortTitle
     :longTitle
@@ -249,8 +214,7 @@
 
 
 (def ^:private feature-meta
-  {:table feature
-   :defaults feature-defaults
+  {:defaults feature-defaults
    :columns feature-columns})
 
 ; Order is important to avoid creating duplicate indexes. A foreign
@@ -266,9 +230,6 @@
    `value` varchar(16384) NOT NULL,
    UNIQUE (`feature_id`, `ordering`),
    FOREIGN KEY (`feature_id`) REFERENCES `feature` (`id`) ON DELETE CASCADE)"])
-
-(defentity code
-  (belongs-to feature))
 
 (defn- normalize-meta [m-ent metadata]
   (-> metadata
@@ -293,24 +254,21 @@
 ;
 ;
 
-(defn- fields-in-exp [exp]
-  (subselect field (fields :id) (where {:dataset_id exp})))
-
 (defn- clear-by-exp [exp]
-  (let [f (fields-in-exp exp)]
-    (delete field_score (where {:field_id [in f]}))
-    (delete field (where {:id [in f]}))))
+  (jdbcd/delete-rows :field ["`dataset_id` = ?" exp]))
 
 ; Update meta entity record.
-(defn- merge-m-ent [m-ent ename metadata]
-  (let [normmeta (normalize-meta m-ent (json-text (assoc metadata "name" ename)))
-        table (:table m-ent)
-        [{id :ID}] (select table (fields :id) (where {:name ename}))]
+(defn- merge-m-ent [ename metadata]
+  (let [normmeta (normalize-meta dataset-meta (json-text (assoc metadata "name" ename)))
+        {id :id} (jdbcd/with-query-results
+                   row
+                   [(str "SELECT `id` FROM `dataset` WHERE `name` = ?") ename]
+                   (first row))]
     (if id
       (do
-        (update table (set-fields normmeta) (where {:id id}))
+        (jdbcd/update-values :dataset ["`id` = ?" id] normmeta)
         id)
-      (insert table (values normmeta)))))
+      (-> (jdbcd/insert-record :dataset normmeta) KEY-ID))))
 
 ;
 ; Hex
@@ -392,9 +350,6 @@
 (defn- codec [blob]
   (codec-length (/ (count blob) float-size)))
 
-;(defn- score-decode [blob]
-;  (binary/decode (codec blob) (io/input-stream blob)))
-
 (defn- score-decode [blob]
   (bytes-to-floats blob))
 
@@ -460,18 +415,19 @@
 ; create the sequence separately in order to set the cache parameter.
 
 (comment (defn- sequence-seq [seqname]
-   (let [[{val :I}] (exec-raw (format "SELECT CURRVAL('%s') AS I" seqname) :results)]
+   (let [[{val :i}] (exec-raw (format "SELECT CURRVAL('%s') AS I" seqname) :results)]
      (range (+ val 1) Double/POSITIVE_INFINITY 1))))
 
-(defn- sequence-seq
-  "Retrieve primary keys in batches by querying the db"
-  [seqname]
-  (let [cmd (format "SELECT NEXT VALUE FOR %s AS i FROM SYSTEM_RANGE(1, 100)" seqname)]
-    (apply concat
-           (repeatedly
-             (fn [] (-> cmd str
-                        (exec-raw :results)
-                        (#(map :I %))))))))
+(comment
+  (defn- sequence-seq
+    "Retrieve primary keys in batches by querying the db"
+    [seqname]
+    (let [cmd (format "SELECT NEXT VALUE FOR %s AS i FROM SYSTEM_RANGE(1, 100)" seqname)]
+      (apply concat
+             (repeatedly
+               (fn [] (-> cmd str
+                          (exec-raw :results)
+                          (#(map :i %)))))))))
 
 ;
 ; Main loader routines. Here we build a sequence of vectors describing rows to be
@@ -534,10 +490,10 @@
          val-str (clojure.string/join ", " (repeat (count fields), "?"))
          stmt-str (format "INSERT INTO %s(%s) VALUES (%s)"
                       (quote-ent table) field-str val-str)]
-     (sql-stmt (jdbc/find-connection) stmt-str fields)))
+     (sql-stmt (jdbcd/find-connection) stmt-str fields)))
 
 (defn sequence-stmt ^cavm.statement.PStatement [db-seq]
-  (sql-stmt-result (jdbc/find-connection)
+  (sql-stmt-result (jdbcd/find-connection)
                          (format "SELECT NEXT VALUE FOR %s AS i" db-seq)))
 
 (def batch-size 1000)
@@ -582,7 +538,7 @@
                                        (:fields (matrix-fn))))]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
-        (jdbc/transaction
+        (jdbcd/transaction
           (doseq [[insert-type values] insert-batch]
             ((writer insert-type) (run-delays values))))))))
 ;
@@ -604,48 +560,50 @@
 (defn- insert-field-score-out [^java.io.BufferedWriter out field-id i score-id]
   (.write out (str field-id "\t" i "\t" score-id "\n")))
 
-(defn- read-from-tsv [table file & cols]
-  (-> "INSERT INTO %s DIRECT SORTED SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
-      (format table file (clojure.string/join "\t" cols))
-      (exec-raw)))
+(comment
+  (defn- read-from-tsv [table file & cols]
+    (-> "INSERT INTO %s DIRECT SORTED SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
+        (format table file (clojure.string/join "\t" cols))
+        (exec-raw))))
 
 (defn- tsv-encoder [scores]
   (let [s (score-encode scores)]
     {:scores s :hex (bytes->hex s)}))
 
-(defn- table-writer-csv [dir dataset-id matrix-fn]
-  (let [field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
-        scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
-        ffname (fs/file dir "field.tmp") ; XXX add pid to these, or otherwise make them unique
-        sfname (fs/file dir "scores.tmp")
-        fsfname (fs/file dir "field_score.tmp")
+(comment
+  (defn- table-writer-csv [dir dataset-id matrix-fn]
+    (let [field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
+          scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
+          ffname (fs/file dir "field.tmp") ; XXX add pid to these, or otherwise make them unique
+          sfname (fs/file dir "scores.tmp")
+          fsfname (fs/file dir "field_score.tmp")
 
-        fields (encode-fields tsv-encoder matrix-fn)]
-    (try
-      (let [field-meta (with-open
-                         [field-file (io/writer ffname)
-                          scores-file (io/writer sfname)
-                          field-score-file (io/writer fsfname)]
-                         (let [writer
-                               {:insert-field (partial
-                                                insert-field-out
-                                                field-file field-seq)
-                                :insert-score (memoize-key
-                                                #(ahashable (:scores (first %)))
-                                                #(insert-scores-out scores-file scores-seq %))
-                                :insert-field-score (partial
-                                                      insert-field-score-out
-                                                      field-score-file)}]
-                           (reduce #(load-field-feature writer dataset-id %1 %2) '() fields)))]
-        (read-from-tsv "field" ffname "ID" "DATASET_ID" "NAME")
-        (read-from-tsv "scores" sfname "ID" "SCORES")
-        (read-from-tsv "field_score" fsfname "FIELD_ID" "I" "SCORES_ID")
-        (kdb/transaction
-          (load-probe-meta field-meta)))
-      (finally
-        (fs/delete ffname)
-        (fs/delete sfname)
-        (fs/delete fsfname)))))
+          fields (encode-fields tsv-encoder matrix-fn)]
+      (try
+        (let [field-meta (with-open
+                           [field-file (io/writer ffname)
+                            scores-file (io/writer sfname)
+                            field-score-file (io/writer fsfname)]
+                           (let [writer
+                                 {:insert-field (partial
+                                                  insert-field-out
+                                                  field-file field-seq)
+                                  :insert-score (memoize-key
+                                                  #(ahashable (:scores (first %)))
+                                                  #(insert-scores-out scores-file scores-seq %))
+                                  :insert-field-score (partial
+                                                        insert-field-score-out
+                                                        field-score-file)}]
+                             (reduce #(load-field-feature writer dataset-id %1 %2) '() fields)))]
+          (read-from-tsv "field" ffname "ID" "DATASET_ID" "NAME")
+          (read-from-tsv "scores" sfname "ID" "SCORES")
+          (read-from-tsv "field_score" fsfname "FIELD_ID" "I" "SCORES_ID")
+          (jdbcd/transaction
+            (load-probe-meta field-meta)))
+        (finally
+          (fs/delete ffname)
+          (fs/delete sfname)
+          (fs/delete fsfname))))))
 
 (def table-writer #'table-writer-default)
 
@@ -657,31 +615,28 @@
   (assoc file-meta :time
          (. java.sql.Timestamp valueOf (format-timestamp (:time file-meta)))))
 
+; XXX test this
+; XXX  and call it somewhere.
 (defn clean-sources []
-  (delete source
-          (where (not (in :id (subselect
-                                (union (queries
-                                         (subselect
-                                           dataset_source
-                                           (fields [:source_id]))))))))))
+  (jdbcd/delete-rows :source
+                     ["`id` NOT IN (SELECT DISTINCT `source_id` FROM `dataset_source)"]))
 
 (defn- load-related-sources [table id-key id files]
-  (delete table (where {id-key id}))
-  (let [sources (map #(insert source (values %)) files)]
+  (jdbcd/delete-rows table [(str (name id-key) " = ?") id])
+  (let [sources (map #(-> (jdbcd/insert-record :source %) KEY-ID) files)]
     (doseq [source-id sources]
-      (insert table
-              (values {id-key id :source_id source-id})))))
+      (jdbcd/insert-record table {id-key id :source_id source-id}))))
 
-; work around h2 uppercase craziness
-; XXX review passing naming option to korma
-(defn- keys-lower [m]
-  (into {} (map #(vector (keyword (subs (clojure.string/lower-case (% 0)) 1)) (% 1)) m)))
+(defn- related-sources [id]
+  (jdbcd/with-query-results rows
+    ["SELECT `source`.`name`, `hash`, `time`
+     FROM `dataset`
+     JOIN `dataset_source` ON `dataset_id` = `dataset`.`id`
+     JOIN `source` on `source_id` = `source`.`id`
+     WHERE `dataset`.`id` = ?" id]
+    (doall rows)))
 
-(defn- related-sources [table id]
-  (map keys-lower
-    (select table (join source) (where {:id id}) (fields :source.name :source.hash :source.time))))
-
-; kdb/transaction will create a closure of our parameters,
+; jdbcd/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
 
@@ -700,64 +655,43 @@
    (profile
      :trace
      :dataset-load
-     (let [dataset-id (merge-m-ent dataset-meta mname metadata)
-             files (map fmt-time files)]
-         (when (or force
-                   (not (= (set files) (set (related-sources dataset dataset-id)))))
-           (kdb/transaction ; XXX add flag for when dataset is fully loaded. Maybe just updating timestamp?
-             (p :dataset-clear
-                (clear-by-exp dataset-id))
-             (p :dataset-sources
-                (load-related-sources
-                  dataset_source :dataset_id dataset-id files)))
-           (p :dataset-table
-              (jdbc/with-connection (korma.db/get-connection @korma.db/_default)
-                (table-writer *tmp-dir* dataset-id matrix-fn))))))))
+     (let [dataset-id (jdbcd/transaction (merge-m-ent mname metadata))
+           files (map fmt-time files)]
+       (when (or force
+                 (not (= (set files) (set (jdbcd/transaction (related-sources dataset-id))))))
+         ; XXX add flag for when dataset is fully loaded. Maybe just updating timestamp?
+         (jdbcd/transaction
+           (p :dataset-clear
+              (clear-by-exp dataset-id))
+           (p :dataset-sources
+              (load-related-sources
+                :dataset_source :dataset_id dataset-id files)))
+         (p :dataset-table
+            (table-writer *tmp-dir* dataset-id matrix-fn)))))))
 
-; XXX factor out common parts with merge, above?
-(defn del-exp [file]
+; XXX needs updated. dataset table doesn't have a :file attribute.
+(comment  (defn del-exp [file]
   (kdb/transaction
-    (let [[{exp :ID}] (select dataset (where {:file file}))]
+    (let [[{exp :id}] (select dataset (where {:file file}))]
       (clear-by-exp exp)
-      (delete dataset (where {:id exp})))))
+      (delete dataset (where {:id exp}))))))
 
-; XXX probemap meta??? What do we do with it now?
-
-; XXX Horrible work-around to call .setConnectionCustomizerClassName. Need
-; to drop korma.
-(defn kcreate-db
-  [spec]
-  {:pool (if (:make-pool? spec)
-           (delay (let [cp (kdb/connection-pool spec)]
-                    (.setConnectionCustomizerClassName (:datasource cp)
-                                                       "conn_customizer")
-                    cp))
-           spec)
-   :options (kconf/extract-options spec)})
-
-(defn create-db [file & [{:keys [classname subprotocol delimiters make-pool?]
+(defn create-db [file & [{:keys [classname subprotocol make-pool?]
                           :or {classname "org.h2.Driver"
                                subprotocol "h2"
-                               delimiters "`"
                                make-pool? true}}]]
-  (kcreate-db {:classname classname
-               :subprotocol subprotocol
-               :subname file
-               :delimiters delimiters
-               :make-pool? make-pool?}))
 
-(defmacro with-db [db & body]
-  `(kdb/with-db ~db ~@body))
+  (let [spec {:classname classname
+              :subprotocol subprotocol
+              :subname file
+              :conn-customizer "conn_customizer"
+              :make-pool? make-pool?}]
+        (if make-pool? (delay (pool spec)) (delay (-> spec)))))
 
-; execute a sequence of sql statements
-(defn- exec-statements [stmts]
-  (doseq [s stmts]
-    (exec-raw s)))
-
+; XXX should sanitize the query
 (defn run-query [q]
-  ; XXX should sanitize the query
-  (let [[qstr & args] (hsql/format q)]
-    (exec-raw [qstr args] :results)))
+  (jdbcd/with-query-results rows (hsql/format q)
+      (doall rows)))
 
 ;
 ; Code queries
@@ -778,7 +712,7 @@
 (defn codes-for-values [dataset-id field values]
   (->> (codes-for-values-query dataset-id field values)
        (run-query)
-       (map #(mapv % [:VALUE :ORDERING]))
+       (map #(mapv % [:value :ordering]))
        (into {})))
 
 ;
@@ -794,10 +728,10 @@
             :where [:= :dataset_id dataset-id]} :P]]
    :left-join [:field_score [:= :P.id :field_score.field_id]]})
 
-; {"foxm1" [{:NAME "foxm1" :SCORES <bytes>} ... ]
+; {"foxm1" [{:name "foxm1" :scores <bytes>} ... ]
 (let [concat-field-bins
       (fn [bins]
-        (let [sorted (map :SCORES (sort-by :I bins))
+        (let [sorted (map :scores (sort-by :i bins))
               float-bins (map score-decode sorted)
               row-count (apply + (map count float-bins))
               out (float-array row-count)]
@@ -814,7 +748,7 @@
     (let [field-bins (->> fields
                           (apply all-rows-query dataset-id )
                           (run-query)
-                          (group-by :NAME))]
+                          (group-by :name))]
       (into {} (for [[k v] field-bins] [k (concat-field-bins v)])))))
 
 ;
@@ -822,9 +756,11 @@
 ;
 
 (defn dataset-by-name [dname]
-  (let [[{id :ID}]
-        (select dataset (fields "id") (where {:name (str dname)}))] ; XXX shoul str be here, or higher in the call stack?
-    id))
+  (jdbcd/with-query-results rows
+    ["SELECT `id`
+     FROM `dataset`
+     WHERE `name` = ?" (str dname)]
+    (-> rows first :id)))
 
 ; merge bin number and bin offset for a row
 (defn- merge-bin-off [{i :i :as row}]
@@ -841,7 +777,7 @@
 ; Gets called once for each bin in the request.
 ; order is row -> order in output buffer.
 ; bin is the bin for the given set of rows
-; rows is ({:I 12 :bin 1 :off 1}, ... ), where all :bin are the same
+; rows is ({:i 12 :bin 1 :off 1}, ... ), where all :bin are the same
 (defn- pick-rows-fn [[bin rows]]
   [bin (partial ashuffle-float
                 (map bin-mapping rows))])
@@ -850,7 +786,7 @@
 ; values from a score bin to an output array. Returns one function
 ; for each score bin in the request.
 ;
-; rows ({:I 12 :bin 1 :off 1}, ... )
+; rows ({:i 12 :bin 1 :off 1}, ... )
 (defn- pick-rows-fns [rows]
   (let [by-bin (group-by :bin rows)]
     (apply hash-map (mapcat pick-rows-fn by-bin))))
@@ -858,7 +794,7 @@
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
 (defn- build-score-arrays [rows bfns out]
-  (doseq [{i :I scores :SCORES field :NAME} rows]
+  (doseq [{i :i scores :scores field :name} rows]
     ((bfns i) (out field) scores))
   out)
 
@@ -885,7 +821,8 @@
                                        (repeat (count bins) "?")))
         c (to-array (map str columns))
         i (to-array bins)]
-    (exec-raw [q (concat [c dataset-id] i)] :results)))
+    (jdbcd/with-query-results rows [q c dataset-id i]
+      (doall rows))))
 
 ; Returns rows from (dataset-id column-name) matching
 ; values. Returns a hashmap for each matching  row.
@@ -947,18 +884,18 @@
   (map #(update-in % [:data] merge (genomic-read-req %)) reqs))
 
 (defn create[]
-  (kdb/transaction
-    (exec-statements cohorts-table)
-    (exec-statements source-table)
-    (exec-statements dataset-table)
-    (exec-statements dataset-source-table)
-    (exec-statements field-table)
-    (exec-statements field-score-table)
-    (exec-statements feature-table)
-    (exec-statements code-table)
-    (exec-statements field-position-table)
-    (exec-statements field-gene-table)
-    (exec-statements unpack-aliases)))
+  (jdbcd/transaction
+    (apply jdbcd/do-commands cohorts-table)
+    (apply jdbcd/do-commands source-table)
+    (apply jdbcd/do-commands dataset-table)
+    (apply jdbcd/do-commands dataset-source-table)
+    (apply jdbcd/do-commands field-table)
+    (apply jdbcd/do-commands field-score-table)
+    (apply jdbcd/do-commands feature-table)
+    (apply jdbcd/do-commands code-table)
+    (apply jdbcd/do-commands field-position-table)
+    (apply jdbcd/do-commands field-gene-table)
+    (apply jdbcd/do-commands unpack-aliases)))
 
 ;
 ; add TABLE handling for honeysql
@@ -986,34 +923,24 @@
 (defmethod hsqlfmt/fn-handler "group_concat" [_ value & args]
   (format-concat value args))
 
-; XXX monkey-patch korma to work around h2 bug.
-; h2 will fail to select an index if joins are grouped, e.g.
-; FROM (a JOIN b) JOIN c
-; We work around it by replacing the function that adds the
-; grouping.
-(in-ns 'korma.sql.utils)
-(defn left-assoc [v]
-  (clojure.string/join " " v))
-(in-ns 'cavm.h2)
-
 (defrecord H2Db [db])
 
 (extend-protocol XenaDb H2Db
   (write-matrix [this mname files metadata data-fn features always]
-    (with-db (:db this)
+    (jdbcd/with-connection @(:db this)
       (load-dataset mname files metadata data-fn features always)))
   (run-query [this query]
-    (with-db (:db this)
+    (jdbcd/with-connection @(:db this)
       (run-query query)))
   (fetch [this reqs]
-    (with-db (:db this)
+    (jdbcd/with-connection @(:db this)
       (doall (genomic-source reqs))))
-  (close [this]
-    (.close (:datasource @(:pool (:db this))) false)))
+  (close [this] ; XXX test for pool, or datasource before running?
+    (.close (:datasource @(:db this)) false)))
 
 (defn create-xenadb [& args]
   (let [db (apply create-db args)]
-    (with-db db (create))
+    (jdbcd/with-connection @db (create))
     (H2Db. db)))
 
 ;

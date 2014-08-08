@@ -11,7 +11,7 @@
                  [net.mikera/core.matrix "0.8.0"]
                  [net.mikera/vectorz-clj "0.11.0"]
                  [org.clojure/java.jdbc "0.3.4"]
-                 [korma "0.3.1"]
+                 [com.mchange/c3p0 "0.9.2.1"]
                  [org.clojars.smee/binary "0.2.0"]
                  [clj-time "0.5.0"]
                  [liberator "0.10.0"]
