@@ -866,9 +866,9 @@
                           (filter :value)
                           (mapv merge-bin-off))
 
-        bins (mapv :bin rows-to-copy)            ; list of bins to pull.
+        bins (mapv :bin rows-to-copy)        ; list of bins to pull.
         bfns (pick-rows-fns rows-to-copy)]   ; make fns that map from input bin to
-                                                ; output buffer, one fn per input bin.
+                                             ; output buffer, one fn per input bin.
 
     (-> (select-scores-full dataset-id columns (distinct bins))
         (#(mapv cvt-scores %))
