@@ -697,21 +697,18 @@
 ; Code queries
 ;
 
-(defn codes-for-field-query [dataset-id field]
-   {:select [:ordering :value]
-    :from [:field]
-    :left-join [:feature [:= :field_id :field.id]
-                :code [:= :feature_id :feature.id]]
-    :where [:and [:= :name field] [:= :dataset_id dataset-id]]})
-
-(defn codes-for-values-query [dataset-id field values]
-  (merge
-    {:join [{:table  [[[:value2 :varchar values ]] :T]} [:= :value :value2]]}
-    (codes-for-field-query dataset-id field)))
+(def codes-for-values-query
+  (cached-statement
+    "SELECT `ordering`, `value`
+    FROM `field`
+    JOIN `feature` ON `field_id` = `field`.`id`
+    JOIN `code` ON `feature_id` = `feature`.`id`
+    JOIN TABLE(`value2` VARCHAR = ?) T ON `value` = `value2`
+    WHERE `name` = ? AND `dataset_id` = ?"
+    true))
 
 (defn codes-for-values [dataset-id field values]
-  (->> (codes-for-values-query dataset-id field values)
-       (run-query)
+  (->> (codes-for-values-query (jdbcd/find-connection) (to-array values) field dataset-id)
        (map #(mapv % [:value :ordering]))
        (into {})))
 
@@ -720,13 +717,16 @@
 ;
 
 ; All bins for the given fields.
-(defn all-rows-query [dataset-id & fields]
-  {:select [:name :i :scores]
-   :from [[{:select [:name :id]
-            :from [:field]
-            :join  [{:table  [[[:name2 :varchar fields]] :T]}  [:= :name2 :field.name]]
-            :where [:= :dataset_id dataset-id]} :P]]
-   :left-join [:field_score [:= :P.id :field_score.field_id]]})
+
+(def all-rows-query
+   (cached-statement
+     "SELECT `name`, `i`, `scores`
+     FROM (SELECT `name`, `id`
+     FROM `field`
+     INNER JOIN (TABLE(`name2` VARCHAR = ?) T) ON `name2` = `field`.`name`
+     WHERE `dataset_id` = ?) AS P
+     LEFT JOIN `field_score` ON `P`.`id` = `field_score`.`field_id`"
+     true))
 
 ; {"foxm1" [{:name "foxm1" :scores <bytes>} ... ]
 (let [concat-field-bins
@@ -745,9 +745,7 @@
 
   ; return float arrays of all rows for the given fields
   (defn all-rows [dataset-id fields]
-    (let [field-bins (->> fields
-                          (apply all-rows-query dataset-id )
-                          (run-query)
+    (let [field-bins (->> (all-rows-query (jdbcd/find-connection) (to-array fields) dataset-id)
                           (group-by :name))]
       (into {} (for [[k v] field-bins] [k (concat-field-bins v)])))))
 
