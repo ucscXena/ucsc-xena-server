@@ -632,7 +632,7 @@
      JOIN `dataset_source` ON `dataset_id` = `dataset`.`id`
      JOIN `source` on `source_id` = `source`.`id`
      WHERE `dataset`.`id` = ?" id]
-    (doall rows)))
+    (vec rows)))
 
 ; jdbcd/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
@@ -689,7 +689,7 @@
 ; XXX should sanitize the query
 (defn run-query [q]
   (jdbcd/with-query-results rows (hsql/format q)
-      (doall rows)))
+    (vec rows)))
 
 ;
 ; Code queries
@@ -818,7 +818,7 @@
         c (to-array (map str columns))
         i (to-array bins)]
     (jdbcd/with-query-results rows [q c dataset-id i]
-      (doall rows))))
+      (vec rows))))
 
 ; Returns rows from (dataset-id column-name) matching
 ; values. Returns a hashmap for each matching  row.
