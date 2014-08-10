@@ -1,6 +1,61 @@
 UCSC Xena Server Design
 ***********************
 
+Modules For Data Ingestion
+==========================
+
+The primarly modules involved in data ingestion are shown below, with
+module dependencies drawn beneath the module.
+
++----------------------------+
+|        cavm.core           |
++----------------------------+
+|       cavm.loader          |
++-------------+--------------+
+|    cavm.db  | cavm.readers |
++-------------+--------------+
+|   cavm.h2   | cavm.cgdata  |
++-------------+--------------+
+| H2 database | cgdata.core  |
++-------------+--------------+
+|             | Filesystem   |
++-------------+--------------+
+
+Briefly, ``cavm.core`` is the *main* method, providing command line processing,
+configuration, and launch of the application. The ``cavm.loader`` module
+provides a file loading interface bound to a particular file reader and database.
+``cavm.db`` provides an abstract interface to xena operations on a database
+(e.g. ``run-query``, ``write-matrix``), which is implemented by the ``cavm.h2``
+module, using the H2 database as a backend. The ``cavm.readers`` module provides
+interfaces for detecting the type of a file, and parsing a file. These interfaces
+are implemented by ``cavm.cgdata``, which uses ``cgdata.core`` to read cgdata
+files.
+
+Modules For Data Serving
+========================
+
++---------------------------------------------------------------------------------------+
+|        cavm.core                                                                      |
++---------------------------------------------------------------------+---------+-------+
+| cavm.views.datasets                                                 | cavm.h2 | jetty |
++-----------------------+----------------------+-----------+----------+---------+-------+
+| cavm.query.expression | cavm.query.functions | liberator | cavm.db  |    H2   |       |
++-----------------------+----------------------+-----------+----------+---------+-------+
+|                       |    core.matrix       |                      |         |       |
++-----------------------+----------------------+----------------------+---------+-------+
+
+When serving data, ``cavm.core`` retrieves an H2 implementation of the ``cavm.db``
+interface, and brings up jetty over the views in ``cavm.views.datasets``, passing
+in the database. 
+
+``cavm.views.datasets`` uses the Liberator library for AJAX
+handling,
+and for generating responses evaluates scheme expressions by passing them to
+``cavm.query.expression``. A root context for symbol resolution is passed,
+which includes standard scheme functions that are defined in ``cavm.query.functions``.
+Matrix math operators are provided by ``core.matrix``.
+
+
 Database backend: h2.clj
 ========================
 

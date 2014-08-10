@@ -1,0 +1,7 @@
+@import url("sphinx_default.css");
+
+table.docutils td, table.docutils th {
+	text-align: center;
+	vertical-align: middle;
+	border: 1px solid black;
+}
