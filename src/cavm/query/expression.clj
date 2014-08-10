@@ -1,7 +1,7 @@
 (ns cavm.query.expression
   (:require [clojure.edn :as edn])
   (:require [honeysql.types :as hsqltypes])
-  (:require [taoensso.timbre :as timbre :refer [info]])
+  (:require [clojure.tools.logging :refer [warn info]])
   (:refer-clojure :exclude [eval letfn]))
 
 (def eval)
@@ -56,7 +56,7 @@
     ; to handle map? separate from coll?
     (map? node) (into {} (mapv #(eval (vec %) scope) node))
     (coll? node) (into (empty node) (mapv #(eval % scope) node))
-    :else (info "Unknown node type " (type node))))
+    :else (info "Unknown node type " (type node)))) ; XXX return this to user
 
 (defn expression [exp & globals]
   (eval (edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}} exp) (cons specials globals)))

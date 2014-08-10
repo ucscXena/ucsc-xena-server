@@ -13,7 +13,7 @@
   (:require [ring.middleware.params :refer [wrap-params]])
   (:require [cavm.views.datasets])
   (:require [ring.middleware.gzip :refer [wrap-gzip]])
-  (:require [ring.middleware.stacktrace :refer [wrap-stacktrace]]) ; XXX only in dev
+  (:require [ring.middleware.stacktrace :refer [wrap-stacktrace-web]]) ; XXX only in dev
   (:require [liberator.dev :refer [wrap-trace]])                   ; XXX only in dev
   (:require [filevents.core :refer [watch]])
   (:require [cavm.readers :as cr])
@@ -21,11 +21,12 @@
   (:require [cavm.fs-utils :refer [normalized-path]])
   (:require [cavm.cgdata])
   (:require [clj-http.client :as client])
-  (:require  [clojure.tools.logging :as log])
-  (:require [taoensso.timbre :as timbre :refer [info warn]])
-  (:require [taoensso.timbre.profiling :as profiling :refer [profile p]])
-  (:require [taoensso.timbre.tools.logging :refer [use-timbre]])
+  (:require [clojure.tools.logging :as log :refer [info trace warn error]])
+  (:require [taoensso.timbre :as timbre])
   (:require [cavm.version :refer [version]])
+  (:import org.slf4j.LoggerFactory
+           ch.qos.logback.classic.joran.JoranConfigurator
+           ch.qos.logback.core.util.StatusPrinter)
   (:gen-class))
 
 (defn- in-data-path [root path]
@@ -46,6 +47,17 @@
   (fn [req]
     (app (assoc req k v))))
 
+(defn- log-middleware [handler]
+  (fn [{:keys [uri query-string request-method] :as request}]
+    (info "Start:" (.toUpperCase (name request-method)) uri query-string)
+    (try
+      (let [resp (handler request)]
+        (info "End:" uri (:status resp))
+        resp)
+      (catch Exception ex
+        (error ex "Error handling request" uri)
+        (throw ex)))))
+
 (comment (defn- del-datasets [args]
    (dorun (map del-exp args))))
 
@@ -63,7 +75,8 @@
       (wrap-content-type)
       (wrap-not-modified)
       (wrap-gzip)
-      (wrap-stacktrace)
+      (log-middleware)
+      (wrap-stacktrace-web)
       (wrap-access-control)))
 
 (defn- serv [app host port]
@@ -139,8 +152,18 @@
   (when (not (.exists (io/file dir)))
     (str "Unable to create directory: " dir)))
 
+; XXX should move this to h2.clj
+(def default-h2-opts-map
+  {:cache_size 65536
+   :undo_log 1
+   :log 1
+   :mvcc "TRUE"
+   :trace_level_file 4}) ; 4 == slf4j
+
 ; Enable transaction log, rollback log, and MVCC (so we can load w/o blocking readers).
-(def default-h2-opts ";CACHE_SIZE=65536;UNDO_LOG=1;LOG=1;MVCC=TRUE")
+(def default-h2-opts
+  (s/join ";" (for [[k v] default-h2-opts-map]
+                (str (.toUpperCase (name k)) "=" v))))
 
 ; Might want to allow more piecemeal setting of options, by
 ; parsing them & allowing cli overrides. For now, if the
@@ -151,17 +174,32 @@
   "Add default h2 options if none are specified"
   [database]
   (if (= -1 (.indexOf database ";"))
-    (str database default-h2-opts)
+    (str database ";" default-h2-opts)
     database))
 
+(defn logback-config [filename]
+  (System/setProperty "log_file" filename)
+  (let [context (LoggerFactory/getILoggerFactory)
+        configurator (JoranConfigurator.)]
+    (try
+      (.setContext configurator context)
+      (.reset context)
+      (.doConfigure configurator (io/resource "logback_config.xml"))
+      (catch Exception e))
+    (StatusPrinter/printInCaseOfErrorsOrWarnings context)))
+
 (defn log-config [filename]
-  (use-timbre) ; redirect clojure.tools.logging to timbre
+  (logback-config filename)
   (log/log-capture! 'cavm.core) ; redirect System.out System.error to clojure.tools.logging
-  (timbre/set-level! :trace) ; XXX keep everything on for now
+  ; Only use timbre for the profiling commands. Might want to extract
+  ; them into a standalone lib.
+  (timbre/set-level! :trace)
   (timbre/merge-config!
     {:appenders {:standard-out {:enabled? false}
-                 :spit {:enabled? true}}
-     :shared-appender-config {:spit-filename filename}}))
+                 :jl {:enabled? true
+                      :fn (fn [{:keys [ns level throwable message]}]
+                            (log/log ns level throwable message))}}}))
+
 
 ; XXX create dir for database as well?
 (defn -main [& args]
@@ -185,7 +223,7 @@
                   (println error))
                 (do
                   (log-config logfile)
-                  (timbre/info "Xena server starting" (version))
+                  (info "Xena server starting" (version))
                   (h2/set-tmp-dir! tmp)
                   (let [db (h2/create-xenadb database)
                         detector (apply cr/detector docroot detectors)

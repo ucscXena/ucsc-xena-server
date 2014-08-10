@@ -13,7 +13,7 @@
   (:require [cavm.query.sources :as sources])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
-  (:require [taoensso.timbre :as timbre])
+  (:require [taoensso.timbre.profiling :refer [profile p]])
   (:require [clojure.core.cache :as cache])
   (:require [cavm.h2-unpack-rows :as unpack])
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
@@ -25,8 +25,6 @@
 ; literature: a column is split into a series of segments (bins) before
 ; writing to disk (saving as blob in h2).
 ;
-
-(timbre/refer-timbre) ; XXX magic requires for timbre
 
 (def ^:dynamic *tmp-dir* (System/getProperty "java.io.tmpdir"))
 
