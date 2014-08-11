@@ -1,4 +1,7 @@
-(ns cavm.h2
+(ns
+  ^{:author "Brian Craft"
+    :doc "Xena H2 database backend"}
+  cavm.h2
   (:require [clojure.java.jdbc.deprecated :as jdbcd])
   (:require [clojure.java.jdbc :as jdbc])
   (:require [org.clojars.smee.binary.core :as binary])
@@ -26,17 +29,17 @@
 ; writing to disk (saving as blob in h2).
 ;
 
-(def ^:dynamic *tmp-dir* (System/getProperty "java.io.tmpdir"))
+(def ^:dynamic ^:private *tmp-dir* (System/getProperty "java.io.tmpdir"))
 
 (defn set-tmp-dir! [dir]
   (alter-var-root #'*tmp-dir* (constantly dir)))
 
 ; Coerce this sql fn name to a keyword so we can reference it.
-(def KEY-ID (keyword "scope_identity()"))
+(def ^:private KEY-ID (keyword "scope_identity()"))
 
-(def float-size 4)
-(def bin-size 1000)
-(def score-size (* float-size bin-size))
+(def ^:private float-size 4)
+(def ^:private bin-size 1000)
+(def ^:private score-size (* float-size bin-size))
 ; Add 30 for gzip header
 ;( def score-size (+ 30 (* float-size bin-size)))
 
@@ -50,7 +53,7 @@
        (pmap (fn [chunk] (doall (map f chunk))))
        (apply concat)))
 
-(defn memoize-key
+(defn- memoize-key
   "Memoize with the given function of the arguments"
   [kf f]
   (let [mem (atom {})]
@@ -78,7 +81,7 @@
 ;
 
 ; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
-(def field-table
+(def ^:private field-table
   ["CREATE SEQUENCE IF NOT EXISTS FIELD_IDS CACHE 2000"
    "CREATE TABLE IF NOT EXISTS `field` (
    `id` INT NOT NULL DEFAULT NEXT VALUE FOR FIELD_IDS PRIMARY KEY,
@@ -87,7 +90,7 @@
    UNIQUE(`dataset_id`, `name`),
    FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`) ON DELETE CASCADE)"])
 
-(def field-score-table
+(def ^:private field-score-table
   [(format  "CREATE TABLE IF NOT EXISTS `field_score` (
             `field_id` INT NOT NULL,
             `i` INT NOT NULL,
@@ -95,21 +98,21 @@
             UNIQUE (`field_id`, `i`),
             FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)" score-size)])
 
-(def cohorts-table
+(def ^:private cohorts-table
   ["CREATE TABLE IF NOT EXISTS `cohorts` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` VARCHAR(2000) NOT NULL UNIQUE)"])
 
 ; XXX What should max file name length be?
 ; XXX Unique columns? Indexes?
-(def source-table
+(def ^:private source-table
   ["CREATE TABLE IF NOT EXISTS `source` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` VARCHAR(2000) NOT NULL,
    `time` TIMESTAMP NOT NULL,
    `hash` VARCHAR(40) NOT NULL)"])
 
-(def dataset-table
+(def ^:private dataset-table
   ["CREATE TABLE IF NOT EXISTS `dataset` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `name` varchar(1000) NOT NULL UNIQUE,
@@ -141,7 +144,7 @@
 (def ^:private dataset-defaults
   (into {} (map #(vector % nil) dataset-columns)))
 
-(def dataset-source-table
+(def ^:private dataset-source-table
   ["CREATE TABLE IF NOT EXISTS `dataset_source` (
    `dataset_id` INT NOT NULL,
    `source_id` INT NOT NULL,
@@ -153,7 +156,7 @@
    :columns dataset-columns})
 
 ; XXX CASCADE might perform badly. Might need to do this incrementally in application code.
-(def field-position-table
+(def ^:private field-position-table
   ["CREATE TABLE IF NOT EXISTS `field_position` (
    `field_id` INT NOT NULL,
    `row` INT NOT NULL,
@@ -166,7 +169,7 @@
    "CREATE INDEX IF NOT EXISTS chrom_bin ON field_position (`field_id`, `chrom`, `bin`)"
    "CREATE INDEX IF NOT EXISTS position_row ON field_position (`field_id`, `row`)"])
 
-(def field-gene-table
+(def ^:private field-gene-table
   ["CREATE TABLE IF NOT EXISTS `field_gene` (
    `field_id` INT NOT NULL,
    `row` INT NOT NULL,
@@ -179,7 +182,7 @@
 ; feature tables
 ;
 
-(def feature-table
+(def ^:private feature-table
   ["CREATE SEQUENCE IF NOT EXISTS FEATURE_IDS CACHE 2000"
    "CREATE TABLE IF NOT EXISTS `feature` (
    `id` INT NOT NULL DEFAULT NEXT VALUE FOR FEATURE_IDS PRIMARY KEY,
@@ -195,7 +198,7 @@
 ; blob unpacking
 ;
 
-(def unpack-aliases
+(def^:private  unpack-aliases
   ["CREATE ALIAS IF NOT EXISTS unpack FOR \"unpack_rows.unpack\""
    "CREATE ALIAS IF NOT EXISTS unpackCode FOR \"unpack_rows.unpackCode\""
    "CREATE ALIAS IF NOT EXISTS unpackValue FOR \"unpack_rows.unpackValue\""])
@@ -220,7 +223,7 @@
 ; index before adding the constraint.
 ; XXX varchar size is pushing it. Do we need another type for clob-valued
 ; fields?
-(def code-table
+(def ^:private code-table
   ["CREATE TABLE IF NOT EXISTS `code` (
    `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
    `feature_id` int(11) NOT NULL,
@@ -238,7 +241,7 @@
 (defn- json-text [md]
   (assoc md :text (json/write-str md :escape-slash false)))
 
-(defn load-probe-meta
+(defn- load-probe-meta
   [feature-seq field-id {:keys [order state] :as feat}]
   (let [feature-id (feature-seq)
         fmeta (merge (normalize-meta feature-meta feat)
@@ -315,16 +318,16 @@
     out))
 
 ; Pick elements of float array, by index.
-(defn apick-float [^floats a idxs]
+(defn- apick-float [^floats a idxs]
  (let [ia (float-array idxs)]
   (amap ia i ret (aget a i))))
 
-(defn ashuffle-float [mappings ^floats out ^floats in]
+(defn- ashuffle-float [mappings ^floats out ^floats in]
    (doseq [[i-in i-out] mappings]
      (aset out i-out (aget in i-in)))
    out)
 
-(defn bytes-to-floats [^bytes barr]
+(defn- bytes-to-floats [^bytes barr]
   (let [bb (java.nio.ByteBuffer/allocate (alength barr))
         fb (.asFloatBuffer bb)
         out (float-array (quot (alength barr) 4))]
@@ -332,7 +335,7 @@
     (.get fb out)
     out))
 
-(defn floats-to-bytes [^floats farr]
+(defn- floats-to-bytes [^floats farr]
   (let [bb (java.nio.ByteBuffer/allocate (* (alength farr) 4))
         fb (.asFloatBuffer bb)]
     (.put fb farr)
@@ -342,8 +345,9 @@
 ; Score encoders
 ;
 
-(def codec-length (memoize (fn [len]
-                             (binary/repeated :float-le :length len))))
+(def ^:private codec-length
+  (memoize (fn [len]
+             (binary/repeated :float-le :length len))))
 
 (defn- codec [blob]
   (codec-length (/ (count blob) float-size)))
@@ -379,7 +383,7 @@
         gzis (java.util.zip.GZIPInputStream. bais)]
     (binary/decode (binary/repeated :float-le :length 10) gzis)))
 
-(def score-encode score-encode-orig)
+(def ^:private score-encode score-encode-orig)
 
 (defn- encode-row [encode row]
   (mapv encode (partition-all bin-size row)))
@@ -433,7 +437,7 @@
 ; [:insert-score {:id 1 :scores #<byte[] [B@12345>}]
 ;
 
-(defmulti load-field
+(defmulti ^:private load-field
   (fn [dataset-id field-id column]
     (-> column :valueType)))
 
@@ -480,23 +484,23 @@
 ;
 ;
 
-(defn quote-ent [x]
+(defn- quote-ent [x]
   (str \` (name x) \`))
 
-(defn insert-stmt ^cavm.statement.PStatement [table fields]
+(defn- insert-stmt ^cavm.statement.PStatement [table fields]
    (let [field-str (clojure.string/join ", " (map quote-ent fields))
          val-str (clojure.string/join ", " (repeat (count fields), "?"))
          stmt-str (format "INSERT INTO %s(%s) VALUES (%s)"
                       (quote-ent table) field-str val-str)]
      (sql-stmt (jdbcd/find-connection) stmt-str fields)))
 
-(defn sequence-stmt ^cavm.statement.PStatement [db-seq]
+(defn- sequence-stmt ^cavm.statement.PStatement [db-seq]
   (sql-stmt-result (jdbcd/find-connection)
                          (format "SELECT NEXT VALUE FOR %s AS i" db-seq)))
 
-(def batch-size 1000)
+(def ^:private batch-size 1000)
 
-(defn run-delays [m]
+(defn- run-delays [m]
   (into {} (for [[k v] m] [k (if (delay? v) @v v)])))
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
@@ -603,7 +607,7 @@
           (fs/delete sfname)
           (fs/delete fsfname))))))
 
-(def table-writer #'table-writer-default)
+(def ^:private table-writer #'table-writer-default)
 
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
   (defn- format-timestamp [timestamp]
@@ -615,7 +619,7 @@
 
 ; XXX test this
 ; XXX  and call it somewhere.
-(defn clean-sources []
+(defn- clean-sources []
   (jdbcd/delete-rows :source
                      ["`id` NOT IN (SELECT DISTINCT `source_id` FROM `dataset_source)"]))
 
@@ -643,7 +647,7 @@
 ; matrix-fn: function to return seq of data rows
 ; features: field metadata. Need a better name for this.
 
-(defn load-dataset
+(defn- load-dataset
   "Load matrix file and metadata. Skips the data load if file hashes are unchanged,
   and 'force' is false. Metadata is always updated."
   ([mname files metadata matrix-fn features]
@@ -687,7 +691,7 @@
         (if make-pool? (delay (pool spec)) (delay (-> spec)))))
 
 ; XXX should sanitize the query
-(defn run-query [q]
+(defn- run-query [q]
   (jdbcd/with-query-results rows (hsql/format q)
     (vec rows)))
 
@@ -695,7 +699,7 @@
 ; Code queries
 ;
 
-(def codes-for-values-query
+(def ^:private codes-for-values-query
   (cached-statement
     "SELECT `ordering`, `value`
     FROM `field`
@@ -705,7 +709,7 @@
     WHERE `name` = ? AND `dataset_id` = ?"
     true))
 
-(defn codes-for-values [dataset-id field values]
+(defn- codes-for-values [dataset-id field values]
   (->> (codes-for-values-query (jdbcd/find-connection) (to-array values) field dataset-id)
        (map #(mapv % [:value :ordering]))
        (into {})))
@@ -716,7 +720,7 @@
 
 ; All bins for the given fields.
 
-(def all-rows-query
+(def ^:private all-rows-query
    (cached-statement
      "SELECT `name`, `i`, `scores`
      FROM (SELECT `name`, `id`
@@ -742,7 +746,7 @@
           out))]
 
   ; return float arrays of all rows for the given fields
-  (defn all-rows [dataset-id fields]
+  (defn- all-rows [dataset-id fields]
     (let [field-bins (->> (all-rows-query (jdbcd/find-connection) (to-array fields) dataset-id)
                           (group-by :name))]
       (into {} (for [[k v] field-bins] [k (concat-field-bins v)])))))
@@ -751,7 +755,7 @@
 ;
 ;
 
-(defn dataset-by-name [dname]
+(defn- dataset-by-name [dname]
   (jdbcd/with-query-results rows
     ["SELECT `id`
      FROM `dataset`
@@ -802,7 +806,7 @@
 
 ; XXX performance of the :in clause?
 ; XXX make a prepared statement
-(def dataset-fields-query
+(def ^:private dataset-fields-query
   "SELECT name, i, scores
    FROM (SELECT  `field`.`name`, `field`.`id`
          FROM `field`
@@ -811,7 +815,7 @@
    LEFT JOIN `field_score` ON P.id = `field_score`.`field_id`
    WHERE `field_score`.`i` IN (%s)")
 
-(defn select-scores-full [dataset-id columns bins]
+(defn- select-scores-full [dataset-id columns bins]
   (let [q (format dataset-fields-query
                   (clojure.string/join ","
                                        (repeat (count bins) "?")))
@@ -826,7 +830,7 @@
 ;   ;order The order of the row the result set.
 ;   :value The value of the row.
 ; }
-(defn rows-matching [dataset-id column-name values]
+(defn- rows-matching [dataset-id column-name values]
   (let [val-set (set values)]
     (->> column-name
          (vector)
@@ -841,7 +845,7 @@
          (apply concat)                           ; flatten groups.
          (mapv #(assoc %2 :order %1) (range)))))  ; assoc row output order.
 
-(defn float-nil [x]
+(defn- float-nil [x]
   (when x (float x)))
 
 ; Get codes for samples in request
@@ -852,7 +856,7 @@
 ; Run scores query
 ; Copy to output buffer
 
-(defn genomic-read-req [req]
+(defn- genomic-read-req [req]
   (let [{:keys [samples table columns]} req
         dataset-id (dataset-by-name table)
         samp->code (codes-for-values dataset-id "sampleID" samples)
@@ -876,10 +880,10 @@
 ;  :samples '("sample1" "sample2")
 ; We merge into 'data the columns that we can resolve, like
 ;  :data { 'column1 [1.1 1.2] 'column2 [2.1 2.2] }
-(defn genomic-source [reqs]
+(defn- genomic-source [reqs]
   (map #(update-in % [:data] merge (genomic-read-req %)) reqs))
 
-(defn create[]
+(defn- create[]
   (jdbcd/transaction
     (apply jdbcd/do-commands cohorts-table)
     (apply jdbcd/do-commands source-table)
@@ -944,43 +948,44 @@
 ; an LRU cache of retrieved blobs.
 ;
 
-(def field-bin-query
+(def ^:private field-bin-query
   (cached-statement
     "SELECT `scores` FROM `field_score`
      WHERE `field_id` = ? AND `i` = ?"
     true))
 
-(def feature-value-query
+(def ^:private feature-value-query
   (cached-statement
     "SELECT `value` FROM `feature`
      JOIN `code` ON `feature`.`id` = `feature_id`
      WHERE `field_id` = ? AND `ordering` = ?"
     true))
 
-(defn fetch-bin [conn field-id bin]
+(defn- fetch-bin [conn field-id bin]
   (when-let [scores (-> (field-bin-query conn field-id bin)
                         first
                         :scores)]
     (bytes-to-floats scores)))
 
-(def cache-size (int (/ (* 128 1024) bin-size))) ; 128k bin cache
+(def ^:private cache-size (int (/ (* 128 1024) bin-size))) ; 128k bin cache
 
-(def bin-cache-state (atom (cache/lru-cache-factory {} :threshold cache-size)))
+(def ^:private bin-cache-state
+  (atom (cache/lru-cache-factory {} :threshold cache-size)))
 
-(defn update-bin-cache [c conn args]
+(defn- update-bin-cache [c conn args]
   (if (cache/has? c args)
     (cache/hit c args)
     (cache/miss c args (apply fetch-bin conn args))))
 
-(defn bin-cache [conn & args]
+(defn- bin-cache [conn & args]
   (cache/lookup (swap! bin-cache-state update-bin-cache conn args) args))
 
-(defn lookup-row [conn field-id row]
+(defn- lookup-row [conn field-id row]
   (let [^floats bin (bin-cache conn field-id (quot row bin-size))
         i (rem row bin-size)]
     (when bin (aget bin i))))
 
-(defn lookup-value [conn field-id row]
+(defn- lookup-value [conn field-id row]
   (let [ordering (lookup-row conn field-id row)]
     (when ordering
       (when-let [value (feature-value-query conn field-id (int ordering))]

@@ -36,7 +36,9 @@
   :javac-options ["-target" "1.6" "-source" "1.6"]
   :aot [cavm.h2-binary cavm.version cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
-  :plugins [[lein-sphinx  "1.0.1"]]
+  :plugins [[lein-sphinx  "1.0.1"]
+            [codox  "0.8.10"]]
   :sphinx {:setting-values {:version ~version
                             :project ~(str  "UCSC Xena Server " version)}}
+  :codox {:output-dir "doc/_build/implementation"}
   :main cavm.core)

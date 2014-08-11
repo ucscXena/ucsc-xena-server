@@ -1,23 +1,26 @@
-(ns cavm.query.expression
+(ns
+  ^{:author "Brian Craft"
+    :doc "Minimal scheme interpreter."}
+  cavm.query.expression
   (:require [clojure.edn :as edn])
   (:require [honeysql.types :as hsqltypes])
   (:require [clojure.tools.logging :refer [warn info]])
   (:refer-clojure :exclude [eval letfn]))
 
-(def eval)
+(def ^:private eval)
 
-(defn lambdafn [node scope]
+(defn- lambdafn [node scope]
   (let [[_ argnames body] node]
     (fn [& args]
       (eval body (cons (zipmap argnames args) scope)))))
 
-(defn iffn [node scope]
+(defn- iffn [node scope]
   (let [[_ predicate then else] node]
     (cond
       (eval predicate scope) (eval then scope)
       :else (eval else scope))))
 
-(defn letfn [node scope]
+(defn- letfn [node scope]
   (let [[_ assignments body] node]
     (if (empty? assignments)
       (eval body scope)
@@ -25,27 +28,27 @@
         (eval `((~'fn ~[avar]
                   (~'let ~(vec remaining) ~body)) ~aval) scope)))))
 
-(def specials
+(def ^:private specials
   {'fn lambdafn
    'quote (fn [n s] (second n))
    'if iffn
    'let letfn})
 
-(def specialfns (set (vals specials)))
+(def ^:private specialfns (set (vals specials)))
 
-(defn fn-node [node scope]
+(defn- fn-node [node scope]
   (let [func (eval (first node) scope)]
     (cond
       (contains? specialfns func) (func node scope)
       :else (apply func (map #(eval % scope) (rest node))))))
 
-(def as-is #{keyword? string?})
+(def ^:private as-is #{keyword? string?})
 
-(defn sqlcall-node [^honeysql.types.SqlCall node scope]
+(defn- sqlcall-node [^honeysql.types.SqlCall node scope]
   (let [fname (.name node) args (.args node)]
     (apply hsqltypes/call (eval fname scope) (mapv #(eval % scope) args))))
 
-(defn eval [node scope]
+(defn- eval [node scope]
   (cond
     (symbol? node) ((first (filter #(contains? % node) scope)) node)
     (seq? node) (fn-node node scope)
@@ -58,5 +61,7 @@
     (coll? node) (into (empty node) (mapv #(eval % scope) node))
     :else (info "Unknown node type " (type node)))) ; XXX return this to user
 
-(defn expression [exp & globals]
+(defn expression
+  "Evaluate an expression with (optional) global symbols."
+  [exp & globals]
   (eval (edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}} exp) (cons specials globals)))

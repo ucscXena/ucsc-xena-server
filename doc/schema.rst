@@ -71,3 +71,8 @@ field-gene
 A table of genes associated with a *virtual row*. To support indexing, and
 a one-to-many relation between virtual rows and genes, genes are stored as
 rows rather than blobs.
+
+Schema In Detail
+================
+
+`SchemaSpy <schema>`_

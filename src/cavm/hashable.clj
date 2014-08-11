@@ -1,6 +1,8 @@
-(ns cavm.hashable)
+(ns
+  ^{:author "Brian Craft"
+    :doc "Hashable byte array type."}
+  cavm.hashable)
 
-; Hashable byte array type
 (deftype AHashable [ba] 
   Object 
   (equals [this other] 

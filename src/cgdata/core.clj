@@ -1,4 +1,7 @@
-(ns cgdata.core
+(ns
+  ^{:author "Brian Craft"
+    :doc "Library for reading cgdata and related file formats."}
+  cgdata.core
   (:require [clojure.data.json :as json])
   (:require [clojure.string :as s])
   (:require [clojure.java.io :as io])
@@ -27,7 +30,7 @@
 (defn- comment? [line]
   (re-matches #"\s*#.*" line))
 
-(def not-comment? (comp not comment?))
+(def ^:private not-comment? (comp not comment?))
 
 ;
 ; cgData metadata
@@ -65,7 +68,7 @@
 
 ; either pass through [k v] or map it to a file if
 ; it matches an object in the table.
-(defn resolve-reference [normalize table file [k v]]
+(defn- resolve-reference [normalize table file [k v]]
   (if-let [match (and (.startsWith ^String k ":")
                       (or
                         (get-in table [(subs k 1) v])
@@ -83,7 +86,10 @@
     (binding [*out* writer]
       (json/pprint json :escape-slash false))))
 
-(defn fix-json [root]
+(defn fix-json
+  "Utility for rewriting references in cgdata metadata, so
+  they refer to file paths, not abstract identifiers."
+  [root]
   (let [files (all-json root)
         table (json-table files)
         normalize (partial normalize-path (count root))]
@@ -133,7 +139,7 @@
         (assoc :state state))
     feature))
 
-(defn feature-file [file]
+(defn- feature-file [file]
   (when (and file (.exists (io/as-file file)))
     (->> file
          (slurp)
@@ -211,7 +217,7 @@
      :valueType "category"
      :rows vals}))
 
-(defmulti matrix-data
+(defmulti ^:private matrix-data
   "Return seq of scores, probes X samples"
   (fn [metadata features lines] (metadata "type")))
 
@@ -221,7 +227,7 @@
   (let [[_ samples] (s/split line #"\t" 2)]
     (str "sampleID\t" samples)))
 
-(defn ammend-lines
+(defn- ammend-lines
   "Coerce first column name to sampleID"
   [lines]
   (concat (cons (ammend-sample-field (first lines)) (rest lines))))
@@ -247,7 +253,7 @@
     (when (.exists mfile)
       (json/read-str (slurp mfile)))))
 
-(defn path-from-ref
+(defn- path-from-ref
   "Construct a file path relative to the document root, given a file
   reference and the referring file path. References can be relative to
   the referring file, or absolute (relative to document root)."
@@ -259,7 +265,7 @@
               (apply io/file (conj (vec (drop-last sref)) file)))]
     (relativize docroot abs)))
 
-(defn references
+(defn- references
   "Return map of any references in md to their paths relative to the document root."
   [docroot referrer md]
   (let [refs (->> md
@@ -304,7 +310,7 @@
 (defn- chr-order [position]
   (mapv position [:chrom :chromStart]))
 
-(defn probemap-data
+(defn- probemap-data
   "Return seq of probes entries as maps"
   [rows]
   (let [columns (sort-by chr-order (map probemap-row rows)) ; XXX move sort to cavm
@@ -339,7 +345,7 @@
 
 ;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
 
-(defmulti field-spec (fn [field _] (:type field)))
+(defmulti ^:private field-spec (fn [field _] (:type field)))
 
 (defmethod field-spec :category
   [{:keys [name i]} rows]
@@ -379,7 +385,7 @@
                            (mapv (fn [t i parse] {t (parse (get % i ""))}) tlist ilist plist))
                    rows)})))
 
-(def mutation-column-types
+(def ^:private mutation-column-types
   {:sampleID :category
    :chrom :category
    :ref :category
@@ -394,7 +400,7 @@
    :rna-vaf :float
    :amino-acid :category})
 
-(def mutation-columns
+(def ^:private mutation-columns
   {#"(?i)sample[ _]*(name|id)?" :sampleID
    #"(?i)chr(om)?" :chrom
    #"(?i)start" :chromStart
@@ -407,15 +413,15 @@
    #"(?i)rna[-_ ]*v?af" :rna-vaf
    #"(?i)amino[-_ ]*acid[-_ ]*(change)?" :amino-acid})
 
-(def mutation-default-columns
+(def ^:private mutation-default-columns
   [:sampleID :chrom :chromStart :chromEnd :genes :ref :alt :effect :dna-vaf :rna-vaf :amino-acid])
 
-(defn columns-from-header [header patterns]
+(defn- columns-from-header [header patterns]
   (when header
     (map (fn [c] (second (first (filter #(re-find (first %) c) patterns))))
          (tabbed header))))
 
-(defn pick-header
+(defn- pick-header
   "Pick first non-blank line if it starts with #. Don't scan more
   than 20 lines."
   [lines]
@@ -423,11 +429,11 @@
     (when (comment? header)
       (subs header (inc (.indexOf header "#"))))))
 
-(def position-columns #{:chrom :chromStart :chromEnd :strand})
+(def ^:private position-columns #{:chrom :chromStart :chromEnd :strand})
 
 ; [{:name :chrom :i 2} {:name :chromStart :i 3}.. ]
 ; -> [{:name :position :columns ({:name :chrom :i 2}... )}...]
-(defn find-position-field
+(defn- find-position-field
   "Rewrite a list of column objects having a :header attribute,
   collating chrom position columns into a single object. Only
   checks for a single set of position columns. Duplicates are
@@ -441,13 +447,13 @@
             (filter (comp not match-set) columns))
       columns)))
 
-(defn numbered-suffix [n]
+(defn- numbered-suffix [n]
   (if (== 0 n) "" (str " (" n ")")))
 
-(defn add-field [fields field]
+(defn- add-field [fields field]
   (update-in fields [field] (fnil inc 1)))
 
-(defn assign-unique-names
+(defn- assign-unique-names
   ([fields] (assign-unique-names fields {}))
   ([fields counts]
    (when-let [{header :header :as field} (first fields)]
@@ -455,10 +461,10 @@
              (lazy-seq (assign-unique-names (rest fields)
                                             (add-field counts header)))))))
 
-(defn resort [rows order]
+(defn- resort [rows order]
   (mapv rows order))
 
-(defn tsv-data
+(defn- tsv-data
   "Return the fields of a tsv file."
   [columns default-columns column-types rows]
   (let [header (-> (or (columns-from-header (pick-header rows) columns)
@@ -492,7 +498,7 @@
                          (line-seq in)))}))
 
 
-(def gene-pred-column-types
+(def ^:private gene-pred-column-types
   {:bin :float
    :name :category
    :strand :category
@@ -510,7 +516,7 @@
    :cdsEndStat :category
    :exonFrames :category})
 
-(def gene-pred-columns
+(def ^:private gene-pred-columns
   {#"(?i)bin" :bin
    #"(?i)name" :name
    #"(?i)strand" :strand
@@ -528,12 +534,12 @@
    #"(?i)cdsEndStat" :cdsEndStat
    #"(?i)exonFrames" :exonFrames})
 
-(def gene-pred-default-columns
+(def ^:private gene-pred-default-columns
   [:bin :name :strand :chrom :txStart :txEnd :cdsStart :cdsEnd :exonCount
    :exonStarts :exonEnds :score :name2 :cdsStartStat :cdsEndStat :exonFrames])
 
 (defn gene-pred-file
-  "Return a map describing a cgData mutation file. This will read
+  "Return a map describing a genePred(Ext) file. This will read
   any assoicated json."
   [file & {docroot :docroot :or {docroot fs/unix-root}}]
   (let [metadata (cgdata-meta file)
@@ -548,7 +554,7 @@
 ; cgdata file detector
 ;
 
-(def types
+(def ^:private types
   {"mutationVector" ::mutation
    "clinicalMatrix" ::clinical
    "clinicalFeature" ::feature
@@ -560,7 +566,7 @@
 
 (defn detect-cgdata
   "Detect cgdata files by presence of json metadata. If no type
-  is give, assume genomicMatrix"
+  is given, assume genomicMatrix"
   [file]
   (when-let [cgmeta (cgdata-meta file)]
     (if-let [cgtype (cgmeta "type")]
@@ -573,10 +579,10 @@
 ; headers, check that column counts are consistent, etc.
 ;
 
-(defn tabs [line]
+(defn- tabs [line]
   (count (filter #(= % \tab) line)))
 
-(defn is-tsv?
+(defn ^:private is-tsv?
   "Detect tsv. Requires two non-blank lines, each having
   at least one tab."
   [lines]

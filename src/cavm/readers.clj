@@ -1,4 +1,7 @@
-(ns cavm.readers)
+(ns
+  ^{:author "Brian Craft"
+    :doc "Interfaces for detecting and reading different types of files."}
+  cavm.readers)
 
 ;
 ; File format readers.

@@ -1,4 +1,14 @@
-(ns cavm.binner)
+(ns
+  ^{:author "Brian Craft"
+    :doc "Utility for calculating bins for spatial ranges, useful as
+         b-tree indexed columns in a database.
+
+         This is a port of the algorithm in RangeFinder.py by Mark Diekhans,
+         which is a port of binRange.{h,c} and hdb.c by by Jim Kent.
+
+         For simplicitly, it only implements the extended (not basic) range bins.
+         This means it is not directly usable by kent/src libraries."}
+  cavm.binner)
 
 (def ^:private bin-offsets
   [(+ 4096 512 64 8 1)

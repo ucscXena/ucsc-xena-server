@@ -18,7 +18,7 @@
         (recur np)))))
 
 (defn relativize
-  "Return file path relative to docroot"
+  "Return file path relative to docroot."
   [docroot file]
   (let [docroot (normalized-path docroot)
         file (normalized-path file)]

@@ -1,4 +1,7 @@
-(ns cavm.loader
+(ns
+  ^{:author "Brian Craft"
+    :doc "xena dataset loader entry point."}
+  cavm.loader
   (:require [cavm.fs-utils :refer [relativize]])
   (:require [clj-time.coerce :refer [from-long]])
   (:require [clojure.java.io :as io])
@@ -20,7 +23,7 @@
         h (file-hash full-path)]
     {:name file :time ts :hash h}))
 
-(defn write-matrix [db docroot filename reader always]
+(defn- write-matrix [db docroot filename reader always]
   (let [{:keys [metadata refs features data-fn]} reader
         dependencies (if features
                        [(refs ":clinicalFeature") filename]
@@ -36,7 +39,7 @@
         features
         always))))
 
-(def loaders
+(def ^:private loaders
   {:probemap write-matrix
    :matrix write-matrix
    :mutation write-matrix})
@@ -58,7 +61,14 @@
 
 (defn loader-agent
   "Create an agent to serialize bulk loads, returning a function
-  for loading a file via the agent."
+  for loading a file via the agent.
+
+  fn [filename & [{always :always :or {always false}}]]
+
+  Detector is a function returning a file type as a keyword, which
+  will be used to select a dataset writer method. This has evolved
+  to a noop, as we currently have a single dataset writer."
+
   [db detector docroot]
   (let [a (agent nil)]
     (fn [filename & [{always :always :or {always false}}]]

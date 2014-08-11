@@ -1,4 +1,10 @@
-(ns cavm.cgdata
+(ns
+  ^{:author "Brian Craft"
+    :doc "Registration of cavm.reader methods for cgdata and plain tsv files.
+
+         The readers primarily transform cgdata file metadata for use
+         by the xena data loader, e.g. by normalizing key names."}
+  cavm.cgdata
   (:require [cgdata.core :as cgdata])
   (:require [cavm.readers :refer [reader]])
   (:gen-class))
@@ -16,7 +22,7 @@
 
 ;
 ; Canonical forms for xena metadata keys
-(def metakeys
+(def ^:private metakeys
   ["probeMap"
    "shortTitle"
    "longTitle"
@@ -30,7 +36,7 @@
 ; Map of lower-case forms to canonical forms of xena metadata.
 ; We are permissive in what we accept from cgdata, because humans
 ; are editing it.
-(def keymap (into {} (map vector (map clojure.string/lower-case metakeys) metakeys)))
+(def ^:private keymap (into {} (map vector (map clojure.string/lower-case metakeys) metakeys)))
 
 (defn- normalize-meta-key [k]
   (let [k2 (-> k
@@ -68,7 +74,7 @@
       (replace-references)
       (update-in [:metadata] normalize-meta-keys)))
 
-(defn normalized-matrix-reader [filetype docroot url]
+(defn- normalized-matrix-reader [filetype docroot url]
   (-> (cgdata/matrix-file url :docroot docroot)
       (assoc :datatype :matrix)
       (replace-references)

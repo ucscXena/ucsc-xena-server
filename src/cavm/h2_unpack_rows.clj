@@ -1,4 +1,7 @@
-(ns cavm.h2-unpack-rows)
+(ns
+  ^{:author "Brian Craft"
+    :doc "Custom H2 functions for retrieving rows from blob fields."}
+  cavm.h2-unpack-rows)
 
 ; The following a mechanism to avoid a direct dependency on other cavm code
 ; that should not be aot compiled.

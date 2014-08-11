@@ -1,4 +1,7 @@
-(ns cavm.statement
+(ns
+  ^{:author "Brian Craft"
+    :doc "Utilities for sql prepared statements"}
+  cavm.statement
   (:require [clojure.java.jdbc :as jdbc])
   (:require [cavm.conn-customizer :refer [watch-destroy]])
   (:import java.sql.PreparedStatement))
@@ -18,7 +21,7 @@
   (applyTo [this args]
     (apply execute args)))
 
-(defn stmt-execute
+(defn- stmt-execute
   ([^PreparedStatement conn stmt fields]
    (fn [values]
      (jdbc/db-do-prepared {:connection conn} false stmt (mapv values fields))))
@@ -26,13 +29,15 @@
    (fn [values]
      (jdbc/db-do-prepared {:connection conn} false stmt values))))
 
-(defn sql-stmt ^cavm.statement.PStatement [conn stmt-str & args]
+(defn sql-stmt
+  "Return a prepared statement which can participate in with-open."
+  ^cavm.statement.PStatement [conn stmt-str & args]
   (let [stmt (jdbc/prepare-statement conn stmt-str)]
     (->PStatement
       stmt
       (apply stmt-execute conn stmt args))))
 
-(defn query-execute
+(defn- query-execute
   ([^PreparedStatement conn stmt fields]
    (fn [values]
      (jdbc/query {:connection conn} [stmt (mapv values fields)])))
@@ -40,7 +45,10 @@
    (fn [values]
      (jdbc/query {:connection conn} (into [stmt] values)))))
 
-(defn sql-stmt-result ^cavm.statement.PStatement [conn stmt-str & args]
+(defn sql-stmt-result
+  "Return a prepared statement which returns a result set,
+  and can participate in with-open."
+  ^cavm.statement.PStatement [conn stmt-str & args]
   (let [stmt (jdbc/prepare-statement conn stmt-str)]
     (->PStatement
       stmt
@@ -54,7 +62,17 @@
 ; the c3p0 statement cache has been slow in testing, and it can deadlock when
 ; executing a prepared statement that needs to create a prepared statement.
 
-(defn cached-statement [stmt-str result?]
+(defn cached-statement
+  "Utility to cache a prepared statement, per-connection.  Returns a function
+  that will execute the statement as a prepared statement on the given
+  connection. The prepared statement will be cached for reuse on the same
+  connection. When a connection is destroyed, any statement cached here is disposed.
+
+  This is different from c3p0 statement caching, which hashes every query, and
+  looks for a cached prepared statement. This has been slow in our performance
+  tests, and will deadlock if the prepared statement ends up creating another
+  prepared statement (i.e. via a sql function call)."
+  [stmt-str result?]
   (let [mk-stmt (if result? sql-stmt-result sql-stmt)
         cache (atom {})
         lookup (fn [conn]

@@ -1,4 +1,8 @@
-(ns cavm.h2-binary)
+(ns
+  ^{:author "Brian Craft"
+    :doc "Experimental custom aggregate function for H2, that will
+         group-concatenate binary blob objects."}
+  cavm.h2-binary)
 
 ; low-level byte array concat
 (defn- bconcat [& arrays]

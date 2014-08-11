@@ -1,4 +1,7 @@
-(ns cavm.core
+(ns
+  ^{:author "Brian Craft"
+    :doc "xena server main."}
+  cavm.core
   (:require [clojure.string :as s])
   (:require [cavm.h2 :as h2])
   (:require [clojure.java.io :as io])
@@ -36,7 +39,7 @@
 ; web services
 
 ; XXX change Access-Control-Allow-Origin in production.
-(defn wrap-access-control [handler]
+(defn- wrap-access-control [handler]
   (fn [request]
     (let [response (handler request)]
       (-> response
@@ -107,17 +110,17 @@
                {:form-params (merge {:file files}
                                     (when always {:always "true"}))}))
 
-(def detectors
+(def ^:private detectors
   [cgdata/detect-cgdata
    cgdata/detect-tsv])
 
-(defn filter-hidden
+(defn- filter-hidden
   [s]
   (filter #(not (.isHidden %)) s))
 
 ; Full reload metadata. The loader will skip
 ; data files with unchanged hashes.
-(defn file-changed [loader docroot kind file]
+(defn- file-changed [loader docroot kind file]
   (doseq [f (-> docroot
                 (io/file)
                 (file-seq)
@@ -126,11 +129,11 @@
     (try (loader f)
       (catch Exception e (warn e "Dispatching load" f)))))
 
-(def xenadir-default (str (io/file (System/getProperty  "user.home") "xena")))
-(def docroot-default (str (io/file xenadir-default "files")))
-(def db-default (str (io/file xenadir-default "database")))
-(def logfile-default (str (io/file xenadir-default "xena.log")))
-(def tmp-dir-default
+(def ^:private xenadir-default (str (io/file (System/getProperty  "user.home") "xena")))
+(def ^:private docroot-default (str (io/file xenadir-default "files")))
+(def ^:private db-default (str (io/file xenadir-default "database")))
+(def ^:private logfile-default (str (io/file xenadir-default "xena.log")))
+(def ^:private tmp-dir-default
   (str (io/file (System/getProperty "java.io.tmpdir") "xena-staging")))
 
 (def ^:private argspec
@@ -153,7 +156,7 @@
     (str "Unable to create directory: " dir)))
 
 ; XXX should move this to h2.clj
-(def default-h2-opts-map
+(def ^:private default-h2-opts-map
   {:cache_size 65536
    :undo_log 1
    :log 1
@@ -161,7 +164,7 @@
    :trace_level_file 4}) ; 4 == slf4j
 
 ; Enable transaction log, rollback log, and MVCC (so we can load w/o blocking readers).
-(def default-h2-opts
+(def ^:private default-h2-opts
   (s/join ";" (for [[k v] default-h2-opts-map]
                 (str (.toUpperCase (name k)) "=" v))))
 
@@ -170,14 +173,14 @@
 ; user sets options they must be comprehensive. If the user
 ; doesn't set options, we use default-h2-opts.
 
-(defn h2-opts
+(defn- h2-opts
   "Add default h2 options if none are specified"
   [database]
   (if (= -1 (.indexOf database ";"))
     (str database ";" default-h2-opts)
     database))
 
-(defn logback-config [filename]
+(defn- logback-config [filename]
   (System/setProperty "log_file" filename)
   (let [context (LoggerFactory/getILoggerFactory)
         configurator (JoranConfigurator.)]
@@ -188,7 +191,7 @@
       (catch Exception e))
     (StatusPrinter/printInCaseOfErrorsOrWarnings context)))
 
-(defn log-config [filename]
+(defn- log-config [filename]
   (logback-config filename)
   (log/log-capture! 'cavm.core) ; redirect System.out System.error to clojure.tools.logging
   ; Only use timbre for the profiling commands. Might want to extract
