@@ -3,7 +3,6 @@
   (:require [cavm.db :as cdb])
   (:require [cavm.query.expression :as expr])
   (:require [cavm.query.functions :as f])
-  (:require [cavm.query.sources :as sources])
   (:require [ring.util.codec :as codec])
   (:require [ring.util.response :as response ])
   (:require [ring.util.request :refer [body-string] ])
@@ -16,32 +15,6 @@
   (:import (java.io PrintWriter))
   (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
   (:gen-class))
-
-; XXX This is probably not the fastest way to do
-; this.
-(defn- boolean-matrix [m pred]
-  (map pred (vec m)))
-
-(defn- filter-matches [samples matches]
-  (->> (map vector samples matches)
-       (filter second)
-       (map first)))
-
-(defn filter-attr [samples attr pred]
-  (->> samples
-       (group-by :EXPERIMENT)
-       (map (fn [[exp samps]]
-              {'table exp
-               'columns [attr]
-               'samples (map :NAME samps)}))
-       (map #(assoc % 'data (sources/read-symbols [%])))
-       (map #(assoc % 'samples
-                    (filter-matches ('samples %)
-                                    (boolean-matrix
-                                      (first ('data %)) pred))))
-       (mapcat #(map (fn [exp samp]
-                         {:experiment exp
-                          :sample samp}) (repeat ('table %)) ('samples %)))))
 
 ;
 ; Cheshire encoders. Not using them any more.
@@ -120,8 +93,7 @@
 ; convert as necessary. Is there a protocol we can extend?
 (defn functions [db]
   {'fetch #(p ::fetch (map vec (apply concat (map collect (cdb/fetch db %))))) ; XXX concat? see below
-   'query #(p ::query (cdb/run-query db %))
-   'filter filter-attr}) ; XXX filter is broken
+   'query #(p ::query (cdb/run-query db %))})
 
 ; XXX concat is copied from cavm.query.sources. This is something to do with
 ; pulling from differen sources, or different datasets, and returning a single

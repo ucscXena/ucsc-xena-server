@@ -7,7 +7,6 @@
   (:require [cavm.loader :refer [loader]])
   (:require [cavm.cgdata]) ; register reader methods
   (:require [honeysql.types :as hsqltypes])
-  (:use cavm.query.sources)
   (:require [clojure.test :as ct]))
 
 (def eps 0.000001)

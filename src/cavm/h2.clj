@@ -13,7 +13,6 @@
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable)])
-  (:require [cavm.query.sources :as sources])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
   (:require [taoensso.timbre.profiling :refer [profile p]])
