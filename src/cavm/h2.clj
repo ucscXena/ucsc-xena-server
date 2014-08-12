@@ -709,7 +709,7 @@
     true))
 
 (defn- codes-for-values [dataset-id field values]
-  (->> (codes-for-values-query (jdbcd/find-connection) (to-array values) field dataset-id)
+  (->> (codes-for-values-query (to-array values) field dataset-id)
        (map #(mapv % [:value :ordering]))
        (into {})))
 
@@ -746,7 +746,7 @@
 
   ; return float arrays of all rows for the given fields
   (defn- all-rows [dataset-id fields]
-    (let [field-bins (->> (all-rows-query (jdbcd/find-connection) (to-array fields) dataset-id)
+    (let [field-bins (->> (all-rows-query (to-array fields) dataset-id)
                           (group-by :name))]
       (into {} (for [[k v] field-bins] [k (concat-field-bins v)])))))
 
@@ -960,8 +960,8 @@
      WHERE `field_id` = ? AND `ordering` = ?"
     true))
 
-(defn- fetch-bin [conn field-id bin]
-  (when-let [scores (-> (field-bin-query conn field-id bin)
+(defn- fetch-bin [field-id bin]
+  (when-let [scores (-> (field-bin-query field-id bin)
                         first
                         :scores)]
     (bytes-to-floats scores)))
@@ -971,25 +971,24 @@
 (def ^:private bin-cache-state
   (atom (cache/lru-cache-factory {} :threshold cache-size)))
 
-(defn- update-bin-cache [c conn args]
+(defn- update-bin-cache [c args]
   (if (cache/has? c args)
     (cache/hit c args)
-    (cache/miss c args (apply fetch-bin conn args))))
+    (cache/miss c args (apply fetch-bin args))))
 
-(defn- bin-cache [conn & args]
-  (cache/lookup (swap! bin-cache-state update-bin-cache conn args) args))
+(defn- bin-cache [& args]
+  (cache/lookup (swap! bin-cache-state update-bin-cache args) args))
 
-(defn- lookup-row [conn field-id row]
-  (let [^floats bin (bin-cache conn field-id (quot row bin-size))
+(defn- lookup-row [field-id row]
+  (let [^floats bin (bin-cache field-id (quot row bin-size))
         i (rem row bin-size)]
     (when bin (aget bin i))))
 
-(defn- lookup-value [conn field-id row]
-  (let [ordering (lookup-row conn field-id row)]
+(defn- lookup-value [field-id row]
+  (let [ordering (lookup-row field-id row)]
     (when ordering
-      (when-let [value (feature-value-query conn field-id (int ordering))]
+      (when-let [value (feature-value-query field-id (int ordering))]
         (-> value first :value)))))
-
 
 (unpack/set-lookup-row! lookup-row)
 (unpack/set-lookup-value! lookup-value)

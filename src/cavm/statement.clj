@@ -3,8 +3,12 @@
     :doc "Utilities for sql prepared statements"}
   cavm.statement
   (:require [clojure.java.jdbc :as jdbc])
+  (:require [clojure.java.jdbc.deprecated :as jdbcd])
   (:require [cavm.conn-customizer :refer [watch-destroy]])
-  (:import java.sql.PreparedStatement))
+  (:require [clojure.tools.logging :refer [spy trace]])
+  (:import java.sql.PreparedStatement
+           com.mchange.v2.c3p0.impl.NewProxyConnection
+           org.h2.jdbc.JdbcConnection))
 
 ;
 ; Utils for prepared statements
@@ -64,7 +68,7 @@
 
 (defn cached-statement
   "Utility to cache a prepared statement, per-connection.  Returns a function
-  that will execute the statement as a prepared statement on the given
+  that will execute the <stmt-str> as a prepared statement on the given
   connection. The prepared statement will be cached for reuse on the same
   connection. When a connection is destroyed, any statement cached here is disposed.
 
@@ -78,9 +82,15 @@
         lookup (fn [conn]
                  (or (@cache conn)
                      ((swap! cache assoc conn (mk-stmt conn stmt-str)) conn)))]
-    (watch-destroy (fn [conn] (swap! cache dissoc conn))) ; XXX leak stmt?
-    (fn [conn & args]
-      ((lookup conn) args))))
+    (watch-destroy (fn [conn]
+                     (swap! cache dissoc conn)))
+    ; One could try to pass in the connection, however when running in the
+    ; server context the connection object passed to functions will not be
+    ; the connection object seen by the client, or watch-destroy. That causes
+    ; the cache to leak. Instead we rely on a per-thread setting via jdbcd.
+    (fn [& args]
+      (let [conn (.unwrap ^NewProxyConnection (jdbcd/find-connection) JdbcConnection)]
+        ((lookup conn) args)))))
 
 ;
 ; monkey-patch jdbc to fix performance bug

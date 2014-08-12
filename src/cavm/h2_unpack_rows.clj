@@ -23,19 +23,19 @@
 ; Blob unpack functions for h2.
 ;
 
-(defn- -unpack [conn field-id row]
-  (lookup-row conn field-id row))
+(defn- -unpack [field-id row]
+  (lookup-row field-id row))
 
 ; Somehow the return value will be cast automatically.
 (def ^:private -unpackCode -unpack)
 
-(defn- -unpackValue [conn field-id row]
-  (lookup-value conn field-id row))
+(defn- -unpackValue [field-id row]
+  (lookup-value field-id row))
 
 ; Return types must be boxed to support NULL. Primitive types will throw if we
 ; return nil.
 ; Alternatively, we could return NaN. h2 probably boxes the returns, anyway.
 (gen-class :name unpack_rows
-           :methods [^:static [unpackCode [java.sql.Connection int int] java.lang.Integer]
-                     ^:static [unpack [java.sql.Connection int int] java.lang.Float]
-                     ^:static [unpackValue [java.sql.Connection int int] String]])
+           :methods [^:static [unpackCode [int int] java.lang.Integer]
+                     ^:static [unpack [int int] java.lang.Float]
+                     ^:static [unpackValue [int int] String]])
