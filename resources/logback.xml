@@ -9,7 +9,7 @@
   <logger name="cgdata" level="DEBUG"/>
   <logger name="com.mchange" level="INFO"/>
   <logger name="org.eclipse.jetty" level="INFO"/>
-  <logger name="h2database" level="INFO"/>
+  <logger name="h2database" level="WARN"/>
 
   <root level="DEBUG">
     <appender-ref ref="CONSOLE"/>
