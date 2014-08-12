@@ -225,11 +225,11 @@
 (def ^:private code-table
   ["CREATE TABLE IF NOT EXISTS `code` (
    `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `feature_id` int(11) NOT NULL,
+   `field_id` int(11) NOT NULL,
    `ordering` int(10) unsigned NOT NULL,
    `value` varchar(16384) NOT NULL,
-   UNIQUE (`feature_id`, `ordering`),
-   FOREIGN KEY (`feature_id`) REFERENCES `feature` (`id`) ON DELETE CASCADE)"])
+   UNIQUE (`field_id`, `ordering`),
+   FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
 (defn- normalize-meta [m-ent metadata]
   (-> metadata
@@ -247,7 +247,7 @@
                      {:field_id field-id :id feature-id})]
     (cons [:insert-feature (assoc fmeta :id feature-id)]
           (for [a-code state]
-            [:insert-code {:feature_id feature-id
+            [:insert-code {:field_id field-id
                            :ordering (order a-code)
                            :value a-code}]))))
 ;
@@ -503,7 +503,7 @@
   (into {} (for [[k v] m] [k (if (delay? v) @v v)])))
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
-  (with-open [code-stmt (insert-stmt :code [:value :id :ordering :feature_id])
+  (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
               position-stmt (insert-stmt :field_position
                                          [:field_id :row :bin :chrom :chromStart
                                           :chromEnd :strand])
@@ -702,8 +702,7 @@
   (cached-statement
     "SELECT `ordering`, `value`
     FROM `field`
-    JOIN `feature` ON `field_id` = `field`.`id`
-    JOIN `code` ON `feature_id` = `feature`.`id`
+    JOIN `code` ON `field_id` = `field`.`id`
     JOIN TABLE(`value2` VARCHAR = ?) T ON `value` = `value2`
     WHERE `name` = ? AND `dataset_id` = ?"
     true))
@@ -955,8 +954,7 @@
 
 (def ^:private feature-value-query
   (cached-statement
-    "SELECT `value` FROM `feature`
-     JOIN `code` ON `feature`.`id` = `feature_id`
+    "SELECT `value` FROM `code`
      WHERE `field_id` = ? AND `ordering` = ?"
     true))
 

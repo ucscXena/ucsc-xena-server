@@ -62,8 +62,7 @@
                                  {:select [[:value :name]]
                                   :from [:field]
                                   :where [:= :name "sampleID"]
-                                  :left-join [:feature [:= :field_id :field.id]
-                                              :code [:= :feature.id :feature_id]]
+                                  :left-join [:code [:= :field.id :field_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
@@ -134,8 +133,7 @@
                                  {:select [[:value :name]]
                                   :from [:field]
                                   :where [:= :name "sampleID"]
-                                  :left-join [:feature [:= :field_id :field.id]
-                                              :code [:= :feature.id :feature_id]]
+                                  :left-join [:code [:= :field.id :field_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{:table "matrix"
@@ -168,8 +166,7 @@
                                  {:select [[:value :name]]
                                   :from [:field]
                                   :where [:= :name "sampleID"]
-                                  :left-join [:feature [:= :field_id :field.id]
-                                              :code [:= :feature.id :feature_id]]
+                                  :left-join [:code [:= :field.id :field_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{:table "matrix"
@@ -206,8 +203,7 @@
                                  {:select [[:value :name]]
                                   :from [:field]
                                   :where [:= :name "sampleID"]
-                                  :left-join [:feature [:= :field_id :field.id]
-                                              :code [:= :feature.id :feature_id]]
+                                  :left-join [:code [:= :field.id :field_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:name "cgdata_matrix"}]))
@@ -276,8 +272,7 @@
                                  {:select [[:value :name]]
                                   :from [:field]
                                   :where [:= :name "sampleID"]
-                                  :left-join [:feature [:= :field_id :field.id]
-                                              :code [:= :feature.id :feature_id]]
+                                  :left-join [:code [:= :field.id :field_id]]
                                   :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:name "clinical_matrix" :type "clinicalMatrix"}]))
@@ -311,8 +306,7 @@
                       (:id))
         codes (->> {:select [:ordering :value]
                     :from [:field]
-                    :left-join [:feature [:= :field.id :field_id]
-                                :code [:= :feature.id :feature_id]]
+                    :left-join [:code [:= :field.id :field_id]]
                     :where [:= :field_id field-id]}
                    (cdb/run-query db)
                    (#(for [{:keys [ordering value]} %] [ordering value]))
