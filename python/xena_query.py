@@ -51,9 +51,9 @@ sample_query_str = """
                                     :left-join [:field [:= :dataset_id :dataset.id]]
                                     :where [:and [:= :cohort cohort]
                                                  [:= :field.name %s]]}))
-      field_id (:FIELD_ID field_id-dataset)
-      dataset (:DATASET field_id-dataset)
-      sample (:ID (car (query {:select [:field.id]
+      field_id (:field_id field_id-dataset)
+      dataset (:dataset field_id-dataset)
+      sample (:id (car (query {:select [:field.id]
                                :from [:field]
                                :where [:and [:= :dataset_id dataset]
                                             [:= :field.name "sampleID"]]})))
@@ -61,7 +61,7 @@ sample_query_str = """
                                :from [:field_score]
                                :join [:scores [:= :scores_id :scores.id]]
                                :where [:= :field_id field_id]}))) 4) 1)]
-  {cohort (map :SAMPLE (query {:select [:sample]
+  {cohort (map :sample (query {:select [:sample]
                                :from [{:select [[#sql/call [:unpackValue field_id, :x] :field_value]
                                                 [#sql/call [:unpackValue sample, :x]  :sample]]
                                        :from [#sql/call [:system_range 0 N]]}]
