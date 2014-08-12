@@ -22,7 +22,7 @@
        (apply concat)))
 
 (defn- tabbed [line]
-  (s/split line #"\t"))
+  (mapv s/trim (s/split line #"\t")))
 
 (defn- not-blank? [line]
   (not (re-matches #"\s*" line)))
@@ -199,7 +199,7 @@
 (defn- throw-on-nil [x msg & args]
   (when-not x
     (throw (IllegalArgumentException.
-             (apply format msg args))))
+             ^String (apply format msg args))))
   x)
 
 (defmethod ^:private data-line "category"
@@ -418,7 +418,7 @@
 
 (defn- columns-from-header [header patterns]
   (when header
-    (map (fn [c] (second (first (filter #(re-find (first %) c) patterns))))
+    (map (fn [c] (second (first (filter #(re-matches (first %) c) patterns))))
          (tabbed header))))
 
 (defn- pick-header
