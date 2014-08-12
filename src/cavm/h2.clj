@@ -114,18 +114,19 @@
 (def ^:private dataset-table
   ["CREATE TABLE IF NOT EXISTS `dataset` (
    `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `name` varchar(1000) NOT NULL UNIQUE,
-   `probeMap` varchar(255),
-   `shortTitle` varchar(255),
-   `longTitle` varchar(255),
-   `groupTitle` varchar(255),
-   `platform` varchar(255),
-   `cohort` varchar(1000),
-   `security` varchar(255),
-   `gain` double DEFAULT NULL,
-   `text` varchar (65535),
-   `type` varchar (255),
-   `dataSubType` varchar (255))"])
+   `name` VARCHAR(1000) NOT NULL UNIQUE,
+   `probeMap` VARCHAR(255),
+   `shortTitle` VARCHAR(255),
+   `longTitle` VARCHAR(255),
+   `groupTitle` VARCHAR(255),
+   `platform` VARCHAR(255),
+   `cohort` VARCHAR(1000),
+   `security` VARCHAR(255),
+   `rows` INT,
+   `status` VARCHAR(20),
+   `text` VARCHAR (65535),
+   `type` VARCHAR (255),
+   `dataSubType` VARCHAR (255))"])
 
 (def ^:private dataset-columns
   #{:name
@@ -185,12 +186,12 @@
   ["CREATE SEQUENCE IF NOT EXISTS FEATURE_IDS CACHE 2000"
    "CREATE TABLE IF NOT EXISTS `feature` (
    `id` INT NOT NULL DEFAULT NEXT VALUE FOR FEATURE_IDS PRIMARY KEY,
-   `field_id` int(11) NOT NULL,
-   `shortTitle` varchar(255),
-   `longTitle` varchar(255),
-   `priority` double DEFAULT NULL,
-   `valueType` varchar(255) NOT NULL,
-   `visibility` varchar(255),
+   `field_id` INT(11) NOT NULL,
+   `shortTitle` VARCHAR(255),
+   `longTitle` VARCHAR(255),
+   `priority` DOUBLE DEFAULT NULL,
+   `valueType` VARCHAR(255) NOT NULL,
+   `visibility` VARCHAR(255),
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
 ;
@@ -224,10 +225,10 @@
 ; fields?
 (def ^:private code-table
   ["CREATE TABLE IF NOT EXISTS `code` (
-   `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-   `field_id` int(11) NOT NULL,
-   `ordering` int(10) unsigned NOT NULL,
-   `value` varchar(16384) NOT NULL,
+   `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `field_id` INT(11) NOT NULL,
+   `ordering` INT(10) unsigned NOT NULL,
+   `value` VARCHAR(16384) NOT NULL,
    UNIQUE (`field_id`, `ordering`),
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
@@ -259,7 +260,9 @@
 
 ; Update meta entity record.
 (defn- merge-m-ent [ename metadata]
-  (let [normmeta (normalize-meta dataset-meta (json-text (assoc metadata "name" ename)))
+  (let [normmeta (normalize-meta dataset-meta (json-text (assoc metadata
+                                                                "name" ename
+                                                                "status" "loading")))
         {id :id} (jdbcd/with-query-results
                    row
                    [(str "SELECT `id` FROM `dataset` WHERE `name` = ?") ename]
@@ -268,7 +271,7 @@
       (do
         (jdbcd/update-values :dataset ["`id` = ?" id] normmeta)
         id)
-      (-> (jdbcd/insert-record :dataset normmeta) KEY-ID))))
+      (-> (jdbcd/insert-record :dataset (assoc normmeta "status" "loading")) KEY-ID))))
 
 ;
 ; Hex
@@ -530,18 +533,22 @@
                   :insert-feature feature-stmt
                   :insert-code code-stmt
                   :insert-gene gene-stmt}
+          row-count (atom 0)
           inserts (apply concat
-                         (chunked-pmap #(load-field-feature
-                                          feature-seq
-                                          field-seq
-                                          dataset-id
-                                          %)
+                         (chunked-pmap #(do
+                                          (swap! row-count max (count (:rows %)))
+                                          (load-field-feature
+                                           feature-seq
+                                           field-seq
+                                           dataset-id
+                                           %))
                                        (:fields (matrix-fn))))]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
         (jdbcd/transaction
           (doseq [[insert-type values] insert-batch]
-            ((writer insert-type) (run-delays values))))))))
+            ((writer insert-type) (run-delays values)))))
+      @row-count)))
 ;
 ;
 ; Table writer that updates one table at a time by writing to temporary files.
@@ -637,6 +644,16 @@
      WHERE `dataset`.`id` = ?" id]
     (vec rows)))
 
+(defn- with-load-status* [dataset-id func]
+  (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "loading"})
+  (try
+    (func)
+    (finally
+      (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "loaded"}))))
+
+(defmacro with-load-status [dataset-id & body]
+  `(with-load-status* ~dataset-id (fn [] ~@body))) ; XXX need :^once?
+
 ; jdbcd/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
@@ -658,17 +675,18 @@
      :dataset-load
      (let [dataset-id (jdbcd/transaction (merge-m-ent mname metadata))
            files (map fmt-time files)]
-       (when (or force
-                 (not (= (set files) (set (jdbcd/transaction (related-sources dataset-id))))))
-         ; XXX add flag for when dataset is fully loaded. Maybe just updating timestamp?
-         (jdbcd/transaction
-           (p :dataset-clear
-              (clear-by-exp dataset-id))
-           (p :dataset-sources
-              (load-related-sources
-                :dataset_source :dataset_id dataset-id files)))
-         (p :dataset-table
-            (table-writer *tmp-dir* dataset-id matrix-fn)))))))
+       (with-load-status dataset-id
+         (when (or force
+                   (not (= (set files) (set (related-sources dataset-id)))))
+           (jdbcd/transaction
+             (p :dataset-clear
+                (clear-by-exp dataset-id))
+             (p :dataset-sources
+                (load-related-sources
+                  :dataset_source :dataset_id dataset-id files)))
+           (p :dataset-table
+              (let [rows (table-writer *tmp-dir* dataset-id matrix-fn)]
+                (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:rows rows})))))))))
 
 ; XXX needs updated. dataset table doesn't have a :file attribute.
 (comment  (defn del-exp [file]

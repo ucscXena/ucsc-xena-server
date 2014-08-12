@@ -57,7 +57,7 @@
       nil
       false)
 
-    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+    (let [exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
           samples (cdb/run-query db
                                  {:select [[:value :name]]
                                   :from [:field]
@@ -73,7 +73,7 @@
           data2 (cdb/fetch db [{:table "id1"
                                 :columns ["probe1" "probe2"]
                                 :samples ["sample1" "sample3"]}])]
-      (ct/is (= exp [{:name "id1"}]))
+      (ct/is (= exp [{:name "id1" :status "loaded" :rows 2}]))
       (ct/is (= samples
                 [{:name "sample1"}
                  {:name "sample2"}]))
