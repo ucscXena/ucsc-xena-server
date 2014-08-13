@@ -9,5 +9,6 @@ Table of Contents
     web_console
     design
     schema
+    libs
 
 * `Internal API docs <implementation>`_

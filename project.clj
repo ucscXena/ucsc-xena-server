@@ -6,6 +6,8 @@
   :manifest {"Implementation-Version" ~version}
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
+  :profiles {:dev {:dependencies
+                   [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/tools.cli "0.3.1"]
                  [net.mikera/core.matrix "0.8.0"]
@@ -33,11 +35,25 @@
                  [ch.qos.logback/logback-classic  "1.1.1"]
                  [org.clojure/tools.logging  "0.3.0"]
                  [com.taoensso/timbre  "3.2.0"]]
+  :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberjar"]]
+            ; XXX this is a bit raw
+            "docinstall" ["do"
+                          ["shell" "rm" "-rf" "resources/public/docs"]
+                          ["shell" "mv" "doc/_build" "resources/public/docs"]]
+            "clientsrc" ["shell" "cp" "-r" "python" "doc/_build"]
+            "schemaspy" ["shell" "./schemaspy"]
+            "alldocs" ["do"
+                       ["sphinx"]
+                       ["doc"]
+                       ["schemaspy"]]}
+  :jar-exclusions     [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
+  :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
   :javac-options ["-target" "1.6" "-source" "1.6"]
   :aot [cavm.h2-binary cavm.version cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
   :plugins [[lein-sphinx  "1.0.1"]
-            [codox  "0.8.10"]]
+            [codox  "0.8.10"]
+            [lein-shell  "0.4.0"]]
   :sphinx {:setting-values {:version ~version
                             :project ~(str  "UCSC Xena Server " version)}}
   :codox {:output-dir "doc/_build/implementation"}

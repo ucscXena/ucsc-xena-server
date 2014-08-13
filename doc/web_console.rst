@@ -1,6 +1,8 @@
 Xena Web Console
 ****************
 
+Click here to access the console on this host: `CONSOLE <../console.html>`_
+
 A web console based on codemirror (http://codemirror.net/) is
 provided for trying and debugging xena queries. The console
 is available at url path ``/console.html``.

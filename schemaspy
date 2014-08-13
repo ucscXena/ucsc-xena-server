@@ -1,0 +1,7 @@
+#!/bin/bash
+DB="spydb"
+
+rm -f ${DB}*
+lein run -d ${DB} --no-auto --no-serve
+lein run -m schemaspy -t h2 -db "/${PWD}/${DB}" -s PUBLIC -u "" -o doc/_build/schema
+rm -f ${DB}*
