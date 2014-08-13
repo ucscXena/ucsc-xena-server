@@ -822,6 +822,13 @@
 
 ; XXX performance of the :in clause?
 ; XXX make a prepared statement
+; One would hope that an array could be passed in the for IN
+; clause, since an array can be passed in elsewhere, but that
+; doesn't appear to be the case. At least, I haven't found an
+; incantation that works. h2 complains about the syntax. Maybe
+; if it were written as a subquery? Would need to do an
+; explain analyze if trying this. Meanwhile, we have to dynamically
+; build the query to paste in the right number of ?.
 (def ^:private dataset-fields-query
   "SELECT name, i, scores
    FROM (SELECT  `field`.`name`, `field`.`id`
