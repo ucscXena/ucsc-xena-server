@@ -48,7 +48,7 @@ sample_query_str = """
 (let [cohort %s
       field_id-dataset (car (query {:select [[:field.id :field_id] [:dataset.id :dataset]]
                                     :from [:dataset]
-                                    :left-join [:field [:= :dataset_id :dataset.id]]
+                                    :join [:field [:= :dataset_id :dataset.id]]
                                     :where [:and [:= :cohort cohort]
                                                  [:= :field.name %s]]}))
       field_id (:field_id field_id-dataset)
@@ -57,10 +57,9 @@ sample_query_str = """
                                :from [:field]
                                :where [:and [:= :dataset_id dataset]
                                             [:= :field.name "sampleID"]]})))
-      N (- (/ (:N (car (query {:select [[#sql/call [:sum #sql/call [:length :scores]] :N]]
-                               :from [:field_score]
-                               :join [:scores [:= :scores_id :scores.id]]
-                               :where [:= :field_id field_id]}))) 4) 1)]
+      N (- (:rows (car (query {:select [:rows]
+                               :from [:dataset]
+                               :where [:= :id dataset]}))) 1)]
   {cohort (map :sample (query {:select [:sample]
                                :from [{:select [[#sql/call [:unpackValue field_id, :x] :field_value]
                                                 [#sql/call [:unpackValue sample, :x]  :sample]]
