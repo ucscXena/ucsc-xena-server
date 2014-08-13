@@ -62,7 +62,7 @@
 
 	CodeMirror.commands.xena_run = function (e) {
 		var query = e.getValue();
-		makeRequest("/data/" + encodeURIComponent(query),
+		makeRequest("../data/" + encodeURIComponent(query),
 			function (r) {
 				var pr;
 				try {
