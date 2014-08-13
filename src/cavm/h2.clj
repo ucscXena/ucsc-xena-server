@@ -836,8 +836,8 @@
                   (clojure.string/join ","
                                        (repeat (count bins) "?")))
         c (to-array (map str columns))
-        i (to-array bins)]
-    (jdbcd/with-query-results rows [q c dataset-id i]
+        i bins]
+    (jdbcd/with-query-results rows (vec (concat [q c dataset-id] i))
       (vec rows))))
 
 ; Returns rows from (dataset-id column-name) matching
