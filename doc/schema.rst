@@ -75,4 +75,4 @@ rows rather than blobs.
 Schema In Detail
 ================
 
-`SchemaSpy <schema>`_
+`SchemaSpy <schema/index.html>`_

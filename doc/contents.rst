@@ -11,4 +11,4 @@ Table of Contents
     schema
     libs
 
-* `Internal API docs <implementation>`_
+* `Internal API docs <implementation/index.html>`_
