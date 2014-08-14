@@ -41,4 +41,5 @@
    'cdr rest
    'group-by group-by
    'mean meannan
+   'count count
    'apply apply}) ; XXX is this a security hole? Can the user pass in clojure symbols?
