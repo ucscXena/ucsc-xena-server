@@ -15,6 +15,7 @@
   (:use [cavm.hashable :only (ahashable)])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
+  (:require [clojure.tools.logging :refer [spy]])
   (:require [taoensso.timbre.profiling :refer [profile p]])
   (:require [clojure.core.cache :as cache])
   (:require [cavm.h2-unpack-rows :as unpack])
@@ -709,7 +710,7 @@
 
 ; XXX should sanitize the query
 (defn- run-query [q]
-  (jdbcd/with-query-results rows (hsql/format q)
+  (jdbcd/with-query-results rows (spy :trace (hsql/format q))
     (vec rows)))
 
 ;
@@ -1003,15 +1004,17 @@
   (cache/lookup (swap! bin-cache-state update-bin-cache args) args))
 
 (defn- lookup-row [field-id row]
-  (let [^floats bin (bin-cache field-id (quot row bin-size))
-        i (rem row bin-size)]
-    (when bin (aget bin i))))
+  (p :lookup-row
+     (let [^floats bin (bin-cache field-id (quot row bin-size))
+           i (rem row bin-size)]
+       (when bin (aget bin i)))))
 
 (defn- lookup-value [field-id row]
   (let [ordering (lookup-row field-id row)]
-    (when ordering
-      (when-let [value (feature-value-query field-id (int ordering))]
-        (-> value first :value)))))
+    (p :lookup-value
+       (when ordering
+         (when-let [value (feature-value-query field-id (int ordering))]
+           (-> value first :value))))))
 
 (unpack/set-lookup-row! lookup-row)
 (unpack/set-lookup-value! lookup-value)
