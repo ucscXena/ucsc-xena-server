@@ -48,7 +48,7 @@
   :jar-exclusions     [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
   :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
   :javac-options ["-target" "1.6" "-source" "1.6"]
-  :aot [cavm.h2-binary cavm.version cavm.h2-unpack-rows cavm.conn-customizer]
+  :aot [cavm.h2-binary cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
   :plugins [[lein-sphinx  "1.0.1"]
             [codox  "0.8.10"]
