@@ -163,7 +163,7 @@
   {:cache_size 65536
    :undo_log 1
    :log 1
-   :mvcc "TRUE"
+   :multi_threaded "TRUE"
    :trace_level_file 4}) ; 4 == slf4j
 
 ; Enable transaction log, rollback log, and MVCC (so we can load w/o blocking readers).
