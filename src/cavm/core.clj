@@ -26,7 +26,6 @@
   (:require [clj-http.client :as client])
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
-  (:require [cavm.version :refer [version]])
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
@@ -34,6 +33,10 @@
 
 (defn- in-data-path [root path]
   (boolean (fs/child-of? (normalized-path root) (normalized-path path))))
+
+(def pom-props
+  (doto (java.util.Properties.)
+    (.load (io/reader (io/resource "META-INF/maven/cavm/cavm/pom.properties")))))
 
 ;
 ; web services
@@ -226,7 +229,10 @@
                   (println error))
                 (do
                   (log-config logfile)
-                  (info "Xena server starting" (version))
+                  (info "Xena server starting"
+                        (get pom-props "version")
+                        (s/trim
+                          (get pom-props "revision")))
                   (h2/set-tmp-dir! tmp)
                   (let [db (h2/create-xenadb database)
                         detector (apply cr/detector docroot detectors)

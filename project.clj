@@ -1,9 +1,8 @@
-(def version "0.2.0")
+(def version "0.2.0-SNAPSHOT")
 
-(defproject cavm (str version "-SNAPSHOT")
+(defproject cavm version
   :description "Cancer Analytics Virtual Machine"
   :url "https://genome-cancer.ucsc.edu"
-  :manifest {"Implementation-Version" ~version}
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :profiles {:dev {:dependencies
