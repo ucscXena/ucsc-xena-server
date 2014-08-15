@@ -1,6 +1,8 @@
 UCSC Xena Server Design
 ***********************
 
+`Dependencies drawn with graphviz <dependencies.png>`_
+
 Modules For Data Ingestion
 ==========================
 

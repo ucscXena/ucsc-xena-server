@@ -45,6 +45,7 @@
             "alldocs" ["do"
                        ["sphinx"]
                        ["doc"]
+                       ["hiera"]
                        ["schemaspy"]]}
   :jar-exclusions     [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
   :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
@@ -53,8 +54,14 @@
   :global-vars {*warn-on-reflection* true}
   :plugins [[lein-sphinx  "1.0.1"]
             [codox  "0.8.10"]
-            [lein-shell  "0.4.0"]]
+            [lein-shell  "0.4.0"]
+            [lein-hiera  "0.8.0"]]
   :sphinx {:setting-values {:version ~version
                             :project ~(str  "UCSC Xena Server " version)}}
   :codox {:output-dir "doc/_build/implementation"}
+  :hiera {:ignore-ns #{cavm.h2-query}
+          :cluster-depth 1
+          :vertical? false
+;          :show-external? true
+          :path "doc/_build/dependencies.png"}
   :main cavm.core)
