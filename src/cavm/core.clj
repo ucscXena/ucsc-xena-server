@@ -163,6 +163,7 @@
   {:cache_size 65536
    :undo_log 1
    :log 1
+   :max_query_timeout 60000
    :multi_threaded "TRUE"
    :trace_level_file 4}) ; 4 == slf4j
 
