@@ -505,8 +505,8 @@
    :chrom :category
    :txStart :float
    :txEnd :float
-   :cdsStart :category
-   :cdsEnd :category
+   :cdsStart :float
+   :cdsEnd :float
    :exonCount :float
    :exonStarts :category
    :exonEnds :category
