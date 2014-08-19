@@ -37,6 +37,7 @@ Looking up sample ids for the TCGA LGG cohort.
 """
 
 import urllib2
+import re
 
 def compose1(f, g):
     def composed(*args, **kwargs):
@@ -104,6 +105,13 @@ datasets_list_in_cohort_query = """
                    :where [:= :cohort %s ]})
 """
 
+datasets_type_pattern_str = """
+(map :name (query {:select [:name]
+                   :from [:dataset]
+                   :where [:and [:= :type %s]
+                                [:like :name %s]]}))
+"""
+
 def find_sample_by_field_query(cohort, field, values):
     """Return a xena query which looks up sample ids for the given field=values."""
     return sample_query_str % (quote(cohort), quote(field), array_fmt(values))
@@ -127,7 +135,23 @@ def find_cohorts():
     return cohort_query_str
 
 def find_datasets_in_cohort(url, cohort):
-    """ Returen a list of datasets in a specific cohort on server=url """
-    """ Each dataset is a dictionary of the data's metadata"""
+    """ Return a list of datasets in a specific cohort on server=url.
+    Each dataset is a dictionary of the data's metadata.
+    This should be refactored to be consistent with the other methods."""
     return map(json.loads,
             json.loads(post(url, datasets_list_in_cohort_query % (quote(cohort)))))
+
+def find_datasets_type_pattern(type, pattern):
+    """Return a xena query which returns a list of datasets
+    filtered by a pattern on the dataset name. The pattern is sql:
+    % is wildcard."""
+    return datasets_type_pattern_str % (quote(type), quote(pattern))
+
+
+def strip_first_url_dir(path):
+    return re.sub(r'^[^/]*', '', path)
+
+# proj/<proj>/xena/<proj>/<path>
+# download/<proj>/xena/<path>
+def name_to_url(base_url, name):
+    return base_url.replace('/proj/', '/download/') + strip_first_url_dir(name)
