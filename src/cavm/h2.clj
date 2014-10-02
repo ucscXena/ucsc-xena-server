@@ -722,8 +722,8 @@
     "SELECT `ordering`, `value`
     FROM `field`
     JOIN `code` ON `field_id` = `field`.`id`
-    JOIN TABLE(`value2` VARCHAR = ?) T ON `value` = `value2`
-    WHERE `name` = ? AND `dataset_id` = ?"
+    WHERE `value` IN (SELECT `value2` FROM TABLE(`value2` VARCHAR = ?)) AND
+          `name` = ? AND `dataset_id` = ?"
     true))
 
 (defn- codes-for-values [dataset-id field values]
