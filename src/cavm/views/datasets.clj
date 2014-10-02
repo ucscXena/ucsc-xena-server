@@ -47,7 +47,7 @@
   (.print out
           (if (Double/isNaN x)
             "\"NaN\""
-            (format "%.6g" x))))
+            (format "%.9g" x))))
 
 (extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
 (extend java.lang.Float json/JSONWriter {:-write write-floating-point})
