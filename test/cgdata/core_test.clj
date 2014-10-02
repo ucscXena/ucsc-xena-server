@@ -52,7 +52,7 @@
 
 (ct/deftest test-pick-header
   (ct/is (=
-          " # foo bar"
+          " foo bar"
           (cgdata/pick-header [" " " \t" " # foo bar"]))))
 
 (ct/deftest test-pick-header-empty

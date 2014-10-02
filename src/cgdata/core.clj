@@ -265,7 +265,7 @@
               (apply io/file (conj (vec (drop-last sref)) file)))]
     (relativize docroot abs)))
 
-(defn- references
+(defn references
   "Return map of any references in md to their paths relative to the document root."
   [docroot referrer md]
   (let [refs (->> md
@@ -345,7 +345,7 @@
 
 ;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
 
-(defmulti ^:private field-spec (fn [field _] (:type field)))
+(defmulti field-spec (fn [field _] (:type field)))
 
 (defmethod field-spec :category
   [{:keys [name i]} rows]
@@ -400,7 +400,7 @@
    :rna-vaf :float
    :amino-acid :category})
 
-(def ^:private mutation-columns
+(def mutation-columns
   {#"(?i)sample[ _]*(name|id)?" :sampleID
    #"(?i)chr(om)?" :chrom
    #"(?i)start" :chromStart
@@ -416,12 +416,12 @@
 (def ^:private mutation-default-columns
   [:sampleID :chrom :chromStart :chromEnd :genes :ref :alt :effect :dna-vaf :rna-vaf :amino-acid])
 
-(defn- columns-from-header [header patterns]
+(defn columns-from-header [header patterns]
   (when header
     (map (fn [c] (second (first (filter #(re-matches (first %) c) patterns))))
          (tabbed header))))
 
-(defn- pick-header
+(defn pick-header
   "Pick first non-blank line if it starts with #. Don't scan more
   than 20 lines."
   [lines]
@@ -433,7 +433,7 @@
 
 ; [{:name :chrom :i 2} {:name :chromStart :i 3}.. ]
 ; -> [{:name :position :columns ({:name :chrom :i 2}... )}...]
-(defn- find-position-field
+(defn find-position-field
   "Rewrite a list of column objects having a :header attribute,
   collating chrom position columns into a single object. Only
   checks for a single set of position columns. Duplicates are
