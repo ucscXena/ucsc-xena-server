@@ -157,6 +157,22 @@
     Double/NaN
     (Float/parseFloat str)))
 
+(defn- parseChromCSV [str]
+  (->> str
+       csv/parse-csv
+       first
+       (filter #(not (s/blank? %)))
+       (mapv #(Integer/parseInt (s/trim %)))
+       (s/join ",")))
+
+(defn- parseChromCSV0 [str]
+  (->> str
+       csv/parse-csv
+       first
+       (filter #(not (s/blank? %)))
+       (mapv #(+ (Integer/parseInt (s/trim %)) 1))
+       (s/join ",")))
+
 ; If we have no feature description, we try "float". If that
 ; fails, we try "category" by passing in a hint. We do not
 ; allow the hint to override a feature description, since that
@@ -347,20 +363,29 @@
 
 (defmulti field-spec (fn [field _] (:type field)))
 
-(defmethod field-spec :category
-  [{:keys [name i]} rows]
-  (let [row-vals (mapv #(s/trim (get % i "")) rows)
+(defn category-field
+  [parse {:keys [name i]} rows]
+  (let [row-vals (mapv #(parse (get % i "")) rows)
         feature (ad-hoc-order {} row-vals)]
     {:field name
      :valueType "category"
      :feature feature
      :rows (mapv (:order feature) row-vals)}))
 
+(defmethod field-spec :category
+  [col rows]
+  (category-field s/trim col rows))
+
 (defmethod field-spec :float
   [{:keys [name i]} rows]
   {:field name
    :valueType "float" ; XXX why strings instead of keywords?
-   :rows (mapv #(parseFloatNA (get % i "")) rows)}) ;
+   :rows (mapv #(parseFloatNA (get % i "")) rows)})
+
+(defmethod field-spec :chromStartCSV
+  [{:keys [start-index] :as col} rows]
+  (let [parse ([parseChromCSV0 parseChromCSV] start-index)]
+    (category-field parse col rows)))
 
 (defmethod field-spec :gene
   [{:keys [name i]} rows]
@@ -371,14 +396,21 @@
 (let [parsers
       {:chrom s/trim
        :chromStart #(. Integer parseInt (s/trim %))
+       :chromStart0 #(+ (. Integer parseInt (s/trim %)) 1)
        :chromEnd #(. Integer parseInt (s/trim %))
-       :strand s/trim}]
+       :strand s/trim}
+
+      ; This is awkward. Override chromStart if start-index is 0.
+      get-parser (fn [ftype start-index]
+                   (if (and (= start-index 0) (= ftype :chromStart))
+                     (parsers :chromStart0)
+                     (parsers ftype)))]
 
   (defmethod field-spec :position
-    [{:keys [name columns]} rows] ; XXX rename columns to fields
-    (let [tlist (mapv :header columns)   ; vec of field header
-          ilist (mapv :i columns)      ; vec of indexes in row
-          plist (mapv #(parsers (:header %)) columns)] ; vec of parsers for fields
+    [{:keys [name columns start-index] :as field} rows]       ; XXX rename columns to fields
+    (let [tlist (mapv :header columns)  ; vec of field header
+          ilist (mapv :i columns)       ; vec of indexes in row
+          plist (mapv #(get-parser (:header %) start-index) columns)] ; vec of parsers for fields
       {:field name
        :valueType "position"
        :rows (mapv #(apply merge
@@ -431,13 +463,9 @@
 
 (def ^:private position-columns #{:chrom :chromStart :chromEnd :strand})
 
-; [{:name :chrom :i 2} {:name :chromStart :i 3}.. ]
-; -> [{:name :position :columns ({:name :chrom :i 2}... )}...]
+; [{:header :chrom :i 2} {:header :chromStart :i 3}.. ]
+; -> [{:header :position :columns ({:header :chrom :i 2}... )}...]
 (defn find-position-field
-  "Rewrite a list of column objects having a :header attribute,
-  collating chrom position columns into a single object. Only
-  checks for a single set of position columns. Duplicates are
-  passed through."
   [columns]
   (let [unique (into {} (for [[k v] (group-by :header columns)] [k (first v)]))
         matches (select-keys unique position-columns)
@@ -446,6 +474,25 @@
       (into [{:type :position :header :position :columns match-set}]
             (filter (comp not match-set) columns))
       columns)))
+
+(defn find-position-fields
+  "Rewrite a list of column objects having a :header attribute,
+  collating chrom position columns into position fields, having
+  :chrom :chromStart :chromEnd and optional :strand. :chrom and
+  :strand are reused if necessary."
+  [columns start-index]
+  (let [poscols (select-keys (group-by :header columns) position-columns)                ; columns matching position types.
+        poscols (update-in poscols [:chrom] #(concat % (repeat (last %))))               ; repeat last chrom if necessary.
+        poscols (update-in poscols [:strand] #(concat % (repeat (last %))))              ; repeat last strand if necessary.
+        positions (filter #(every? (set (map :header %)) [:chrom :chromStart :chromEnd]) ; find groups with the required fields.
+                          (apply map vector (vals poscols)))                             ;   collate into groups.
+        consumed (set (apply concat positions))]                                         ; columns used by position fields.
+    (into (mapv #(-> {:type :position
+                      :start-index start-index
+                      :header :position
+                      :columns (filter identity %)}) ; write out position field specs.
+                positions)
+          (filter (comp not consumed) columns))))                                        ;   append all remaining fields.
 
 (defn- numbered-suffix [n]
   (if (== 0 n) "" (str " (" n ")")))
@@ -466,13 +513,16 @@
 
 (defn- tsv-data
   "Return the fields of a tsv file."
-  [columns default-columns column-types rows]
+  [start-index columns default-columns column-types rows]
   (let [header (-> (or (columns-from-header (pick-header rows) columns)
-                       default-columns)
-                   (#(for [[c i] (map vector % (range))]
-                       {:header c :type (column-types c) :i i}))
-                   find-position-field
-                   assign-unique-names)
+                        default-columns)
+                    (#(for [[c i] (map vector % (range))]
+                        {:header c
+                         :type (column-types c)
+                         :start-index start-index
+                         :i i}))
+                    (find-position-fields start-index)
+                    assign-unique-names)
         data-rows (map tabbed (filter #(and (not-blank? %)
                                             (not-comment? %)) rows))
         fields (mapv #(field-spec % data-rows) header)]
@@ -488,10 +538,12 @@
   any assoicated json."
   [file & {docroot :docroot :or {docroot fs/unix-root}}]
   (let [metadata (cgdata-meta file)
+        start-index (get metadata "start_index" 1)
         refs (references docroot file metadata)]
     {:metadata metadata
      :refs refs
      :data-fn (fn [in] (tsv-data
+                         start-index
                          mutation-columns
                          mutation-default-columns
                          mutation-column-types
@@ -503,12 +555,10 @@
    :name :category
    :strand :category
    :chrom :category
-   :txStart :float
-   :txEnd :float
-   :cdsStart :float
-   :cdsEnd :float
+   :chromStart :float
+   :chromEnd :float
    :exonCount :float
-   :exonStarts :category
+   :exonStarts :chromStartCSV
    :exonEnds :category
    :score :float
    :name2 :gene
@@ -516,15 +566,25 @@
    :cdsEndStat :category
    :exonFrames :category})
 
+; XXX This has all gone slightly off due to the handling of position
+; columns. We map common aliases to canonical names, like chromStart, but
+; then extract positions by looking for canonical names. Thus we have to use
+; the same name, chromStart, repeatedly if we have multiple positions per row.
+; Instead, we should keep names like txStart and map them to abstract types
+; like chromStart. We should also allow specifying which columns should be
+; collected into positions columns, e.g. (chrom, strand, txStart, txEnd),
+; and (chrom, strand, cdsStart, cdsEnd). If the user gives us no hints, we
+; should scan for chrom, chromStart, chromEnd types, as we do now. It's a
+; useful fail-over in the case that we don't know the file type.
 (def ^:private gene-pred-columns
   {#"(?i)bin" :bin
    #"(?i)name" :name
    #"(?i)strand" :strand
    #"(?i)chr(om)?" :chrom
-   #"(?i)txStart" :txStart
-   #"(?i)txEnd" :txEnd
-   #"(?i)cdsStart" :cdsStart
-   #"(?i)cdsEnd" :cdsEnd
+   #"(?i)txStart" :chromStart
+   #"(?i)txEnd" :chromEnd
+   #"(?i)cdsStart" :chromStart
+   #"(?i)cdsEnd" :chromEnd
    #"(?i)exonCount" :exonCount
    #"(?i)exonStarts" :exonStarts
    #"(?i)exonEnds" :exonEnds
@@ -543,14 +603,16 @@
   any assoicated json."
   [file & {docroot :docroot :or {docroot fs/unix-root}}]
   (let [metadata (cgdata-meta file)
+        start-index (get metadata "start_index" 1)
         refs (references docroot file metadata)]
     {:metadata metadata
      :refs refs
      :data-fn (fn [in] (tsv-data
+                         start-index
                          gene-pred-columns
                          gene-pred-default-columns
                          gene-pred-column-types
-                         (line-seq in)))}));
+                         (line-seq in)))}))
 ; cgdata file detector
 ;
 

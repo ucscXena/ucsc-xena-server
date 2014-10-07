@@ -369,9 +369,9 @@
 
           data (cdb/run-query
                  db
-                 {:select [:gene [(hsqltypes/read-sql-call
-                                    [:unpackValue chrom-field :row]) :chrom]]
-                  :from [:field-gene]})]
+                 {:select [:gene :chrom]
+                  :from [:field-gene]
+                  :join [:field-position [:= :field-gene.row :field-position.row]]})]
 
       (ct/is (= (set data)
                 #{{:gene "MTVR2" :chrom "chr17"}
@@ -394,8 +394,7 @@
              detect-cgdata-probemap probemap1
              detect-cgdata-clinical clinical1
              detect-cgdata-mutation mutation1 mutation2
-             gene-pred1
-             ]]
+             gene-pred1]]
     (fixture t)))
 
 (ct/deftest test-h2
