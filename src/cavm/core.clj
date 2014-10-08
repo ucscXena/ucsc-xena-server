@@ -41,13 +41,18 @@
 ;
 ; web services
 
-; XXX change Access-Control-Allow-Origin in production.
+(def trusted-hosts
+  #"https://[-_A-Za-z0-9]+.kilokluster.ucsc.edu|https://genome-cancer.ucsc.edu")
+
 (defn- wrap-access-control [handler]
   (fn [request]
     (let [response (handler request)]
-      (-> response
-          (assoc-in [:headers "Access-Control-Allow-Origin"] "https://tcga1.kilokluster.ucsc.edu")
-          (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api")))))
+      (info "request" request)
+      (if-let [origin (re-matches trusted-hosts (get-in request [:headers "origin"] ""))]
+        (-> response
+            (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
+            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api"))
+        response))))
 
 (defn- attr-middleware [app k v]
   (fn [req]
