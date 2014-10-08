@@ -163,14 +163,17 @@
   (when (not (.exists (io/file dir)))
     (str "Unable to create directory: " dir)))
 
-; XXX should move this to h2.clj
+; XXX should move these to h2.clj
+(def h2-log-level
+  (into {} (map vector [:off :error :info :debug :slf4j] (range))))
+
 (def ^:private default-h2-opts-map
   {:cache_size 65536
    :undo_log 1
    :log 1
    :max_query_timeout 60000
    :multi_threaded "TRUE"
-   :trace_level_file 4}) ; 4 == slf4j
+   :trace_level_file (h2-log-level :slf4j)})
 
 ; Enable transaction log, rollback log, and MVCC (so we can load w/o blocking readers).
 (def ^:private default-h2-opts
