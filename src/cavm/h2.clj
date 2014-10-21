@@ -722,12 +722,11 @@
     "SELECT `ordering`, `value`
     FROM `field`
     JOIN `code` ON `field_id` = `field`.`id`
-    WHERE `value` IN (SELECT `value2` FROM TABLE(`value2` VARCHAR = ?)) AND
-          `name` = ? AND `dataset_id` = ?"
+    WHERE  `name` = ? AND `dataset_id` = ?"
     true))
 
-(defn- codes-for-values [dataset-id field values]
-  (->> (codes-for-values-query (to-array values) field dataset-id)
+(defn- codes-for-values [dataset-id field]
+  (->> (codes-for-values-query field dataset-id)
        (map #(mapv % [:value :ordering]))
        (into {})))
 
@@ -883,7 +882,7 @@
 (defn- genomic-read-req [req]
   (let [{:keys [samples table columns]} req
         dataset-id (dataset-by-name table)
-        samp->code (codes-for-values dataset-id "sampleID" samples)
+        samp->code (codes-for-values dataset-id "sampleID")
         order (mapv (comp float-nil samp->code) samples)     ; codes in request order
         rows (rows-matching dataset-id "sampleID" order)
         rows-to-copy (->> rows
