@@ -3,6 +3,7 @@
     :doc "xena dataset loader entry point."}
   cavm.loader
   (:require [cavm.fs-utils :refer [relativize]])
+  (:require [cavm.multireader :refer [multi-reader with-multi]])
   (:require [clj-time.coerce :refer [from-long]])
   (:require [clojure.java.io :as io])
   (:require [digest])
@@ -29,7 +30,7 @@
                        [(refs ":clinicalFeature") filename]
                        [filename])
         files (mapv #(file-stats docroot %) dependencies)]
-    (with-open [in (io/reader (io/file docroot filename))]
+    (with-multi [in (multi-reader (io/file docroot filename))]
       (cdb/write-matrix
         db
         filename

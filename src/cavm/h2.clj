@@ -445,7 +445,7 @@
     (-> column :valueType)))
 
 (defmethod load-field :default [dataset-id field-id {:keys [field rows]}]
-  (let [data (encode-row score-encode rows)]
+  (let [data (encode-row score-encode (force rows))]
     (conj (mapcat (fn [[block i]]
                     [[:insert-field-score {:field_id field-id
                                            :i i
@@ -453,21 +453,21 @@
                   (mapv vector data (range)))
           [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
 
-(defmethod load-field "position" [dataset-id field-id column]
-  (conj (for [[position row] (mapv vector (:rows column) (range))]
+(defmethod load-field "position" [dataset-id field-id {:keys [field rows]}]
+  (conj (for [[position row] (mapv vector (force rows) (range))]
           [:insert-position (assoc position
                                    :field_id field-id
                                    :row row
                                    :bin (calc-bin
                                           (:chromStart position)
                                           (:chromEnd position)))])
-        [:insert-field {:id field-id :dataset_id dataset-id :name (:field column)}]))
+        [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
 
 (defmethod load-field "genes" [dataset-id field-id {:keys [field rows]}]
   (conj (mapcat (fn [[genes row]]
                   (for [gene genes]
                     [:insert-gene {:field_id field-id :row row :gene gene}]))
-                (mapv vector rows (range)))
+                (mapv vector (force rows) (range)))
         [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
 
 (defn- inferred-type
@@ -478,7 +478,7 @@
 (defn- load-field-feature [feature-seq field-seq dataset-id field]
   (let [field-id (field-seq)]
     (concat (load-field dataset-id field-id field)
-            (when-let [feature (:feature field)]
+            (when-let [feature (force (:feature field ))]
               (load-probe-meta feature-seq field-id (inferred-type feature field))))))
 ;
 ;

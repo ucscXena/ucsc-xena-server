@@ -188,6 +188,9 @@
     (or (get (get features (first cols)) "valueType")
         hint)))
 
+(defn strcpy [s]
+  (String. ^String s))
+
 (defmethod ^:private data-line :default
   [features cols & [hint]]
   (try ; the body must be eager so we stay in the try/except scope
@@ -304,14 +307,14 @@
     {:metadata metadata  ; json metadata
      :refs refs          ; map of json metadata references to paths relative to docroot
      :features feature   ; slurped clinicalFeatures
-     :data-fn (fn [in] (matrix-data metadata feature (line-seq in)))}))
+     :data-fn (fn [in] (matrix-data metadata feature (line-seq ((:reader in)))))}))
 
 ;
 ; cgData probemaps
 ;
 
 (defn- split-no-empty [in pat] ; XXX Does this need to handle quotes?
-  (filter #(not (= "" %)) (map s/trim (s/split in pat))))
+  (filter #(not (= "" %)) (map #(s/trim %) (s/split in pat))))
 
 (defn- probemap-row [row]
   (let [[probe genes chrom start end strand] (s/split row #"\t")]
@@ -353,7 +356,7 @@
         refs (references docroot file metadata)]
     {:metadata metadata
      :refs refs
-     :data-fn (fn [in] (probemap-data (line-seq in)))}))
+     :data-fn (fn [in] (probemap-data (line-seq ((:reader in)))))}))
 
 ;
 ; mutationVector
@@ -361,44 +364,52 @@
 
 ;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
 
+(defn tsv-rows [in]
+  (map tabbed (filter #(and (not-blank? %)
+                            (not-comment? %))
+                      (line-seq ((:reader in))))))
+
 (defmulti field-spec (fn [field _] (:type field)))
 
 (defn category-field
-  [parse {:keys [name i]} rows]
-  (let [row-vals (mapv #(parse (get % i "")) rows)
-        feature (ad-hoc-order {} row-vals)]
+  [parse {:keys [name i]} in]
+  (let [row-vals (delay (mapv #(parse (get % i "")) (tsv-rows in)))
+        feature (delay (ad-hoc-order {} @row-vals))]
     {:field name
      :valueType "category"
      :feature feature
-     :rows (mapv (:order feature) row-vals)}))
+     :rows (delay
+             (mapv (:order @feature) @row-vals))}))
 
 (defmethod field-spec :category
-  [col rows]
-  (category-field s/trim col rows))
+  [col in]
+  (category-field #(s/trim (strcpy %)) col in))
 
 (defmethod field-spec :float
-  [{:keys [name i]} rows]
+  [{:keys [name i]} in]
   {:field name
    :valueType "float" ; XXX why strings instead of keywords?
-   :rows (mapv #(parseFloatNA (get % i "")) rows)})
+   :rows (delay
+           (mapv #(parseFloatNA (get % i "")) (tsv-rows in)))})
 
 (defmethod field-spec :chromStartCSV
-  [{:keys [start-index] :as col} rows]
+  [{:keys [start-index] :as col} in]
   (let [parse ([parseChromCSV0 parseChromCSV] start-index)]
-    (category-field parse col rows)))
+    (category-field parse col in))) ; XXX memleak
 
 (defmethod field-spec :gene
-  [{:keys [name i]} rows]
+  [{:keys [name i]} in]
   {:field name
    :valueType "genes"
-   :rows (mapv #(split-no-empty (get % i "") #",") rows)})
+   :rows (delay
+           (mapv #(split-no-empty (strcpy (get % i "")) #",") (tsv-rows in)))})
 
 (let [parsers
-      {:chrom s/trim
+      {:chrom #(s/trim (strcpy %))
        :chromStart #(. Integer parseInt (s/trim %))
        :chromStart0 #(+ (. Integer parseInt (s/trim %)) 1)
        :chromEnd #(. Integer parseInt (s/trim %))
-       :strand s/trim}
+       :strand #(s/trim (strcpy %))}
 
       ; This is awkward. Override chromStart if start-index is 0.
       get-parser (fn [ftype start-index]
@@ -407,15 +418,16 @@
                      (parsers ftype)))]
 
   (defmethod field-spec :position
-    [{:keys [name columns start-index] :as field} rows]       ; XXX rename columns to fields
+    [{:keys [name columns start-index]} in]       ; XXX rename columns to fields
     (let [tlist (mapv :header columns)  ; vec of field header
           ilist (mapv :i columns)       ; vec of indexes in row
           plist (mapv #(get-parser (:header %) start-index) columns)] ; vec of parsers for fields
       {:field name
        :valueType "position"
-       :rows (mapv #(apply merge
-                           (mapv (fn [t i parse] {t (parse (get % i ""))}) tlist ilist plist))
-                   rows)})))
+       :rows (delay
+               (mapv #(apply merge
+                             (mapv (fn [t i parse] {t (parse (get % i ""))}) tlist ilist plist))
+                     (tsv-rows in)))})))
 
 (def ^:private mutation-column-types
   {:sampleID :category
@@ -509,12 +521,12 @@
                                             (add-field counts header)))))))
 
 (defn- resort [rows order]
-  (mapv rows order))
+  (mapv (force rows) order))
 
 (defn- tsv-data
   "Return the fields of a tsv file."
-  [start-index columns default-columns column-types rows]
-  (let [header (-> (or (columns-from-header (pick-header rows) columns)
+  [start-index columns default-columns column-types in]
+  (let [header (-> (or (columns-from-header (pick-header (line-seq ((:reader in)))) columns)
                         default-columns)
                     (#(for [[c i] (map vector % (range))]
                         {:header c
@@ -523,12 +535,11 @@
                          :i i}))
                     (find-position-fields start-index)
                     assign-unique-names)
-        data-rows (map tabbed (filter #(and (not-blank? %)
-                                            (not-comment? %)) rows))
-        fields (mapv #(field-spec % data-rows) header)]
+        fields (mapv #(field-spec % in) header)] ; vector of field-specs, each holding vector of rows in :rows
     (if (= "position" (get-in fields [0 :valueType]))
-      (let [pos-rows (get-in fields [0 :rows])
-            order (sort-by #(chr-order (pos-rows %)) (range (count pos-rows)))
+      (let [pos-rows (force (get-in fields [0 :rows]))
+            order (do
+                    (sort-by #(chr-order (pos-rows %)) (range (count pos-rows))))
             sorted-fields (map #(update-in % [:rows] resort order) fields)]
         {:fields sorted-fields})
       {:fields fields})))
@@ -547,7 +558,7 @@
                          mutation-columns
                          mutation-default-columns
                          mutation-column-types
-                         (line-seq in)))}))
+                         in))}))
 
 
 (def ^:private gene-pred-column-types
@@ -612,7 +623,7 @@
                          gene-pred-columns
                          gene-pred-default-columns
                          gene-pred-column-types
-                         (line-seq in)))}))
+                         in))}))
 ; cgdata file detector
 ;
 
