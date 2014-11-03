@@ -357,57 +357,12 @@
      :features feature   ; slurped clinicalFeatures
      :data-fn (fn [in] (matrix-data metadata feature (line-seq ((:reader in)))))}))
 
-;
-; cgData probemaps
-;
-
-(defn- probemap-row [row]
-  (let [[probe genes chrom start end strand] (s/split row #"\t")]
-    {:name probe
-     :genes (split-no-empty genes #",")
-     :chrom chrom
-     :chromStart (. Integer parseInt start)
-     :chromEnd (. Integer parseInt end)
-     :strand strand}))
-
-
 (defn- chr-order [position]
   (mapv position [:chrom :chromStart]))
 
-(defn- probemap-data
-  "Return seq of probes entries as maps"
-  [rows]
-  (let [columns (sort-by chr-order (map probemap-row rows)) ; XXX move sort to cavm
-        probe-names (map :name columns)
-        probe-feature (ad-hoc-order {} probe-names)
-        probe-vals (map (:order probe-feature) probe-names)]
-    [{:field "name"
-      :valueType "category"
-      :feature probe-feature
-      :rows probe-vals}
-     {:field "position"
-      :valueType "position"
-      :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
-     {:field "genes"
-      :valueType "genes"
-      :row-val identity
-      :rows (mapv :genes columns)}]))
-
-(defn probemap-file
-  "Return a map describing a cgData probemap file. This will read
-  any assoicated json."
-  [file & {docroot :docroot :or {docroot fs/unix-root}}]
-  (let [metadata (cgdata-meta file)
-        refs (references docroot file metadata)]
-    {:metadata metadata
-     :refs refs
-     :data-fn (fn [in] (probemap-data (line-seq ((:reader in)))))}))
-
 ;
-; mutationVector
+; general tsv reader
 ;
-
-;TARGET-30-PAHYWC-01     chr5    33549462        33549462        ADAMTS12        G       T       missense_variant        0.452962        NA      F1384L
 
 (defn tsv-rows [in]
   (map tabbed (filter #(and (not-blank? %)
@@ -484,37 +439,6 @@
                                  (mapv (fn [t i parse] [t (parse (get % i ""))])
                                        tlist ilist plist))
                            (tsv-rows in))))})))
-
-(def ^:private mutation-column-types
-  {:sampleID :category
-   :chrom :category
-   :ref :category
-   :chromStart :float
-   :chromEnd :float
-   :position :position
-   :genes :gene
-   :reference :category
-   :alt :category
-   :effect :category
-   :dna-vaf :float
-   :rna-vaf :float
-   :amino-acid :category})
-
-(def mutation-columns
-  {#"(?i)sample[ _]*(name|id)?" :sampleID
-   #"(?i)chr(om)?" :chrom
-   #"(?i)start" :chromStart
-   #"(?i)end" :chromEnd
-   #"(?i)genes?" :genes
-   #"(?i)alt(ernate)?" :alt
-   #"(?i)ref(erence)?" :ref
-   #"(?i)effect" :effect
-   #"(?i)dna[-_ ]*v?af" :dna-vaf
-   #"(?i)rna[-_ ]*v?af" :rna-vaf
-   #"(?i)amino[-_ ]*acid[-_ ]*(change)?" :amino-acid})
-
-(def ^:private mutation-default-columns
-  [:sampleID :chrom :chromStart :chromEnd :genes :ref :alt :effect :dna-vaf :rna-vaf :amino-acid])
 
 (defn columns-from-header [header patterns]
   (when header
@@ -601,6 +525,40 @@
             sorted-fields (map #(update-in % [:rows] resort order) (consume-vec fields))]
         sorted-fields)
       (consume-vec fields))))
+;
+; mutationVector
+;
+
+(def ^:private mutation-column-types
+  {:sampleID :category
+   :chrom :category
+   :ref :category
+   :chromStart :float
+   :chromEnd :float
+   :position :position
+   :genes :gene
+   :reference :category
+   :alt :category
+   :effect :category
+   :dna-vaf :float
+   :rna-vaf :float
+   :amino-acid :category})
+
+(def mutation-columns
+  {#"(?i)sample[ _]*(name|id)?" :sampleID
+   #"(?i)chr(om)?" :chrom
+   #"(?i)start" :chromStart
+   #"(?i)end" :chromEnd
+   #"(?i)genes?" :genes
+   #"(?i)alt(ernate)?" :alt
+   #"(?i)ref(erence)?" :ref
+   #"(?i)effect" :effect
+   #"(?i)dna[-_ ]*v?af" :dna-vaf
+   #"(?i)rna[-_ ]*v?af" :rna-vaf
+   #"(?i)amino[-_ ]*acid[-_ ]*(change)?" :amino-acid})
+
+(def ^:private mutation-default-columns
+  [:sampleID :chrom :chromStart :chromEnd :genes :ref :alt :effect :dna-vaf :rna-vaf :amino-acid])
 
 (defn mutation-file
   "Return a map describing a cgData mutation file. This will read
@@ -618,6 +576,47 @@
                          mutation-column-types
                          in))}))
 
+;
+; probemap
+;
+(def ^:private probemap-column-types
+  {:name :category
+   :chrom :category
+   :chromStart :float
+   :chromEnd :float
+   :position :position
+   :genes :gene})
+
+(def ^:private probemap-default-columns
+  [:name :genes :chrom :chromStart :chromEnd :strand])
+
+(def probemap-columns
+  {#"(?i)chr(om)?" :chrom
+   #"(?i)start" :chromStart
+   #"(?i)end" :chromEnd
+   #"(?i)strand" :strand
+   #"(?i)genes?" :genes
+   #"(?i)name" :name})
+
+; XXX refactor this function pattern. It appears three times.
+(defn probemap-file
+  "Return a map describing a cgData probemap file. This will read
+  any assoicated json."
+  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+  (let [metadata (cgdata-meta file)
+        start-index (get metadata "start_index" 1)
+        refs (references docroot file metadata)]
+    {:metadata metadata
+     :refs refs
+     :data-fn (fn [in] (tsv-data
+                         start-index
+                         probemap-columns
+                         probemap-default-columns
+                         probemap-column-types
+                         in))}))
+;
+; gene prediction
+;
 
 (def ^:private gene-pred-column-types
   {:bin :float
@@ -682,6 +681,8 @@
                          gene-pred-default-columns
                          gene-pred-column-types
                          in))}))
+
+;
 ; cgdata file detector
 ;
 
