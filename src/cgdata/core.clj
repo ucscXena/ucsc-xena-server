@@ -9,11 +9,58 @@
   (:require [me.raynes.fs :as fs])
   (:require clojure.pprint)
   (:require [cavm.fs-utils :refer [normalized-path relativize]]) ; should copy these fns if releasing cgdata stand-alone
+  (:require [cavm.chrom-pos :refer [chrom-pos-vec]]) ; move to this directory?
+  (:require [cavm.lazy-utils :refer [consume-vec]])
   (:gen-class))
 
 ;
 ; Utility functions
 ;
+
+(defn map-invert
+  "Invert the keys/values of a map"
+  [m]
+  (into {} (map (fn [[k v]] [v k]) m)))
+
+(defn intern-coll
+  "Intern values of a collection, returning the original collection
+  as a list of indices, and a map from values to the indices. Invert
+  the map to perform lookups by index."
+  [s]
+  (loop [s s
+         codes {}
+         out (vector-of :int) ; XXX does this work with consume-vec?
+         i 0]
+    (if-let [v (first s)]
+      (if (contains? codes v)
+        (recur (rest s) codes (conj out (codes v)) i)
+        (recur (rest s) (assoc codes v i) (conj out i) (inc i)))
+      {:codes codes :values out})))
+
+(defn range-from [i]
+  (range i Double/POSITIVE_INFINITY 1))
+
+(defn strcpy [s]
+  (String. ^String s))
+
+(defn- split-no-empty [in pat] ; XXX Does this need to handle quotes?
+  (filter #(not (= "" %)) (map #(s/trim %) (s/split in pat))))
+
+(defn intern-csv-coll
+  "Intern values of a collection of csv, returning the original collection
+  as a list of arrays of indices, and a map from indices to values."
+  [s]
+  (loop [s s
+         codes {}
+         out []
+         i 0]
+    (if-let [line (first s)]
+      (let [vs (split-no-empty line #",")
+            to-add (map strcpy (filter #(not (contains? codes %)) vs))
+            new-codes (into codes (map vector to-add (range-from i)))
+            new-vals (long-array (map new-codes vs))]
+        (recur (rest s) new-codes (conj out new-vals) (+ i (count to-add))))
+      {:codes (map-invert codes) :values out})))
 
 (defn- chunked-pmap [f coll]
   (->> coll
@@ -188,9 +235,6 @@
     (or (get (get features (first cols)) "valueType")
         hint)))
 
-(defn strcpy [s]
-  (String. ^String s))
-
 (defmethod ^:private data-line :default
   [features cols & [hint]]
   (try ; the body must be eager so we stay in the try/except scope
@@ -254,7 +298,7 @@
 (defmethod matrix-data :default
   [metadata features lines]
   (let [lines (ammend-lines lines)]
-    {:fields (chunked-pmap #(data-line features (tabbed %)) lines)}))
+    (chunked-pmap #(data-line features (tabbed %)) lines)))
 
 (defn- transpose [lines]
   (apply mapv vector lines))
@@ -265,7 +309,7 @@
                   (ammend-lines)
                   (map tabbed)
                   (transpose))]
-    {:fields (chunked-pmap #(data-line features %) lines)}))
+    (chunked-pmap #(data-line features %) lines)))
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
@@ -313,9 +357,6 @@
 ; cgData probemaps
 ;
 
-(defn- split-no-empty [in pat] ; XXX Does this need to handle quotes?
-  (filter #(not (= "" %)) (map #(s/trim %) (s/split in pat))))
-
 (defn- probemap-row [row]
   (let [[probe genes chrom start end strand] (s/split row #"\t")]
     {:name probe
@@ -336,17 +377,17 @@
         probe-names (map :name columns)
         probe-feature (ad-hoc-order {} probe-names)
         probe-vals (map (:order probe-feature) probe-names)]
-    {:fields
-     [{:field "name"
-       :valueType "category"
-       :feature probe-feature
-       :rows probe-vals}
-      {:field "position"
-       :valueType "position"
-       :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
-      {:field "genes"
-       :valueType "genes"
-       :rows (map :genes columns)}]}))
+    [{:field "name"
+      :valueType "category"
+      :feature probe-feature
+      :rows probe-vals}
+     {:field "position"
+      :valueType "position"
+      :rows (map #(select-keys % [:chrom :chromStart :chromEnd :strand]) columns)}
+     {:field "genes"
+      :valueType "genes"
+      :row-val identity
+      :rows (mapv :genes columns)}]))
 
 (defn probemap-file
   "Return a map describing a cgData probemap file. This will read
@@ -369,17 +410,21 @@
                             (not-comment? %))
                       (line-seq ((:reader in))))))
 
+;
+; Fields need to return :row as vectors so we can sort them. They could return lazy
+; seqs if we wanted to convert them to vectors before sort. It's better if the
+; field does it, so we can infer the correct storage type via 'empty' when sorting.
+;
 (defmulti field-spec (fn [field _] (:type field)))
 
 (defn category-field
   [parse {:keys [name i]} in]
-  (let [row-vals (delay (mapv #(parse (get % i "")) (tsv-rows in)))
-        feature (delay (ad-hoc-order {} @row-vals))]
+  (let [row-vals (delay
+                   (intern-coll (map #(parse (get % i "")) (tsv-rows in))))]
     {:field name
      :valueType "category"
-     :feature feature
-     :rows (delay
-             (mapv (:order @feature) @row-vals))}))
+     :feature (delay {:order (:codes @row-vals)})
+     :rows (delay (:values @row-vals))}))
 
 (defmethod field-spec :category
   [col in]
@@ -390,26 +435,31 @@
   {:field name
    :valueType "float" ; XXX why strings instead of keywords?
    :rows (delay
-           (mapv #(parseFloatNA (get % i "")) (tsv-rows in)))})
+           (reduce #(conj %1 (parseFloatNA (get %2 i "")))
+                   (vector-of :float)
+                   (tsv-rows in)))})
 
 (defmethod field-spec :chromStartCSV
   [{:keys [start-index] :as col} in]
   (let [parse ([parseChromCSV0 parseChromCSV] start-index)]
-    (category-field parse col in))) ; XXX memleak
+    (category-field parse col in)))
 
 (defmethod field-spec :gene
   [{:keys [name i]} in]
-  {:field name
-   :valueType "genes"
-   :rows (delay
-           (mapv #(split-no-empty (strcpy (get % i "")) #",") (tsv-rows in)))})
+  (let [row-vals (delay
+                   (intern-csv-coll
+                     (map #(get % i "") (tsv-rows in))))]
+    {:field name
+     :valueType "genes"
+     :row-val (fn [row] (map (:codes @row-vals) row))
+     :rows (delay (:values @row-vals))}))
 
 (let [parsers
-      {:chrom #(s/trim (strcpy %))
-       :chromStart #(. Integer parseInt (s/trim %))
-       :chromStart0 #(+ (. Integer parseInt (s/trim %)) 1)
-       :chromEnd #(. Integer parseInt (s/trim %))
-       :strand #(s/trim (strcpy %))}
+      {:chrom s/trim
+       :chromStart #(. Long parseLong (s/trim %))
+       :chromStart0 #(+ (. Long parseLong (s/trim %)) 1)
+       :chromEnd #(. Long parseLong (s/trim %))
+       :strand #(first (s/trim %))}
 
       ; This is awkward. Override chromStart if start-index is 0.
       get-parser (fn [ftype start-index]
@@ -425,9 +475,11 @@
       {:field name
        :valueType "position"
        :rows (delay
-               (mapv #(apply merge
-                             (mapv (fn [t i parse] {t (parse (get % i ""))}) tlist ilist plist))
-                     (tsv-rows in)))})))
+               (into (chrom-pos-vec)
+                     (map #(into {}
+                                 (mapv (fn [t i parse] [t (parse (get % i ""))])
+                                       tlist ilist plist))
+                           (tsv-rows in))))})))
 
 (def ^:private mutation-column-types
   {:sampleID :category
@@ -521,7 +573,8 @@
                                             (add-field counts header)))))))
 
 (defn- resort [rows order]
-  (mapv (force rows) order))
+  (let [rs (force rows)]
+    (into (empty rs) (map rs order))))
 
 (defn- tsv-data
   "Return the fields of a tsv file."
@@ -539,10 +592,11 @@
     (if (= "position" (get-in fields [0 :valueType]))
       (let [pos-rows (force (get-in fields [0 :rows]))
             order (do
-                    (sort-by #(chr-order (pos-rows %)) (range (count pos-rows))))
-            sorted-fields (map #(update-in % [:rows] resort order) fields)]
-        {:fields sorted-fields})
-      {:fields fields})))
+                    (sort-by #(chr-order (pos-rows %)) (into (vector-of :int)
+                                                             (range (count pos-rows)))))
+            sorted-fields (map #(update-in % [:rows] resort order) (consume-vec fields))]
+        sorted-fields)
+      (consume-vec fields))))
 
 (defn mutation-file
   "Return a map describing a cgData mutation file. This will read

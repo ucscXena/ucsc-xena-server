@@ -21,6 +21,7 @@
   (:require [cavm.h2-unpack-rows :as unpack])
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
   (:require [cavm.conn-pool :refer [pool]])
+  (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
   (:gen-class))
 
 ;
@@ -243,15 +244,15 @@
   (assoc md :text (json/write-str md :escape-slash false)))
 
 (defn- load-probe-meta
-  [feature-seq field-id {:keys [order state] :as feat}]
+  [feature-seq field-id {:keys [order] :as feat}]
   (let [feature-id (feature-seq)
         fmeta (merge (normalize-meta feature-meta feat)
                      {:field_id field-id :id feature-id})]
     (cons [:insert-feature (assoc fmeta :id feature-id)]
-          (for [a-code state]
+          (for [[value ordering] order]
             [:insert-code {:field_id field-id
-                           :ordering (order a-code)
-                           :value a-code}]))))
+                           :ordering ordering
+                           :value value}]))))
 ;
 ;
 ;
@@ -450,11 +451,13 @@
                     [[:insert-field-score {:field_id field-id
                                            :i i
                                            :scores block}]])
-                  (mapv vector data (range)))
+                  (map vector (consume-vec data) (range)))
           [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
 
+; This should be lazy to avoid simultaneously instantiating all the rows as
+; individual objects.
 (defmethod load-field "position" [dataset-id field-id {:keys [field rows]}]
-  (conj (for [[position row] (mapv vector (force rows) (range))]
+  (conj (for [[position row] (map vector (force rows) (range))]
           [:insert-position (assoc position
                                    :field_id field-id
                                    :row row
@@ -463,11 +466,11 @@
                                           (:chromEnd position)))])
         [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
 
-(defmethod load-field "genes" [dataset-id field-id {:keys [field rows]}]
+(defmethod load-field "genes" [dataset-id field-id {:keys [field rows row-val]}]
   (conj (mapcat (fn [[genes row]]
-                  (for [gene genes]
+                  (for [gene (row-val genes)]
                     [:insert-gene {:field_id field-id :row row :gene gene}]))
-                (mapv vector (force rows) (range)))
+                (map vector (consume-vec (force rows)) (range)))
         [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
 
 (defn- inferred-type
@@ -478,7 +481,7 @@
 (defn- load-field-feature [feature-seq field-seq dataset-id field]
   (let [field-id (field-seq)]
     (concat (load-field dataset-id field-id field)
-            (when-let [feature (force (:feature field ))]
+            (when-let [feature (force (:feature field))]
               (load-probe-meta feature-seq field-id (inferred-type feature field))))))
 ;
 ;
@@ -504,7 +507,7 @@
 (def ^:private batch-size 1000)
 
 (defn- run-delays [m]
-  (into {} (for [[k v] m] [k (if (delay? v) @v v)])))
+  (into {} (for [[k v] m] [k (force v)])))
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
@@ -535,15 +538,14 @@
                   :insert-code code-stmt
                   :insert-gene gene-stmt}
           row-count (atom 0)
-          inserts (apply concat
-                         (chunked-pmap #(do
-                                          (swap! row-count max (count (:rows %)))
-                                          (load-field-feature
-                                           feature-seq
-                                           field-seq
-                                           dataset-id
-                                           %))
-                                       (:fields (matrix-fn))))]
+          inserts (lazy-mapcat #(do
+                                  (swap! row-count max (count (force (:rows %))))
+                                  (load-field-feature
+                                    feature-seq
+                                    field-seq
+                                    dataset-id
+                                    %))
+                               (matrix-fn))]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
         (jdbcd/transaction

@@ -32,28 +32,28 @@
       "id1"
       [{:name "id1" :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0) :hash "1234"}]
       {}
-      (fn [] {:fields [{:rows [0 1]
-                        :field "sampleID"
-                        :valueType "category"
-                        :feature {:state ["sample1" "sample2"]
-                                  :order {"sample1" 0 "sample2" 1}}}
-                       {:field "position"
-                        :valueType "position"
-                        :rows [{:chrom "chr1"
-                                :chromStart 1200
-                                :chromEnd 1300
-                                :strand "-"}
-                               {:chrom "chr2"
-                                :chromStart 300
-                                :chromEnd 1200
-                                :strand "+"}]}
-                       {:field "genes"
-                        :valueType "genes"
-                        :rows [["FOXM1" "CUL2"]
-                               ["ACK" "BLAH"]]}
-                       {:rows [1.1 1.2] :field "probe1"}
-                       {:rows [2.1 2.2] :field "probe2"}]
-               :samples ["sample1" "sample2"]})
+      (fn [] [{:rows [0 1]
+               :field "sampleID"
+               :valueType "category"
+               :feature {:state ["sample1" "sample2"]
+                         :order {"sample1" 0 "sample2" 1}}}
+              {:field "position"
+               :valueType "position"
+               :rows [{:chrom "chr1"
+                       :chromStart 1200
+                       :chromEnd 1300
+                       :strand "-"}
+                      {:chrom "chr2"
+                       :chromStart 300
+                       :chromEnd 1200
+                       :strand "+"}]}
+              {:field "genes"
+               :valueType "genes"
+               :row-val identity
+               :rows [["FOXM1" "CUL2"]
+                      ["ACK" "BLAH"]]}
+              {:rows [1.1 1.2] :field "probe1"}
+              {:rows [2.1 2.2] :field "probe2"}])
       nil
       false)
 
