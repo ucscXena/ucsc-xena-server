@@ -300,8 +300,12 @@
   (let [lines (ammend-lines lines)]
     (chunked-pmap #(data-line features (tabbed %)) lines)))
 
-(defn- transpose [lines]
-  (apply mapv vector lines))
+(defn- transpose
+  "Transpose cells of a tsv, using the first row to fix the number of columns."
+  [lines]
+  (let [pcount (count (first lines))]
+    (into [] (for [i (range pcount)]
+               (mapv #(get % i "") lines)))))
 
 (defmethod matrix-data "clinicalMatrix"
   [metadata features lines]
