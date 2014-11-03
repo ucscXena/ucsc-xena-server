@@ -153,7 +153,7 @@
 ;
 
 (defmulti ^:private feature-line
-  (fn [acc line] () (second line))) ; XXX why the nil?
+  (fn [acc line] (second line)))
 
 (defmethod ^:private feature-line :default
   [acc [feature attr value]]
