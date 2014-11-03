@@ -22,6 +22,10 @@
   [m]
   (into {} (map (fn [[k v]] [v k]) m)))
 
+; apply f to values of map
+(defn- fmap [f m]
+  (into {} (for [[k v] m] [k (f v)])))
+
 (defn intern-coll
   "Intern values of a collection, returning the original collection
   as a list of indices, and a map from values to the indices. Invert
@@ -143,10 +147,6 @@
     (doseq [[file data] files]
       (write-json (str file ".json")
                   (resolve-references normalize table file data)))))
-
-; apply f to values of map
-(defn- fmap [f m]
-  (into {} (for [[k v] m] [k (f v)])))
 
 ;
 ; cgData clinicalFeature
