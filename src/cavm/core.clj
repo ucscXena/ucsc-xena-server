@@ -192,16 +192,19 @@
     (str database ";" default-h2-opts)
     database))
 
-(defn- logback-config [filename]
-  (System/setProperty "log_file" filename)
-  (let [context (LoggerFactory/getILoggerFactory)
-        configurator (JoranConfigurator.)]
-    (try
-      (.setContext configurator context)
-      (.reset context)
-      (.doConfigure configurator (io/resource "logback_config.xml"))
-      (catch Exception e))
-    (StatusPrinter/printInCaseOfErrorsOrWarnings context)))
+(defn- logback-config
+  ([filename]
+   (logback-config filename "logback_config.xml"))
+  ([filename config]
+   (System/setProperty "log_file" filename)
+   (let [context (LoggerFactory/getILoggerFactory)
+         configurator (JoranConfigurator.)]
+     (try
+       (.setContext configurator context)
+       (.reset context)
+       (.doConfigure configurator (io/resource config))
+       (catch Exception e))
+     (StatusPrinter/printInCaseOfErrorsOrWarnings context))))
 
 (defn- log-config [filename]
   (logback-config filename)
