@@ -7,7 +7,11 @@
   (:require [cavm.loader :refer [loader]])
   (:require [cavm.cgdata]) ; register reader methods
   (:require [honeysql.types :as hsqltypes])
-  (:require [clojure.test :as ct]))
+  (:require [clojure.test :as ct])
+  (:require [clojure.test.check :as tc])
+  (:require [clojure.test.check.generators :as gen])
+  (:require [clojure.test.check.clojure-test :as tcct :refer [defspec]])
+  (:require [clojure.test.check.properties :as prop]))
 
 (def eps 0.000001)
 
@@ -22,9 +26,141 @@
                true
                (map vector a b))))
 
-; XXX how to test scores? Could add a call to fetch. Could also
-; consider adding a transform that calls fetch, if we ever get
-; a sql transform layer implemented.
+(defn- nearly-equal-matrix [e a b]
+  (and (= (count a) (count b))
+       (every? (fn [[a1 b1]] (nearly-equal e a1 b1)) (map vector a b))))
+
+(def gen-mostly-ints
+  (gen/frequency [[9 gen/int] [1 (gen/return Double/NaN)]]))
+
+; work-around for broken gen/vector, which will stack-overflow.
+; The conditional is necessary to smoothly handle small numbers.
+; Otherwise we only do squares, like 1,4,9.
+(defn gen-vector-of-size
+  "Generate vector of given size, working-around gen/vector
+  stackoverflow problem."
+  [generator n]
+  (if (< n 300) ; picked 300 at random, to avoid stack overflow
+    (gen/vector generator n)
+    (let [root-n (java.lang.Math/sqrt n)]
+      (gen/fmap #(into [] (apply concat %)) (gen/vector (gen/vector generator root-n) root-n)))))
+
+(let [xm 99 ; max 'size' in test.check.generators
+      s 10] ; threshold 'size' below which we use slope 1
+  (defn scale-size
+    "Return a function for scaling a size parameter up to max-size, using a
+    piecewise linear mapping that preserves the first s sizes. This allows us
+    to shrink to the first s sizes, while covering the range up to max-size."
+    [max-size]
+    (let [slope (/ (- max-size s) (- xm s))]
+      (fn [size]
+        (if (< size s)
+          size
+          (+ s (* (- size s) slope)))))))
+
+(defn gen-distinct-names [n]
+  (gen/such-that
+    #(= (count %) (count (set %)))
+    (gen-vector-of-size
+      (gen/such-that not-empty gen/string-ascii)
+      n)))
+
+(defn scale-gen
+  "Return a generator that will scale to max-size, via scale-size."
+  [generator max-size]
+  (gen/sized (comp #(gen/resize % generator) (scale-size max-size))))
+
+(def ^:dynamic *max-probes* 1000)
+(def ^:dynamic *max-samples* 1000)
+
+(def gen-matrix-size
+  (gen/tuple
+    (scale-gen gen/s-pos-int *max-samples*)
+    (scale-gen gen/s-pos-int *max-probes*)))
+
+(defn gen-matrix [x y]
+  (gen/bind
+    (gen-vector-of-size (gen-vector-of-size gen-mostly-ints x) y)
+    (fn [m]
+      (gen/return m))))
+
+(def gen-tsv
+  (gen/bind
+    gen-matrix-size
+    (fn [[x y]]
+      (gen/hash-map
+        :probes (gen-distinct-names y)
+        :samples (gen-distinct-names x)
+        :matrix (gen-matrix x y)))))
+
+(defn- fields-from-tsv [{:keys [probes samples matrix]}]
+  (cons {:rows (range (count samples))
+         :field "sampleID"
+         :valueType "category"
+         :feature {:state samples
+                   :order (zipmap samples (range))}}
+        (map (fn [id rows] {:rows rows
+                            :valueType "float"
+                            :feature {}
+                            :field id}) probes matrix)))
+
+(defmacro db-fixture [db & body]
+  `(let [~db (h2/create-xenadb "test" {:subprotocol "h2:mem"})]
+     (try
+       ~@body
+       (finally (cdb/close ~db)))))
+
+; XXX should generate random file name
+(defmacro db-disk-fixture [db & body]
+  `(let [~db (h2/create-xenadb "test" {:subprotocol "h2"})]
+     (try
+       ~@body
+       (finally (do
+                  (cdb/close ~db)
+                  (doseq [f# ["test.h2.db" "test.lock.db" "test.trace.db"]]
+                    (io/delete-file f# true)))))))
+
+(def ^:dynamic *test-runs* 100)
+
+(defspec genomic-matrix-memory
+  *test-runs*
+  (prop/for-all
+    [tsv gen-tsv
+     id (gen/such-that not-empty gen/string-ascii)]
+    (db-disk-fixture
+      db
+      (let [fields (fields-from-tsv tsv)
+            {:keys [probes samples matrix]} tsv]
+        (cdb/write-matrix
+          db
+          id
+          [{:name id
+            :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0)
+            :hash "1234"}]
+          {}
+          (fn [] fields)
+          nil
+          false)
+
+        (let [exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
+              q-samples (cdb/run-query db
+                                       {:select [[:value :name]]
+                                        :from [:field]
+                                        :where [:= :name "sampleID"]
+                                        :left-join [:code [:= :field.id :field_id]]
+                                        :order-by [:ordering]})
+              q-probes (cdb/run-query db {:select [:*] :from [:field]})
+              q-data (cdb/fetch db [{:table id
+                                     :columns probes
+                                     :samples samples}])]
+          (and (= exp [{:name id :status "loaded" :rows (count samples)}])
+               (= (map :name q-samples) samples)
+               (= (map :name q-probes) (cons "sampleID" probes))
+               (nearly-equal-matrix
+                 0.0001
+                 matrix
+                 (vec (map #(into [] %) (map ((first q-data) :data) probes))))))))))
+
 (defn matrix1 [db]
   (ct/testing "tsv matrix from memory"
     (cdb/write-matrix
