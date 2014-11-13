@@ -263,6 +263,9 @@
                        (flush))))
    x))
 
+; set logging to terminal:
+; (logback-config "log" "logback_repl.xml")
+
 ; (def testdb (h2/create-xenadb "test;TRACE_LEVEL_FILE=3"))
 ; (def testdb (h2/create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
 ; (def testdetector (apply cr/detector "/inside/home/craft/xena/files" detectors))
