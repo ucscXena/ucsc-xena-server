@@ -1,5 +1,6 @@
 (ns cavm.db-test
   (:require [clojure.java.io :as io])
+  (:require [clojure.string :as s])
   (:require [cavm.h2 :as h2])
   (:require [cavm.db :as cdb])
   (:require [cavm.readers :as cr])
@@ -13,29 +14,45 @@
   (:require [clojure.test.check.clojure-test :as tcct :refer [defspec]])
   (:require [clojure.test.check.properties :as prop]))
 
-(def eps 0.000001)
+; XXX fix nearly-equal-matrix to also log failures
+(def ^:dynamic *verbose* false)
 
-(defn- nearly-equal [e a b]
+(defmacro is= [a b]
+  `(let [a# ~a
+         b# ~b
+         r# (= a# b#)]
+    (when (and (not r#) *verbose*)
+      (println "expected (=" ~(str a) ~(str b) ")")
+      (print "actual (not (=")
+      (clojure.pprint/write a#)
+      (print " ")
+      (clojure.pprint/write b#)
+      (println "))"))
+     r#))
+
+(def ^:dynamic *eps* 0.0001)
+
+(defn- nearly-equal [a b]
   (and (= (count a) (count b))
        (reduce (fn [acc pair]
                  (or (let [[x y] pair]
                        (and
                          (Double/isNaN x)
                          (Double/isNaN y)))
-                     (and acc (< (java.lang.Math/abs (apply - pair)) e))))
+                     (and acc (< (java.lang.Math/abs (apply - pair)) *eps*))))
                true
                (map vector a b))))
 
-(defn- nearly-equal-matrix [e a b]
+(defn- nearly-equal-matrix [a b]
   (and (= (count a) (count b))
-       (every? (fn [[a1 b1]] (nearly-equal e a1 b1)) (map vector a b))))
+       (every? (fn [[a1 b1]] (nearly-equal a1 b1)) (map vector a b))))
 
 (def gen-mostly-ints
   (gen/frequency [[9 gen/int] [1 (gen/return Double/NaN)]]))
 
-; work-around for broken gen/vector, which will stack-overflow.
 ; The conditional is necessary to smoothly handle small numbers.
-; Otherwise we only do squares, like 1,4,9.
+; Otherwise we only do squares, like 1,4,9. Above the threshold we
+; are not perfectly accurate. This can't be avoided.
 (defn gen-vector-of-size
   "Generate vector of given size, working-around gen/vector
   stackoverflow problem."
@@ -58,11 +75,14 @@
           size
           (+ s (* (- size s) slope)))))))
 
-(defn gen-distinct-names [n]
+(defn gen-distinct-names
+  "Generate a list of names which are non-empty after trimming, and
+  are distinct after trimming."
+  [n]
   (gen/such-that
-    #(= (count %) (count (set %)))
+    #(= (count %) (count (set (map s/trim %))))
     (gen-vector-of-size
-      (gen/such-that not-empty gen/string-ascii)
+      (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
       n)))
 
 (defn scale-gen
@@ -122,44 +142,47 @@
 
 (def ^:dynamic *test-runs* 100)
 
+(defn check-matrix [db id tsv]
+  (let [{:keys [probes samples matrix]} tsv
+        exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
+        q-samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:code [:= :field.id :field_id]]
+                                  :order-by [:ordering]})
+        q-probes (cdb/run-query db {:select [:*] :from [:field]})
+        q-data (cdb/fetch db [{:table id
+                               :columns probes
+                               :samples samples}])]
+    (and (is= exp [{:name id :status "loaded" :rows (count samples)}])
+         (is= (map :name q-samples) samples)
+         (is= (map :name q-probes) (cons "sampleID" probes))
+         (nearly-equal-matrix
+            matrix
+            (vec (map #(into [] %) (map ((first q-data) :data) probes)))))))
+
+(defn genomic-matrix-memory-run
+  "Run a generated genomic-matrix-loader test case. Useful for repeated failed
+  cases. Run with *verbose* to print detailed test failures"
+  [tsv id]
+  (db-disk-fixture
+    db
+    (let [fields (fields-from-tsv tsv)]
+      (cdb/write-matrix
+        db id
+        [{:name id
+          :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0)
+          :hash "1234"}]
+        {} (fn [] fields) nil false)
+      (check-matrix db id tsv))))
+
 (defspec genomic-matrix-memory
   *test-runs*
   (prop/for-all
     [tsv gen-tsv
      id (gen/such-that not-empty gen/string-ascii)]
-    (db-disk-fixture
-      db
-      (let [fields (fields-from-tsv tsv)
-            {:keys [probes samples matrix]} tsv]
-        (cdb/write-matrix
-          db
-          id
-          [{:name id
-            :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0)
-            :hash "1234"}]
-          {}
-          (fn [] fields)
-          nil
-          false)
-
-        (let [exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
-              q-samples (cdb/run-query db
-                                       {:select [[:value :name]]
-                                        :from [:field]
-                                        :where [:= :name "sampleID"]
-                                        :left-join [:code [:= :field.id :field_id]]
-                                        :order-by [:ordering]})
-              q-probes (cdb/run-query db {:select [:*] :from [:field]})
-              q-data (cdb/fetch db [{:table id
-                                     :columns probes
-                                     :samples samples}])]
-          (and (= exp [{:name id :status "loaded" :rows (count samples)}])
-               (= (map :name q-samples) samples)
-               (= (map :name q-probes) (cons "sampleID" probes))
-               (nearly-equal-matrix
-                 0.0001
-                 matrix
-                 (vec (map #(into [] %) (map ((first q-data) :data) probes))))))))))
+    (genomic-matrix-memory-run tsv id)))
 
 (defn matrix1 [db]
   (ct/testing "tsv matrix from memory"
@@ -241,12 +264,12 @@
                  {:field_id 3 :row 1 :gene "BLAH"}]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal 0.0001 probe1 [1.2 1.1]))
-        (ct/is (nearly-equal 0.0001 probe2 [2.2 2.1])))
+        (ct/is (nearly-equal probe1 [1.2 1.1]))
+        (ct/is (nearly-equal probe2 [2.2 2.1])))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data2) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal 0.0001 probe1 [1.1 Double/NaN]))
-        (ct/is (nearly-equal 0.0001 probe2 [2.1 Double/NaN]))))))
+        (ct/is (nearly-equal probe1 [1.1 Double/NaN]))
+        (ct/is (nearly-equal probe2 [2.1 Double/NaN]))))))
 
 (def docroot "test/cavm/test_inputs")
 
@@ -260,6 +283,56 @@
   (ct/testing "detect tsv matrix"
     (let [{file-type :file-type} (detector "test/cavm/test_inputs/matrix")]
       (ct/is (= file-type :cgdata.core/tsv)))))
+
+(defn str-nan [f]
+  (if (and (number? f) (Double/isNaN f)) "" (str f)))
+
+(def ^:dynamic *delete-tmp-files* true)
+
+(defmacro with-file
+  "Execute body, ensuring that file is always deleted before returning."
+  [[bindvar file] & body]
+  `(let [~bindvar ~file]
+     (try
+       ~@body
+       (finally (when *delete-tmp-files*
+                  (io/delete-file (io/file ~bindvar) true))))))
+
+(defn write-genomic-matrix
+  "Write a genomic matrix to a file."
+  [file {:keys [matrix probes samples]}]
+  (let [header (cons "sampleID" samples)
+        rows (map (fn [probe row] (cons probe row)) probes matrix)]
+    (spit (io/file file)
+          (s/join "\n"
+                  (map #(s/join "\t" (map str-nan %)) (cons header rows))))))
+
+(defn trim-tsv
+  "Rewrite tsv with probes and samples trimmed of leading and trailing
+  whitespace. Useful for comparing with tsv read from files, which we
+  similarly trim."
+  [{:keys [probes samples] :as tsv}]
+  (assoc tsv
+         :probes (map s/trim probes)
+         :samples (map s/trim samples)))
+
+(defn genomic-matrix-loader-run
+  "Run a generated genomic-matrix-loader test case. Useful for repeated failed
+  cases. Run with *verbose* to print detailed test failures"
+  [tsv id]
+  (with-file [file (str (io/file docroot "generated" id))]
+    (write-genomic-matrix file tsv)
+    (db-disk-fixture
+      db
+      (loader db detector docroot file)
+      (check-matrix db (str (io/file "generated" id)) (trim-tsv tsv)))))
+
+(defspec genomic-matrix-loader
+  *test-runs*
+  (prop/for-all
+    [tsv gen-tsv
+     id (gen/such-that not-empty gen/string-alpha-numeric)]
+    (genomic-matrix-loader-run tsv id)))
 
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
@@ -290,8 +363,8 @@
                  {:name "probe5" :id 6 :dataset_id 1} ]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal 0.0001 probe1 [2.1 1.1]))
-        (ct/is (nearly-equal 0.0001 probe2 [2.2 1.2]))))))
+        (ct/is (nearly-equal probe1 [2.1 1.1]))
+        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
 
 (defn matrix2-reload [db]
   (ct/testing "reload tsv matrix from file"
@@ -323,8 +396,8 @@
                  {:name "probe5" :id 12 :dataset_id 1} ]))
       (let [[probe1 probe2]
             (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal 0.0001 probe1 [2.1 1.1]))
-        (ct/is (nearly-equal 0.0001 probe2 [2.2 1.2]))))))
+        (ct/is (nearly-equal probe1 [2.1 1.1]))
+        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
 
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
