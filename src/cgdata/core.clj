@@ -295,10 +295,20 @@
   [lines]
   (concat (cons (ammend-sample-field (first lines)) (rest lines))))
 
+(defn fix-vec [v size]
+  (let [c (count v)]
+    (cond
+      (> c size) (subvec v 0 size)
+      (< c size) (apply conj v (repeat (- size c) ""))
+      :else v)))
+
 (defmethod matrix-data :default
   [metadata features lines]
-  (let [lines (ammend-lines lines)]
-    (chunked-pmap #(data-line features (tabbed %)) lines)))
+  (let [lines (ammend-lines lines)
+        ncols (count (tabbed (first lines)))]
+    (cons (data-line features (tabbed (first lines)) "category") ; coerce sampleID type
+          (chunked-pmap #(data-line features (fix-vec (tabbed %) ncols))
+                        (rest lines)))))
 
 (defn- transpose
   "Transpose cells of a tsv, using the first row to fix the number of columns."
