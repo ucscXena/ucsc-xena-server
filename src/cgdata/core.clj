@@ -290,10 +290,10 @@
   (let [[_ samples] (s/split line #"\t" 2)]
     (str "sampleID\t" samples)))
 
-(defn- ammend-lines
+(defn- ammend-header
   "Coerce first column name to sampleID"
-  [lines]
-  (concat (cons (ammend-sample-field (first lines)) (rest lines))))
+  [header]
+  (assoc header 0 "sampleID"))
 
 (defn fix-vec [v size]
   (let [c (count v)]
@@ -302,13 +302,18 @@
       (< c size) (apply conj v (repeat (- size c) ""))
       :else v)))
 
+
+(defn matrix-data-parse
+  [metadata features lines parse]
+  (let [header (ammend-header (parse (first lines)))
+        ncols (count header)]
+    (cons (data-line features header "category") ; coerce sampleID type
+          (chunked-pmap #(data-line features (fix-vec (parse %) ncols))
+                        (rest lines)))))
+
 (defmethod matrix-data :default
   [metadata features lines]
-  (let [lines (ammend-lines lines)
-        ncols (count (tabbed (first lines)))]
-    (cons (data-line features (tabbed (first lines)) "category") ; coerce sampleID type
-          (chunked-pmap #(data-line features (fix-vec (tabbed %) ncols))
-                        (rest lines)))))
+  (matrix-data-parse metadata features lines tabbed))
 
 (defn- transpose
   "Transpose cells of a tsv, using the first row to fix the number of columns."
@@ -320,10 +325,9 @@
 (defmethod matrix-data "clinicalMatrix"
   [metadata features lines]
   (let [lines (->> lines
-                  (ammend-lines)
                   (map tabbed)
                   (transpose))]
-    (chunked-pmap #(data-line features %) lines)))
+    (matrix-data-parse metadata #(data-line features %) lines identity)))
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
