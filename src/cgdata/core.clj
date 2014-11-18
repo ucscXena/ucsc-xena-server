@@ -316,12 +316,14 @@
   [metadata features lines parse]
   (let [header (ammend-header (parse (first lines)))
         dup-sample-rows (into #{} (map inc (dup-indexes (rest header))))
-        dup-samples (map header dup-sample-rows)
+        dup-samples (not-empty (map header dup-sample-rows))
         drop-rows (partial drop-indexes dup-sample-rows)
         ncols (count header)]
-    (cons (data-line features (drop-rows header) "category") ; coerce sampleID type
-          (chunked-pmap #(data-line features (drop-rows (fix-vec (parse %) ncols)))
-                        (rest lines)))))
+    (with-meta
+      (cons (data-line features (drop-rows header) "category") ; coerce sampleID type
+            (chunked-pmap #(data-line features (drop-rows (fix-vec (parse %) ncols)))
+                          (rest lines)))
+      (when dup-samples {:duplicate-keys {:sampleID dup-samples}}))))
 
 (defmethod matrix-data :default
   [metadata features lines]

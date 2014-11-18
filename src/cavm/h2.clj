@@ -538,6 +538,8 @@
                   :insert-code code-stmt
                   :insert-gene gene-stmt}
           row-count (atom 0)
+          data (matrix-fn)
+          warnings (meta data)
           inserts (lazy-mapcat #(do
                                   (swap! row-count max (count (force (:rows %))))
                                   (load-field-feature
@@ -545,13 +547,16 @@
                                     field-seq
                                     dataset-id
                                     %))
-                               (matrix-fn))]
+                               data)]
 
       (doseq [insert-batch (partition-all batch-size inserts)]
         (jdbcd/transaction
           (doseq [[insert-type values] insert-batch]
+            (when (= :insert-field insert-type)
+              (trace "writing" (:name values)))
             ((writer insert-type) (run-delays values)))))
-      @row-count)))
+      {:rows @row-count
+       :warnings warnings})))
 ;
 ;
 ; Table writer that updates one table at a time by writing to temporary files.
@@ -688,8 +693,11 @@
                 (load-related-sources
                   :dataset_source :dataset_id dataset-id files)))
            (p :dataset-table
-              (let [rows (table-writer *tmp-dir* dataset-id matrix-fn)]
-                (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:rows rows})))))))))
+              (let [{:keys [rows warnings]} (table-writer *tmp-dir* dataset-id matrix-fn)]
+                (jdbcd/transaction
+                  (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:rows rows})
+                  (when warnings
+                    (merge-m-ent mname (assoc metadata :loader warnings))))))))))))
 
 ; XXX needs updated. dataset table doesn't have a :file attribute.
 (comment  (defn del-exp [file]
