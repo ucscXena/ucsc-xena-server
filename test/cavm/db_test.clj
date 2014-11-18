@@ -140,7 +140,7 @@
                   (doseq [f# ["test.h2.db" "test.lock.db" "test.trace.db"]]
                     (io/delete-file f# true)))))))
 
-(def ^:dynamic *test-runs* 100)
+(def ^:dynamic *test-runs* 40)
 
 (defn check-matrix [db id tsv]
   (let [{:keys [probes samples matrix]} tsv
@@ -291,21 +291,33 @@
 
 (defmacro with-file
   "Execute body, ensuring that file is always deleted before returning."
-  [[bindvar file] & body]
-  `(let [~bindvar ~file]
-     (try
-       ~@body
-       (finally (when *delete-tmp-files*
-                  (io/delete-file (io/file ~bindvar) true))))))
+  [bindings & body]
+  (if (= (count bindings) 0)
+    `(do ~@body)
+    `(let ~(subvec bindings 0 2)
+       (try
+         (with-file ~(subvec bindings 2) ~@body)
+         (finally (when *delete-tmp-files*
+                    (io/delete-file (io/file ~(bindings 0)) true)))))))
+
+(defn write-clinical-meta [file]
+  (spit (io/file file)
+        "{\"type\": \"clinicalMatrix\"}"))
+
+(defn transpose [m]
+  (apply map vector m))
 
 (defn write-genomic-matrix
   "Write a genomic matrix to a file."
-  [file {:keys [matrix probes samples]}]
+  [file {:keys [matrix probes samples]} clinical meta-file]
   (let [header (cons "sampleID" samples)
+        trans (if clinical transpose identity)
         rows (map (fn [probe row] (cons probe row)) probes matrix)]
+    (when clinical
+      (write-clinical-meta meta-file))
     (spit (io/file file)
           (s/join "\n"
-                  (map #(s/join "\t" (map str-nan %)) (cons header rows))))))
+                  (map #(s/join "\t" (map str-nan %)) (trans (cons header rows)))))))
 
 (defn trim-tsv
   "Rewrite tsv with probes and samples trimmed of leading and trailing
@@ -319,9 +331,10 @@
 (defn genomic-matrix-loader-run
   "Run a generated genomic-matrix-loader test case. Useful for repeated failed
   cases. Run with *verbose* to print detailed test failures"
-  [tsv id]
-  (with-file [file (str (io/file docroot "generated" id))]
-    (write-genomic-matrix file tsv)
+  [tsv id clinical]
+  (with-file [file (str (io/file docroot "generated" id))
+              meta-file (str file ".json")]
+    (write-genomic-matrix file tsv clinical meta-file)
     (db-disk-fixture
       db
       (loader db detector docroot file)
@@ -331,8 +344,9 @@
   *test-runs*
   (prop/for-all
     [tsv gen-tsv
-     id (gen/such-that not-empty gen/string-alpha-numeric)]
-    (genomic-matrix-loader-run tsv id)))
+     id (gen/such-that not-empty gen/string-alpha-numeric)
+     clinical gen/boolean]
+    (genomic-matrix-loader-run tsv id clinical)))
 
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
