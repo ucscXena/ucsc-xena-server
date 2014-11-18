@@ -235,6 +235,21 @@
     (or (get (get features (first cols)) "valueType")
         hint)))
 
+(defn dup-indexes
+  "Find indexes of duplicate values in coll."
+  [coll]
+  (loop [i 0 c coll in #{} dups #{}]
+    (if-let [v (first c)]
+      (if (in v)
+        (recur (inc i) (rest c) in (conj dups i))
+        (recur (inc i) (rest c) (conj in v) dups))
+      dups)))
+
+(defn drop-indexes
+  "Drop elements from coll by index."
+  [indxs coll]
+  (into [] (keep-indexed (fn [i v] (when (not (indxs i)) v)) coll)))
+
 (defmethod ^:private data-line :default
   [features cols & [hint]]
   (try ; the body must be eager so we stay in the try/except scope
@@ -300,9 +315,12 @@
 (defn matrix-data-parse
   [metadata features lines parse]
   (let [header (ammend-header (parse (first lines)))
+        dup-sample-rows (into #{} (map inc (dup-indexes (rest header))))
+        dup-samples (map header dup-sample-rows)
+        drop-rows (partial drop-indexes dup-sample-rows)
         ncols (count header)]
-    (cons (data-line features header "category") ; coerce sampleID type
-          (chunked-pmap #(data-line features (fix-vec (parse %) ncols))
+    (cons (data-line features (drop-rows header) "category") ; coerce sampleID type
+          (chunked-pmap #(data-line features (drop-rows (fix-vec (parse %) ncols)))
                         (rest lines)))))
 
 (defmethod matrix-data :default

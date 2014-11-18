@@ -85,6 +85,13 @@
       (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
       n)))
 
+(defn gen-names
+  "Generate a list of names which are non-empty after trimming."
+  [n]
+  (gen-vector-of-size
+    (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
+    n))
+
 (defn scale-gen
   "Return a generator that will scale to max-size, via scale-size."
   [generator max-size]
@@ -104,13 +111,22 @@
     (fn [m]
       (gen/return m))))
 
-(def gen-tsv
+(def gen-tsv-distinct
   (gen/bind
     gen-matrix-size
     (fn [[x y]]
       (gen/hash-map
         :probes (gen-distinct-names y)
         :samples (gen-distinct-names x)
+        :matrix (gen-matrix x y)))))
+
+(def gen-tsv
+  (gen/bind
+    gen-matrix-size
+    (fn [[x y]]
+      (gen/hash-map
+        :probes (gen-distinct-names y)
+        :samples (gen-names x)
         :matrix (gen-matrix x y)))))
 
 (defn- fields-from-tsv [{:keys [probes samples matrix]}]
@@ -180,7 +196,7 @@
 (defspec genomic-matrix-memory
   *test-runs*
   (prop/for-all
-    [tsv gen-tsv
+    [tsv gen-tsv-distinct
      id (gen/such-that not-empty gen/string-ascii)]
     (genomic-matrix-memory-run tsv id)))
 
@@ -328,6 +344,18 @@
          :probes (map s/trim probes)
          :samples (map s/trim samples)))
 
+; XXX duplicating loader code. This is, perhaps, more "obviously correct",
+; but it would be nice not to duplicate the loader code. Perhaps generate
+; a tsv w/o dups, then splice in a few dups? Would have to see if that
+; shrinks.
+(defn drop-dup-samples [{:keys [samples matrix] :as tsv}]
+  (let [dist (distinct samples)
+        m (transpose
+            (map
+              (into {} (rseq (mapv #(-> [%1 %2]) samples (transpose matrix))))
+              dist))]
+    (assoc tsv :samples dist :matrix m)))
+
 (defn genomic-matrix-loader-run
   "Run a generated genomic-matrix-loader test case. Useful for repeated failed
   cases. Run with *verbose* to print detailed test failures"
@@ -338,7 +366,7 @@
     (db-disk-fixture
       db
       (loader db detector docroot file)
-      (check-matrix db (str (io/file "generated" id)) (trim-tsv tsv)))))
+      (check-matrix db (str (io/file "generated" id)) (drop-dup-samples (trim-tsv tsv))))))
 
 (defspec genomic-matrix-loader
   *test-runs*
