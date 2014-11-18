@@ -263,8 +263,7 @@
 ; Update meta entity record.
 (defn- merge-m-ent [ename metadata]
   (let [normmeta (normalize-meta dataset-meta (json-text (assoc metadata
-                                                                "name" ename
-                                                                "status" "loading")))
+                                                                "name" ename)))
         {id :id} (jdbcd/with-query-results
                    row
                    [(str "SELECT `id` FROM `dataset` WHERE `name` = ?") ename]
@@ -273,7 +272,7 @@
       (do
         (jdbcd/update-values :dataset ["`id` = ?" id] normmeta)
         id)
-      (-> (jdbcd/insert-record :dataset (assoc normmeta "status" "loading")) KEY-ID))))
+      (-> (jdbcd/insert-record :dataset normmeta) KEY-ID))))
 
 ;
 ; Hex
