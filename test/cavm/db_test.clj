@@ -75,35 +75,10 @@
           size
           (+ s (* (- size s) slope)))))))
 
-(defn gen-distinct-names
-  "Generate a list of names which are non-empty after trimming, and
-  are distinct after trimming."
-  [n]
-  (gen/such-that
-    #(= (count %) (count (set (map s/trim %))))
-    (gen-vector-of-size
-      (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
-      n)))
-
-(defn gen-names
-  "Generate a list of names which are non-empty after trimming."
-  [n]
-  (gen-vector-of-size
-    (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
-    n))
-
 (defn scale-gen
   "Return a generator that will scale to max-size, via scale-size."
   [generator max-size]
   (gen/sized (comp #(gen/resize % generator) (scale-size max-size))))
-
-(def ^:dynamic *max-probes* 1000)
-(def ^:dynamic *max-samples* 1000)
-
-(def gen-matrix-size
-  (gen/tuple
-    (scale-gen gen/s-pos-int *max-samples*)
-    (scale-gen gen/s-pos-int *max-probes*)))
 
 (defn gen-matrix [x y]
   (gen/bind
@@ -111,23 +86,47 @@
     (fn [m]
       (gen/return m))))
 
-(def gen-tsv-distinct
-  (gen/bind
-    gen-matrix-size
-    (fn [[x y]]
-      (gen/hash-map
-        :probes (gen-distinct-names y)
-        :samples (gen-distinct-names x)
-        :matrix (gen-matrix x y)))))
+(defn gen-max [generator max-size]
+  (gen/sized
+    (fn [size]
+      (gen/resize (min size max-size) generator))))
+
+(defn gen-name [name-max]
+  (gen-max (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
+           name-max))
+
+(def ^:dynamic *name-max* 30)
+(def gen-names
+  "Generate a list of names which are non-empty after trimming."
+  (gen/sized (fn [size]
+             (gen/vector
+               (gen-name *name-max*)
+               1 (max 1 size)))))
+
+(def gen-distinct-names
+  "Generate a list of names which are non-empty after trimming, and
+  are distinct after trimming."
+  (gen/such-that
+    #(= (count %) (count (set (map s/trim %))))
+    gen-names))
 
 (def gen-tsv
   (gen/bind
-    gen-matrix-size
-    (fn [[x y]]
+    (gen/tuple gen-names gen-distinct-names)
+    (fn [[samples probes]]
       (gen/hash-map
-        :probes (gen-distinct-names y)
-        :samples (gen-names x)
-        :matrix (gen-matrix x y)))))
+        :probes (gen/return probes)
+        :samples (gen/return samples)
+        :matrix (gen-matrix (count samples) (count probes))))))
+
+(def gen-tsv-distinct
+  (gen/bind
+    (gen/tuple gen-distinct-names gen-distinct-names)
+    (fn [[samples probes]]
+      (gen/hash-map
+        :probes (gen/return probes)
+        :samples (gen/return samples)
+        :matrix (gen-matrix (count samples) (count probes))))))
 
 (defn- fields-from-tsv [{:keys [probes samples matrix]}]
   (cons {:rows (range (count samples))
