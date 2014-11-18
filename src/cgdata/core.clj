@@ -284,12 +284,6 @@
   "Return seq of scores, probes X samples"
   (fn [metadata features lines] (metadata "type")))
 
-;
-(defn- ammend-sample-field
-  [line]
-  (let [[_ samples] (s/split line #"\t" 2)]
-    (str "sampleID\t" samples)))
-
 (defn- ammend-header
   "Coerce first column name to sampleID"
   [header]
