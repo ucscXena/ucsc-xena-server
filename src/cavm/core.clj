@@ -155,6 +155,7 @@
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
    ["-d" "--database FILE" "Database to use" :default db-default]
    [nil "--logfile FILE" "Log file to use" :default logfile-default]
+   [nil "--version" "Print version and exit"]
    ["-j" "--json" "Fix json"]
    ["-t" "--tmp DIR" "Set tmp dir" :default tmp-dir-default]])
 
@@ -234,6 +235,7 @@
         (println (s/join "\n" errors)))
       (cond
         (:help options) (println summary)
+        (:version options) (println (get pom-props "version"))
         (:json options) (cgdata/fix-json docroot)
         (:load options) (loadfiles port always arguments)
         :else (if-let [error (some mkdir [tmp docroot])]
