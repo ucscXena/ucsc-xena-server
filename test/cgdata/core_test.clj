@@ -1,6 +1,7 @@
 (ns cgdata.core-test
   (:require [clojure.test :as ct])
   (:require [clojure.java.io :as io])
+  (:require [clojure.string :as s])
   (:require [cgdata.core :as cgdata]))
 
 (def cwd (.getCanonicalFile (io/file ".")))
@@ -76,6 +77,9 @@
                     {:header :chromEnd :i 7}])))))
 
 
+(defn reader-from-str [s]
+ (io/reader (io/input-stream (.getBytes s))))
+
 (ct/deftest test-position-spec
   (let [field {:name "position"
                :header :position
@@ -83,15 +87,21 @@
                :columns [{:header :chrom :i 0}
                          {:header :chromStart :i 1}
                          {:header :chromEnd :i 2}]}
-        rows [["chr1" "100" "200"]
-              [" chr1" "200 " "300"]
-              ["chr2 " "100" " 200"]
-              ["chr3" "500" "600"]]
+        rows {:reader
+              (constantly
+                (reader-from-str
+                  (s/join
+                    "\n"
+                    (map #(s/join "\t" %)
+                         [["chr1" "100" "200"]
+                          [" chr1" "200 " "300"]
+                          ["chr2 " "100" " 200"]
+                          ["chr3" "500" "600"]]))))}
         spec (cgdata/field-spec field rows)]
     (ct/is (= {:field "position"
                :valueType "position"
-               :rows [{:chrom "chr1" :chromStart 100 :chromEnd 200}
-                      {:chrom "chr1" :chromStart 200 :chromEnd 300}
-                      {:chrom "chr2" :chromStart 100 :chromEnd 200}
-                      {:chrom "chr3" :chromStart 500 :chromEnd 600}]}
-              spec))))
+               :rows [{:chrom "chr1" :chromStart 100 :chromEnd 200 :strand \0}
+                      {:chrom "chr1" :chromStart 200 :chromEnd 300 :strand \0}
+                      {:chrom "chr2" :chromStart 100 :chromEnd 200 :strand \0}
+                      {:chrom "chr3" :chromStart 500 :chromEnd 600 :strand \0}]}
+              (update-in spec [:rows] #(map (fn [pos] (into {} pos)) (deref %)))))))
