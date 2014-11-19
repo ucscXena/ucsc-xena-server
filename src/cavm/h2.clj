@@ -15,7 +15,7 @@
   (:use [cavm.hashable :only (ahashable)])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
-  (:require [clojure.tools.logging :refer [spy]])
+  (:require [clojure.tools.logging :refer [spy trace info]])
   (:require [taoensso.timbre.profiling :refer [profile p]])
   (:require [clojure.core.cache :as cache])
   (:require [cavm.h2-unpack-rows :as unpack])
@@ -150,8 +150,8 @@
   ["CREATE TABLE IF NOT EXISTS `dataset_source` (
    `dataset_id` INT NOT NULL,
    `source_id` INT NOT NULL,
-   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`),
-   FOREIGN KEY (source_id) REFERENCES `source` (`id`))"])
+   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`) ON DELETE CASCADE,
+   FOREIGN KEY (source_id) REFERENCES `source` (`id`) ON DELETE CASCADE)"])
 
 (def ^:private dataset-meta
   {:defaults dataset-defaults
@@ -698,12 +698,22 @@
                   (when warnings
                     (merge-m-ent mname (assoc metadata :loader warnings))))))))))))
 
-; XXX needs updated. dataset table doesn't have a :file attribute.
-(comment  (defn del-exp [file]
-  (kdb/transaction
-    (let [[{exp :id}] (select dataset (where {:file file}))]
-      (clear-by-exp exp)
-      (delete dataset (where {:id exp}))))))
+(defn- dataset-by-name [dname]
+  (jdbcd/with-query-results rows
+    ["SELECT `id`
+     FROM `dataset`
+     WHERE `name` = ?" (str dname)]
+    (-> rows first :id)))
+
+(defn delete-dataset [dataset]
+  (jdbcd/transaction
+    (let [dataset-id (dataset-by-name dataset)]
+      (if dataset-id
+        (do
+          (clear-by-exp dataset-id)
+          (jdbcd/do-commands
+            (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))
+        (info "Did not delete unknown dataset" dataset)))))
 
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
                           :or {classname "org.h2.Driver"
@@ -779,13 +789,6 @@
 ;
 ;
 ;
-
-(defn- dataset-by-name [dname]
-  (jdbcd/with-query-results rows
-    ["SELECT `id`
-     FROM `dataset`
-     WHERE `name` = ?" (str dname)]
-    (-> rows first :id)))
 
 ; merge bin number and bin offset for a row
 (defn- merge-bin-off [{i :i :as row}]
@@ -961,6 +964,9 @@
   (write-matrix [this mname files metadata data-fn features always]
     (jdbcd/with-connection @(:db this)
       (load-dataset mname files metadata data-fn features always)))
+  (delete-matrix [this mname]
+    (jdbcd/with-connection @(:db this)
+      (delete-dataset mname)))
   (run-query [this query]
     (jdbcd/with-connection @(:db this)
       (run-query query)))

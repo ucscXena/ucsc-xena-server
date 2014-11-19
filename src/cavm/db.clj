@@ -14,6 +14,9 @@
                 <features> --- a map of metadata describing the fields.
                 <always> --- force update of database, even if the files are unchanged
                              since the last load of this dataset.")
+  (delete-matrix [this mname]
+                 "Remove a dataset from the database.
+                 <mname> --- the (unique) name of the dataset.")
   (run-query [this query] "Execute a sql query.
                           <query> is a honeysql map.")
   (fetch [this reqs] "Retrieve rows from specified fields in a dataset,

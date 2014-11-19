@@ -40,6 +40,10 @@
         features
         always))))
 
+(defn- delete-matrix [db docroot filename]
+  (let [fname (str (relativize docroot filename))]
+    (cdb/delete-matrix db fname)))
+
 (def ^:private loaders
   {:probemap write-matrix
    :matrix write-matrix
@@ -52,20 +56,17 @@
 ; one file type may contain mutiple xena data types.
 (defn loader
   "Load a data file into the database"
-  [db detector docroot filename & [always]]
+  [db detector docroot filename & [opts]]
   (let [fname  (str (relativize docroot filename))
         reader @(:reader (detector filename))
         loader (get loaders (:datatype reader) ignore)]
-    (loader db docroot fname reader (or always false))))
-
-(defn- log-error [filename e]
-  (warn e "Loading" filename))
+    (loader db docroot fname reader opts)))
 
 (defn loader-agent
   "Create an agent to serialize bulk loads, returning a function
   for loading a file via the agent.
 
-  fn [filename & [{always :always :or {always false}}]]
+  fn [filename & [{:keys [always delete] :or {always false delete false}}]]
 
   Detector is a function returning a file type as a keyword, which
   will be used to select a dataset writer method. This has evolved
@@ -73,13 +74,23 @@
 
   [db detector docroot]
   (let [a (agent nil)]
-    (fn [filename & [{always :always :or {always false}}]]
-      (send-off a (fn [n]
-                    (info "Loading dataset" (str filename))
-                    (let [t (read-string
-                              (with-out-str
-                                (time (try
-                                        (loader db detector docroot filename always)
-                                        (catch Exception e (log-error filename e))))))]
-                      (info (str "Loaded " filename ", " t)))
-                    nil)))))
+    (fn [filename & [{:keys [delete] :as opts}]]
+      (if delete
+        (send-off a (fn [n]
+                      (info "Removing dataset" (str filename))
+                      (let [t (read-string
+                                (with-out-str
+                                  (time (try
+                                          (delete-matrix db docroot filename)
+                                          (catch Exception e (log-error filename e))))))]
+                        (info (str "Removed " filename ", " t)))
+                      nil))
+        (send-off a (fn [n]
+                      (info "Loading dataset" (str filename))
+                      (let [t (read-string
+                                (with-out-str
+                                  (time (try
+                                          (loader db detector docroot filename opts)
+                                          (catch Exception e (log-error filename e))))))]
+                        (info (str "Loaded " filename ", " t)))
+                      nil))))))

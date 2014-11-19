@@ -113,10 +113,14 @@
                  (range (count in-path) 0 -1)))
      (clean-sources))))
 
-(defn- loadfiles [port always files]
+(defn- load-files [port always files]
   (client/post (str "http://localhost:" port "/update/")
                {:form-params (merge {:file files}
                                     (when always {:always "true"}))}))
+
+(defn- delete-files [port files]
+  (client/post (str "http://localhost:" port "/update/")
+               {:form-params {:file files :delete "true"}}))
 
 (def ^:private detectors
   [cgdata/detect-cgdata
@@ -148,6 +152,7 @@
   [[nil "--no-serve" "Don't start web server" :id :serve :parse-fn not :default true]
    ["-p" "--port PORT" "Server port to listen on" :default 7222 :parse-fn #(Integer/parseInt %)]
    ["-l" "--load" "Load files into running server"]
+   ["-x" "--delete" "Delete file from running server"]
    [nil "--force" "Force reload of unchanged files (with -l)"]
    [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
    ["-h" "--help" "Show help"]
@@ -237,7 +242,8 @@
         (:help options) (println summary)
         (:version options) (println (get pom-props "version"))
         (:json options) (cgdata/fix-json docroot)
-        (:load options) (loadfiles port always arguments)
+        (:load options) (load-files port always arguments)
+        (:delete options) (delete-files port arguments)
         :else (if-let [error (some mkdir [tmp docroot])]
                 (binding [*out* *err*] ; XXX move below log-config? What if we can't create the log file?
                   (println error))
