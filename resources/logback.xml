@@ -7,7 +7,7 @@
 
   <logger name="cavm" level="DEBUG"/>
   <logger name="cgdata" level="DEBUG"/>
-  <logger name="com.mchange" level="INFO"/>
+  <logger name="com.mchange" level="ERROR"/>
   <logger name="org.eclipse.jetty" level="INFO"/>
   <logger name="h2database" level="WARN"/>
 
