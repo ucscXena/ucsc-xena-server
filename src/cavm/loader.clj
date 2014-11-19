@@ -43,7 +43,8 @@
 (def ^:private loaders
   {:probemap write-matrix
    :matrix write-matrix
-   :mutation write-matrix})
+   :mutation write-matrix
+   :segment write-matrix})
 
 (defn- ignore [& args])
 

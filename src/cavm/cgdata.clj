@@ -60,6 +60,13 @@
       (replace-references)
       (update-in [:metadata] normalize-meta-keys)))
 
+(defmethod reader :cgdata.core/segment
+  [filetype docroot url]
+  (-> (cgdata/genomic-segment-file url :docroot docroot)
+      (assoc :datatype :segment)
+      (replace-references)
+      (update-in [:metadata] normalize-meta-keys)))
+
 (defmethod reader :cgdata.core/mutation
   [filetype docroot url]
   (-> (cgdata/mutation-file url :docroot docroot)

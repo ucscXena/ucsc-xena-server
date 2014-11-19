@@ -605,6 +605,44 @@
                          in))}))
 
 ;
+; genomic-segment
+;
+(def ^:private genomic-segment-column-types
+  {:sampleID :category
+   :chrom :category
+   :chromStart :float
+   :chromEnd :float
+   :position :position
+   :value :float})
+
+(def ^:private genomic-segment-default-columns
+  [:sampleID :chrom :chromStart :chromEnd :strand :value])
+
+(def genomic-segment-columns
+  {#"(?i)sampleID" :sampleID
+   #"(?i)chr(om)?" :chrom
+   #"(?i)start" :chromStart
+   #"(?i)end" :chromEnd
+   #"(?i)strand" :strand
+   #"(?i)value" :value})
+
+; XXX refactor this function pattern. It appears four times.
+(defn genomic-segment-file
+  "Return a map describing a cgData genomicSegment file. This will read
+  any assoicated json."
+  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+  (let [metadata (cgdata-meta file)
+        start-index (get metadata "start_index" 1)
+        refs (references docroot file metadata)]
+    {:metadata metadata
+     :refs refs
+     :data-fn (fn [in] (tsv-data
+                         start-index
+                         genomic-segment-columns
+                         genomic-segment-default-columns
+                         genomic-segment-column-types
+                         in))}))
+;
 ; probemap
 ;
 (def ^:private probemap-column-types
