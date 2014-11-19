@@ -42,7 +42,7 @@
       (contains? specialfns func) (func node scope)
       :else (apply func (map #(eval % scope) (rest node))))))
 
-(def ^:private as-is #{keyword? string?})
+(def ^:private as-is #{keyword? string? #(contains? #{true false} %)})
 
 (defn- sqlcall-node [^honeysql.types.SqlCall node scope]
   (let [fname (.name node) args (.args node)]
