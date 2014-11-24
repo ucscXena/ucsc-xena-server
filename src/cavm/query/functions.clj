@@ -19,9 +19,20 @@
 
 ; XXX this handling of dim is wrong for dim > 1
 ; XXX do we need to fill nan values, like we do in python?
-(defn- meannan [m dim]
+(defn meannan-impl [m dim]
     (let [new-shape (assoc (vec (shape m)) (long dim) 1)]
       (reshape (matrix (map meannan1d (slices m (- 1 dim)))) new-shape)))
+
+; Methods that coerce params to core.matrix. Should be extended
+; to all the math functions in 'functions', below.
+(defprotocol Matrix
+  (meannan [m dim]))
+
+(extend-protocol Matrix
+  mikera.matrixx.Matrix
+  (meannan [m dim] (meannan-impl m dim))
+  clojure.lang.Seqable
+  (meannan [m dim] (meannan-impl (matrix (map double-array m)) dim)))
 
 (def functions
   {'+ +
