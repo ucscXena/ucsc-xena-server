@@ -44,6 +44,9 @@
 ; Add 30 for gzip header
 ;( def score-size (+ 30 (* float-size bin-size)))
 
+; row count for batch operations (e.g. insert/delete)
+(def ^:private batch-size 1000)
+
 ;
 ; Utility functions
 ;
@@ -257,7 +260,32 @@
 ;
 ;
 
+(defn do-command-while-updates [cmd]
+  (while
+    (> (first (jdbcd/do-commands cmd)) 0)))
+
+(defn delete-rows-by-field-cmd [table field]
+  (format "DELETE FROM `%s` WHERE `field_id` = %d LIMIT %d"
+                table field batch-size))
+
+(defn- clear-fields [exp]
+  (jdbcd/with-query-results
+    field
+    ["SELECT `id` FROM `field` WHERE `dataset_id` = ?" exp]
+    (doseq [{id :id} field]
+      (doseq [table ["code" "feature" "field_gene" "field_position" "field_score"]]
+        (do-command-while-updates
+          (delete-rows-by-field-cmd table id)))))
+  (do-command-while-updates
+    (format "DELETE FROM `field` WHERE `dataset_id` = %d LIMIT %d"
+            exp batch-size)))
+
+; Deletes an experiment. We break this up into a series
+; of commits so other threads are not blocked, and we
+; don't time-out the db thread pool.
+; XXX Might want to add a "deleting" status to the dataset table?
 (defn- clear-by-exp [exp]
+  (clear-fields exp)
   (jdbcd/delete-rows :field ["`dataset_id` = ?" exp]))
 
 ; Update meta entity record.
@@ -502,8 +530,6 @@
 (defn- sequence-stmt ^cavm.statement.PStatement [db-seq]
   (sql-stmt-result (jdbcd/find-connection)
                          (format "SELECT NEXT VALUE FOR %s AS i" db-seq)))
-
-(def ^:private batch-size 1000)
 
 (defn- run-delays [m]
   (into {} (for [[k v] m] [k (force v)])))
