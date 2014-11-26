@@ -115,12 +115,12 @@
 
 (defn- load-files [port always files]
   (client/post (str "http://localhost:" port "/update/")
-               {:form-params (merge {:file files}
+               {:form-params (merge {:file (map normalized-path files)}
                                     (when always {:always "true"}))}))
 
 (defn- delete-files [port files]
   (client/post (str "http://localhost:" port "/update/")
-               {:form-params {:file files :delete "true"}}))
+               {:form-params {:file (map normalized-path files) :delete "true"}}))
 
 (def ^:private detectors
   [cgdata/detect-cgdata

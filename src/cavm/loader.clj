@@ -2,6 +2,7 @@
   ^{:author "Brian Craft"
     :doc "xena dataset loader entry point."}
   cavm.loader
+  (:require [me.raynes.fs :as fs])
   (:require [cavm.fs-utils :refer [relativize]])
   (:require [cavm.multireader :refer [multi-reader with-multi]])
   (:require [clj-time.coerce :refer [from-long]])
@@ -75,22 +76,23 @@
   [db detector docroot]
   (let [a (agent nil)]
     (fn [filename & [{:keys [delete] :as opts}]]
-      (if delete
-        (send-off a (fn [n]
-                      (info "Removing dataset" (str filename))
-                      (let [t (read-string
-                                (with-out-str
-                                  (time (try
-                                          (delete-matrix db docroot filename)
-                                          (catch Exception e (log-error filename e))))))]
-                        (info (str "Removed " filename ", " t)))
-                      nil))
-        (send-off a (fn [n]
-                      (info "Loading dataset" (str filename))
-                      (let [t (read-string
-                                (with-out-str
-                                  (time (try
-                                          (loader db detector docroot filename opts)
-                                          (catch Exception e (log-error filename e))))))]
-                        (info (str "Loaded " filename ", " t)))
-                      nil))))))
+      (let [filename (fs/with-cwd docroot (fs/file filename))]
+        (if delete
+          (send-off a (fn [n]
+                        (info "Removing dataset" (str filename))
+                        (let [t (read-string
+                                  (with-out-str
+                                    (time (try
+                                            (delete-matrix db docroot filename)
+                                            (catch Exception e (log-error filename e))))))]
+                          (info (str "Removed " filename ", " t)))
+                        nil))
+          (send-off a (fn [n]
+                        (info "Loading dataset" (str filename))
+                        (let [t (read-string
+                                  (with-out-str
+                                    (time (try
+                                            (loader db detector docroot filename opts)
+                                            (catch Exception e (log-error filename e))))))]
+                          (info (str "Loaded " filename ", " t)))
+                        nil)))))))
