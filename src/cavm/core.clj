@@ -224,7 +224,6 @@
                       :fn (fn [{:keys [ns level throwable message]}]
                             (log/log ns level throwable message))}}}))
 
-
 ; XXX create dir for database as well?
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
@@ -238,29 +237,36 @@
     (if errors
       (binding [*out* *err*]
         (println (s/join "\n" errors)))
-      (cond
-        (:help options) (println summary)
-        (:version options) (println (get pom-props "version"))
-        (:json options) (cgdata/fix-json docroot)
-        (:load options) (load-files port always arguments)
-        (:delete options) (delete-files port arguments)
-        :else (if-let [error (some mkdir [tmp docroot])]
-                (binding [*out* *err*] ; XXX move below log-config? What if we can't create the log file?
-                  (println error))
-                (do
-                  (log-config logfile)
-                  (info "Xena server starting"
-                        (get pom-props "version")
-                        (s/trim
-                          (get pom-props "revision")))
-                  (h2/set-tmp-dir! tmp)
-                  (let [db (h2/create-xenadb database)
-                        detector (apply cr/detector docroot detectors)
-                        loader (cl/loader-agent db detector docroot)]
-                    (when (:auto options)
-                      (watch (partial file-changed loader docroot) docroot))
-                    (when (:serve options)
-                      (serv (get-app db loader) host port))))))))
+      (try
+        (cond
+          (:help options) (println summary)
+          (:version options) (println (get pom-props "version"))
+          (:json options) (cgdata/fix-json docroot)
+          (:load options) (load-files port always arguments)
+          (:delete options) (delete-files port arguments)
+          :else (if-let [error (some mkdir [tmp docroot])]
+                  (binding [*out* *err*] ; XXX move below log-config? What if we can't create the log file?
+                    (println error))
+                  (do
+                    (log-config logfile)
+                    (info "Xena server starting"
+                          (get pom-props "version")
+                          (s/trim
+                            (get pom-props "revision")))
+                    (h2/set-tmp-dir! tmp)
+                    (let [db (h2/create-xenadb database)
+                          detector (apply cr/detector docroot detectors)
+                          loader (cl/loader-agent db detector docroot)]
+                      (when (:auto options)
+                        (watch (partial file-changed loader docroot) docroot))
+                      (when (:serve options)
+                        (serv (get-app db loader) host port))))))
+        (catch Exception ex
+          ; XXX maybe should enable ERROR logging to console, instead of this.
+          (binding [*out* *err*]
+            (println "Uncaught exception" ex))
+          (error "Uncaught exception" ex)
+          (System/exit 1)))))
   (shutdown-agents))
 
 ; When logging to the repl from a future, *err* gets lost.
