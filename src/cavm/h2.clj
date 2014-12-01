@@ -15,7 +15,7 @@
   (:use [cavm.hashable :only (ahashable)])
   (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
-  (:require [clojure.tools.logging :refer [spy trace info]])
+  (:require [clojure.tools.logging :refer [spy trace info warn]])
   (:require [taoensso.timbre.profiling :refer [profile p]])
   (:require [clojure.core.cache :as cache])
   (:require [cavm.h2-unpack-rows :as unpack])
@@ -677,15 +677,40 @@
      WHERE `dataset`.`id` = ?" id]
     (vec rows)))
 
+(defn- record-exception [dataset-id ex]
+  (jdbcd/with-query-results rows
+    ["SELECT `text` FROM `dataset` WHERE `dataset`.`id` = ?" dataset-id]
+    (let [[{text :text :or {text "{}"}}] rows
+          metadata (json/read-str text)]
+      (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:text
+                                                            (json/write-str
+                                                              (assoc metadata "error" (str ex))
+                                                              :escape-slash false)}))))
+
 (defn- with-load-status* [dataset-id func]
-  (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "loading"})
   (try
+    (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "loading"})
     (func)
-    (finally
-      (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "loaded"}))))
+    (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "loaded"})
+    (catch Exception ex
+      (warn ex "Error loading dataset")
+      (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "error"})
+      (record-exception dataset-id ex))))
 
 (defmacro with-load-status [dataset-id & body]
   `(with-load-status* ~dataset-id (fn [] ~@body))) ; XXX need :^once?
+
+(defn- with-delete-status* [dataset-id func]
+  (try
+    (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "deleting"})
+    (func)
+    (catch Exception ex
+      (warn ex "Error deleting dataset")
+      (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:status "error"})
+      (record-exception dataset-id ex))))
+
+(defmacro with-delete-status [dataset-id & body]
+  `(with-delete-status* ~dataset-id (fn [] ~@body))) ; XXX need :^once?
 
 ; jdbcd/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
@@ -732,14 +757,15 @@
     (-> rows first :id)))
 
 (defn delete-dataset [dataset]
-  (jdbcd/transaction
-    (let [dataset-id (dataset-by-name dataset)]
-      (if dataset-id
-        (do
-          (clear-by-exp dataset-id)
-          (jdbcd/do-commands
-            (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))
-        (info "Did not delete unknown dataset" dataset)))))
+  (let [dataset-id (dataset-by-name dataset)]
+    (if dataset-id
+      (with-delete-status dataset-id
+        (jdbcd/transaction
+          (do
+            (clear-by-exp dataset-id)
+            (jdbcd/do-commands
+              (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))))
+      (info "Did not delete unknown dataset" dataset))))
 
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
                           :or {classname "org.h2.Driver"
