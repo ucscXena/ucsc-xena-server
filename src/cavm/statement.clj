@@ -26,10 +26,10 @@
     (apply execute args)))
 
 (defn- stmt-execute
-  ([^PreparedStatement conn stmt fields]
+  ([conn stmt fields]
    (fn [values]
      (jdbc/db-do-prepared {:connection conn} false stmt (mapv values fields))))
-  ([^PreparedStatement conn stmt]
+  ([conn stmt]
    (fn [values]
      (jdbc/db-do-prepared {:connection conn} false stmt values))))
 
@@ -42,10 +42,10 @@
       (apply stmt-execute conn stmt args))))
 
 (defn- query-execute
-  ([^PreparedStatement conn stmt fields]
+  ([conn stmt fields]
    (fn [values]
      (jdbc/query {:connection conn} [stmt (mapv values fields)])))
-  ([^PreparedStatement conn stmt]
+  ([conn stmt]
    (fn [values]
      (jdbc/query {:connection conn} (into [stmt] values)))))
 
