@@ -21,8 +21,7 @@
   (:require [cavm.h2-unpack-rows :as unpack])
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
   (:require [cavm.conn-pool :refer [pool]])
-  (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
-  (:gen-class))
+  (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]]))
 
 ;
 ; Note that "bin" in this file is like a "segement" in the column store
