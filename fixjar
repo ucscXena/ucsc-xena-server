@@ -1,0 +1,10 @@
+#!/bin/bash
+
+file=$1
+tmp=.rebuild
+
+echo "Repairing jar $file"
+rm -rf ${tmp}
+mkdir ${tmp}
+(cd .rebuild; unzip -q ../$1; zip -q -r ../.rebuild.zip *)
+mv .rebuild.zip $1

@@ -6,7 +6,8 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :profiles {:dev {:dependencies
-                   [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}}
+                   [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
+             :uberjar {:omit-source true}}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/tools.cli "0.3.1"]
                  [net.mikera/core.matrix "0.8.0"]
@@ -38,11 +39,17 @@
                  [com.taoensso/timbre  "3.2.0"]]
   :java-source-paths ["src-java"]
   :target-path  "target/%s"
-  :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberjar"]]
+  :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberwrap"]]
             ; XXX this is a bit raw
             "docinstall" ["do"
                           ["shell" "rm" "-rf" "resources/public/docs"]
                           ["shell" "mv" "doc/_build" "resources/public/docs"]]
+            "uberwrap" ["do"
+                        ["uberjar"]
+                        ["uberfix"]
+                        ["jwrapper"]]
+            "uberfix" ["shell" "./fixjar" ~(str "target/uberjar/cavm-" version "-standalone.jar")]
+            "jwrapper" ["shell" "./jwrapper" ~version]
             "clientsrc" ["shell" "cp" "-r" "python" "doc/_build"]
             "schemaspy" ["shell" "./schemaspy"]
             "alldocs" ["do"
@@ -51,7 +58,7 @@
                        ["hiera"]
                        ["schemaspy"]]}
   :jar-exclusions     [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
-  :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
+  :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs" #"\.(clj|java)$"]
   :javac-options ["-target" "1.6" "-source" "1.6"]
   :aot [cavm.core cavm.h2-binary cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
