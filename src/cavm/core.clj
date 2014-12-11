@@ -155,7 +155,7 @@
    ["-l" "--load" "Load files into running server"]
    ["-x" "--delete" "Delete file from running server"]
    [nil "--force" "Force reload of unchanged files (with -l)"]
-   [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
+   [nil "--auto" "Auto-load files" :id :auto :default false]
    [nil "--no-gui" "Don't start GUI" :id :gui :parse-fn not :default true]
    ["-h" "--help" "Show help"]
    ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
