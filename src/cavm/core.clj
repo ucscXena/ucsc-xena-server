@@ -26,6 +26,7 @@
   (:require [clj-http.client :as client])
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
+  (:import cavm.XenaImport cavm.XenaServer)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
@@ -155,6 +156,7 @@
    ["-x" "--delete" "Delete file from running server"]
    [nil "--force" "Force reload of unchanged files (with -l)"]
    [nil "--no-auto" "Don't auto-load files" :id :auto :parse-fn not :default true]
+   [nil "--no-gui" "Don't start GUI" :id :gui :parse-fn not :default true]
    ["-h" "--help" "Show help"]
    ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
@@ -233,6 +235,7 @@
         tmp (:tmp options)
         logfile (:logfile options)
         always (:force options)
+        gui (:gui options)
         database (h2-opts (:database options))]
     (if errors
       (binding [*out* *err*]
@@ -259,6 +262,16 @@
                           loader (cl/loader-agent db detector docroot)]
                       (when (:auto options)
                         (watch (partial file-changed loader docroot) docroot))
+                      (when gui
+                        (try
+                          (XenaImport/start
+                            (proxy [XenaServer] [] (load [file]
+                                                     (loader (str file))
+                                                     true)))
+                          (catch Exception ex
+                            (binding [*out* *err*]
+                              (println "Failed to start gui. Logging error.")
+                              (error "Failed to start gui." ex)))))
                       (when (:serve options)
                         (serv (get-app db loader) host port))))))
         (catch Exception ex

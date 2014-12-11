@@ -34,7 +34,9 @@
                  [ch.qos.logback/logback-classic  "1.1.1"]
                  [org.clojure/tools.logging  "0.3.0"]
                  [org.clojure/test.check  "0.5.9"]
+                 [com.google.code.gson/gson  "2.2.4"]
                  [com.taoensso/timbre  "3.2.0"]]
+  :java-source-paths ["src-java"]
   :target-path  "target/%s"
   :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberjar"]]
             ; XXX this is a bit raw

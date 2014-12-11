@@ -33,6 +33,9 @@ when i try to start xena from your tool it tells me i need the java developer to
 // JWrapper
 
 // http://stackoverflow.com/questions/19039752/removing-java-8-jdk-from-mac
+//
+
+package cavm;
 
 import java.awt.Color;
 import java.awt.Component;
@@ -43,8 +46,6 @@ import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.io.*;
 import java.net.*;
 import java.util.*;
@@ -57,12 +58,14 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import com.sun.tools.attach.VirtualMachine;
-import com.sun.tools.attach.VirtualMachineDescriptor;
+import cavm.XenaServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class XenaImport implements ActionListener {
 	// java
 	String javaProgram = System.getProperty("java.home")+"/bin/java";
+	static final Logger LOG = LoggerFactory.getLogger(XenaImport.class);
 
 	// local host
 	String localHost = "http://localhost:7222";
@@ -72,6 +75,7 @@ public class XenaImport implements ActionListener {
 	// Destination directory
 	String dest = System.getProperty("user.home") + "/xena/files/";
 
+	XenaServer server;
 	/// xena serer process
 	MyXenaServer xena= null;
 	String xenaProgram = "xena-0.4.0-SNAPSHOT.jar";
@@ -195,24 +199,24 @@ public class XenaImport implements ActionListener {
 		}
 
 		// automatically start xena if not started yet
-		boolean xenaRunning=detectXena();
-		if (!xenaRunning) {
-			startXena();
-		}
-		try {
-			Thread.sleep(50);
-		}
-		catch (InterruptedException e) {
-        	// We've been interrupted: no more messages.
-        	return;
-    	}
-		xenaRunning=detectXena();
-		if (xenaRunning) {
-			tabbedPane.setSelectedIndex(1);
-		}
-		else {
-			tabbedPane.setSelectedIndex(0);
-		}
+//		boolean xenaRunning=detectXena();
+//		if (!xenaRunning) {
+//			startXena();
+//		}
+//		try {
+//			Thread.sleep(50);
+//		}
+//		catch (InterruptedException e) {
+//        	// We've been interrupted: no more messages.
+//        	return;
+//    	}
+//		xenaRunning=detectXena();
+//		if (xenaRunning) {
+//			tabbedPane.setSelectedIndex(1);
+//		}
+//		else {
+//			tabbedPane.setSelectedIndex(0);
+//		}
 	}
 
 	private void onExit() {
@@ -445,12 +449,12 @@ public class XenaImport implements ActionListener {
 		repairButton.addActionListener(this);
 		repairPanel.add(repairButton);
 
-		tabbedPane.addTab("Start/Stop Xena", startXenaPanel);
-		startXenaPanel.setPreferredSize(new Dimension(670, 500));
+//		tabbedPane.addTab("Start/Stop Xena", startXenaPanel);
+//		startXenaPanel.setPreferredSize(new Dimension(670, 500));
 		tabbedPane.addTab("Data Import", panel);
 		panel.setPreferredSize(new Dimension(670, 500));
-		tabbedPane.addTab("Database Reset", repairPanel);
-		repairPanel.setPreferredSize(new Dimension(670, 500));
+//		tabbedPane.addTab("Database Reset", repairPanel);
+//		repairPanel.setPreferredSize(new Dimension(670, 500));
 
 		// sets the size of the application
 		jfrm.setSize(720, 600);
@@ -474,63 +478,44 @@ public class XenaImport implements ActionListener {
 
 		java.util.Timer t1 = new java.util.Timer();
 		int timeInterval =2000;
-	  	XenaStatusTask tt = new XenaStatusTask(timeInterval);
-  		t1.schedule(tt, 0, timeInterval);
+//	  	XenaStatusTask tt = new XenaStatusTask(timeInterval);
+//  		t1.schedule(tt, 0, timeInterval);
 	}
 
-	private class XenaStatusTask extends TimerTask {
-
-	  	private int timerInterval;
-
-  		public XenaStatusTask (int timeInterval){
-    		this.timerInterval=timeInterval;
-  		}
-
-		public void run() {
-			if (detectXena()) {
-				if ((xena!=null) && (xena.isAlive())) {
-					buttonSelect.setVisible(true);
-					startXenaButton.setText("Stop Xena");
-					xenaNotifications.setText("Local xena ("+xenaProgram+") is running.");
-
-					repairNotifications.setText("Reset/Repair local xena database with data in "+dest+".");
-					repairButton.setVisible(true);
-				}
-				else {
-					whenXenaStartedByOther();
-				}
-			}
-			else {
-				whenXenaStopped();
-			}
-    	}
-	}
+//	private class XenaStatusTask extends TimerTask {
+//
+//	  	private int timerInterval;
+//
+//  		public XenaStatusTask (int timeInterval){
+//    		this.timerInterval=timeInterval;
+//  		}
+//
+//		public void run() {
+//			if (detectXena()) {
+//				if ((xena!=null) && (xena.isAlive())) {
+//					buttonSelect.setVisible(true);
+//					startXenaButton.setText("Stop Xena");
+//					xenaNotifications.setText("Local xena ("+xenaProgram+") is running.");
+//
+//					repairNotifications.setText("Reset/Repair local xena database with data in "+dest+".");
+//					repairButton.setVisible(true);
+//				}
+//				else {
+//					whenXenaStartedByOther();
+//				}
+//			}
+//			else {
+//				whenXenaStopped();
+//			}
+//    	}
+//	}
 
 
 	private boolean detectXena() {
-		boolean xenaRunning=false;
-
-		List<VirtualMachineDescriptor> vms = VirtualMachine.list();
-		for(VirtualMachineDescriptor vm : vms){
-            String pid = vm.id();
-           	String command = vm.displayName();
-          	if (command.contains(xenaServer) ||
-          		(command.contains("xena-")&& command.contains(".jar"))) {
-	           	xenaRunning = true;
-	        }
-        }
-        return xenaRunning;
+        return true;
 	}
 
 	private String getXenaPID() {
-		List<VirtualMachineDescriptor> vms = VirtualMachine.list();
-		for(VirtualMachineDescriptor vm : vms){
-            String pid = vm.id();
-           	String command = vm.displayName();
-          	if (command.contains(xenaServer)) {
-	            return pid;
-	        }
-        }
 		return null;
 	}
 
@@ -617,6 +602,7 @@ public class XenaImport implements ActionListener {
 				writer.close();
 			} catch (Exception e) {
 				notifications.setText("An error occurred 1.");
+				LOG.error("Error writing json", e);
 			}
 		}
 
@@ -641,21 +627,26 @@ public class XenaImport implements ActionListener {
 			file.close();
 			return 0;
 		} catch (Exception e) {
+			LOG.error("Error writing json", e);
 			return 1;
 		}
 	}
 
 	private void copyDataToXena (File sourceFile, File destFile) throws IOException{
-		if ( ! (sourceFile.getPath().equals(destFile.getPath() ))){
-			FileChannel inputChannel = null;
-			FileChannel outputChannel = null;
+		if (!sourceFile.getPath().equals(destFile.getPath())){
+			InputStream input = null;
+			OutputStream output = null;
 			try {
-				inputChannel = new FileInputStream(sourceFile).getChannel();
-				outputChannel = new FileOutputStream(destFile).getChannel();
-				outputChannel.transferFrom(inputChannel, 0, inputChannel.size());
+				input = new FileInputStream(sourceFile);
+				output = new FileOutputStream(destFile);
+				byte[] buf = new byte[1024];
+				int bytesRead;
+				while ((bytesRead = input.read(buf)) > 0) {
+					output.write(buf, 0, bytesRead);
+				}
 			} finally {
-				inputChannel.close();
-				outputChannel.close();
+				input.close();
+				output.close();
 			}
 		}
 	}
@@ -817,11 +808,7 @@ public class XenaImport implements ActionListener {
 	}
 
 	private void loadData (File destFile)  throws Exception{
-		Runtime runTime = Runtime.getRuntime();
-		ProcessBuilder pb = new ProcessBuilder(
-			javaProgram, "-Xmx2048m", "-jar", xenaServer , "--force", "-l", destFile.getPath());
-		Process	p = pb.start();
-		p.waitFor();
+		server.load(destFile);
 	}
 
 	private void submit(){
@@ -852,10 +839,18 @@ public class XenaImport implements ActionListener {
 			textArea(notifications, text,40);
 			buttonSelect.setText("Import More Data");
 		}
-		catch(Exception exception){
-			notifications.setText("An error occurred 3.");
+		catch(Exception e){
+			notifications.setText("An error occurred 3." + e.toString());
+			LOG.error("Error loading file", e);
 		}
 	}
+
+	public void deleteFile(File file) {
+		if (file.exists()) {
+			file.delete();
+		}
+	}
+
 
 	public void actionPerformed (ActionEvent e) {
 		if ("Close".equals(e.getActionCommand())) {
@@ -1022,8 +1017,8 @@ public class XenaImport implements ActionListener {
 				killThisXena();
 			}
 			try {
-				Files.deleteIfExists(Paths.get(System.getProperty("user.home") + "/xena/database.h2.db"));
-				Files.deleteIfExists(Paths.get(System.getProperty("user.home") + "/xena/database.lock.db"));
+				deleteFile(new File(System.getProperty("user.home"), "/xena/database.h2.db"));
+				deleteFile(new File(System.getProperty("user.home"), "/xena/database.lock.db"));
 
 				File folder = new File(dest);
   				File[] listOfFiles = folder.listFiles();
@@ -1063,15 +1058,17 @@ public class XenaImport implements ActionListener {
 	    return null;
 	}
 
+	public XenaImport(XenaServer server_in) {
+		server = server_in;
+	}
+
 	/**
 	 * @param args
 	 */
-	public static void main(String[] args) throws IOException {
-		XenaImport obj = new XenaImport();
+	public static void start(XenaServer server) throws IOException {
+		XenaImport obj = new XenaImport(server);
 		obj.displayGUI();
 		obj.setUp();
 	}
 
 }
-
-
