@@ -25,6 +25,9 @@
         h (file-hash full-path)]
     {:name file :time ts :hash h}))
 
+(defn- log-error [filename e]
+  (warn e "Loading" filename))
+
 (defn- write-matrix [db docroot filename reader always]
   (let [{:keys [metadata refs features data-fn]} reader
         dependencies (if features
