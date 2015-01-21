@@ -7,7 +7,7 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :profiles {:dev {:dependencies
                    [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
-             :uberjar {:omit-source true}}
+             :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [org.clojure/tools.cli "0.3.1"]
                  [net.mikera/core.matrix "0.8.0"]
