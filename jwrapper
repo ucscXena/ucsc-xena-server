@@ -1,5 +1,6 @@
 #!/bin/bash
 
+JWRAPPER=jwrapper-00033253833.jar
 version=$1
 
 cat > jwrapper-cavm.xml <<-EOF
@@ -36,10 +37,11 @@ cat > jwrapper-cavm.xml <<-EOF
 		<UpdateURL>https://genome-cancer.ucsc.edu/download/public/get-xena</UpdateURL>
 
 		<!-- The JREs JWrapper should use for Windows, Linux32, Linux64... -->
-		<Windows32JRE>JRE-1.6/win32/jre1.6.0_16</Windows32JRE>
-		<Windows64JRE>JRE-1.6/win32/jre1.6.0_16</Windows64JRE>
-		<Linux32JRE>JRE-1.6/linux/jre1.6.0_16</Linux32JRE>
-		<Linux64JRE>JRE-1.6/linuxx64/jre1.6.0_16</Linux64JRE>
+
+		<Windows32JRE>JRE-1.7/win32/jre1.7.0_05</Windows32JRE>
+		<Windows64JRE>JRE-1.7/win64/jre1.7.0_76</Windows64JRE>
+		<Linux32JRE>JRE-1.7/linux/jre1.7.0_13</Linux32JRE>
+		<Linux64JRE>JRE-1.7/linuxx64/jre1.7.0_13</Linux64JRE>
 		<Mac64JRE>JRE-1.7/macos64/jre1.7.0_45.jre</Mac64JRE>
 		<Mac32JRE>JRE-1.7/macos64/jre1.7.0_45.jre</Mac32JRE>
 
@@ -54,4 +56,4 @@ cd ../jwrapper
 if [ ! -h cavm ]; then
 	ln -s ../cavm .
 fi
-java -Xmx512m -jar jwrapper-00031607960.jar cavm/jwrapper-cavm.xml
+java -Xmx512m -jar ${JWRAPPER} cavm/jwrapper-cavm.xml
