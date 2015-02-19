@@ -92,7 +92,13 @@
       (wrap-access-control)))
 
 (defn- serv [app host port]
-  (ring.adapter.jetty/run-jetty app {:host host :port port :join? true}))
+  (ring.adapter.jetty/run-jetty app {:host host
+                                     :port port
+                                     :ssl? true
+                                     :ssl-port (+ port 1)
+                                     :keystore (.toString (io/resource "localhost.keystore"))
+                                     :key-password "localxena"
+                                     :join? true}))
 
 ; XXX call clean-sources somewhere?? Should be automated.
 (comment (defn- loadfiles [load-fn root args]
