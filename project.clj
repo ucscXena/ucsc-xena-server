@@ -47,9 +47,13 @@
             "uberwrap" ["do"
                         ["uberjar"]
                         ["uberfix"]
-                        ["jwrapper"]]
+                        ["cleanbuild"]
+                        ["install4j"]
+                        ["downloads"]]
+            "cleanbuild" ["shell" "rm" "-f" "build/*.{exe,dmg,tar.gz}"]
+            "downloads"  ["shell" "cp" "get-xena/*" "build"]
             "uberfix" ["shell" "./fixjar" ~(str "target/uberjar/cavm-" version "-standalone.jar")]
-            "jwrapper" ["shell" "./jwrapper" ~version]
+            "install4j" ["shell" "install4jc" "-r" ~version "build1.install4j"]
             "clientsrc" ["shell" "cp" "-r" "python" "doc/_build"]
             "schemaspy" ["shell" "./schemaspy"]
             "alldocs" ["do"

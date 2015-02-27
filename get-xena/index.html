@@ -1,0 +1,166 @@
+<html>
+<head>
+<script src="platform.js"></script>
+<!--
+/* Palette URL: http://paletton.com/#uid=23X0u0kaVz84jP27qHbeJtFiHpX */
+.color-primary-0 { color: #8286B8 }	/* Main Primary color */
+.color-primary-1 { color: #C8CAE2 }
+.color-primary-2 { color: #A5A8CE }
+.color-primary-3 { color: #6368A4 }
+.color-primary-4 { color: #474C8F }
+
+.color-complement-0 { color: #FFE8A8 }	/* Main Complement color */
+.color-complement-1 { color: #FFF6DD }
+.color-complement-2 { color: #FFEFC4 }
+.color-complement-3 { color: #ECCF80 }
+.color-complement-4 { color: #CFAF56 }
+-->
+
+
+<style>
+body {
+	background: #C8CAE2;
+	font-family: arial, Verdana,'Lucida Grande', Verdana, Helvetica, sans-serif;
+}
+a {
+	text-decoration: none;
+	background: #6368A4;
+	color: white;
+	border: 1px solid;
+	border-radius: 15px;
+	padding-right: 4px;
+	padding-left: 4px;
+}
+.download {
+	margin-bottom: 10px;
+}
+.download a {
+	font-size: 200%;
+}
+table {
+	background: #8286B8;
+}
+td {
+	padding-bottom: 4px;
+	padding-top: 4px;
+}
+</style>
+</head>
+<script>
+(function() {
+ 	var files = {
+		osxJre: {
+			path: "ucsc_xena_macos_0_6_1_with_jre.dmg",
+			description: "OSX installer, bundled JRE",
+			help: "Recommended for OSX 10.7 and above"
+		},
+		osxNoJre: {
+			path: "ucsc_xena_macos_0_6_1.dmg",
+			description: "OSX installer, no JRE",
+			help: "Recommended for OSX 10.6"
+		},
+		win32: {
+			path: "ucsc_xena_windows_0_6_1.exe",
+			description: "Windows 32 bit installer, bundled JRE",
+			help: "Recommended for all 32 bit versions of Windows"
+		},
+		win64: {
+			path: "ucsc_xena_windows-x64_0_6_1.exe",
+			description: "Windows 64 bit installer, bundled JRE",
+			help: "Recommended for all 64 bit versions of Windows"
+		},
+		tar: {
+			path: "ucsc_xena_0_6_1.tar.gz",
+			description: "Tar archive, no updater or JRE",
+			help: "Recommended for linux server deployments"
+		}
+	}, defaults = {
+		'OS X': {32: 'osxNoJre', 64: 'osxJre'},
+		'Windows': {32: 'win32', 64: 'win64'},
+		'Linux': {32: 'tar', 64: 'tar'}
+	},
+	d = document;
+
+	function getOs() {
+		if (platform.os.family.indexOf('Windows') !== -1) {
+			return 'Windows';
+		}
+		if (platform.os.family.indexOf('OS X') !== -1) {
+			return 'OS X';
+		}
+		if (platform.os.family.indexOf('Linux') !== -1) {
+			return 'Linux';
+		}
+	}
+
+	function suggest() {
+		var os = getOs(),
+			arch = platform.os.architecture,
+			btn, div;
+		if (os && arch) {
+			div = d.createElement('div');
+			btn = d.createElement('a');
+			btn.text = "Download UCSC Xena for your platform";
+			btn.href = files[defaults[os][arch]].path;
+			div.appendChild(btn);
+			div.appendChild(d.createElement('br'));
+			div.appendChild(d.createTextNode('... or select from the table below.'));
+			div.className = "download";
+			return div;
+		} else {
+			return d.createTextNode("Please select a download from the table below.");
+		}
+	}
+
+	function anchor(file) {
+		var a = d.createElement('a');
+		a.href = file.path;
+		a.text = file.description;
+		return a;
+	}
+
+	function row(file) {
+		var r = d.createElement('tr'),
+			td1 = d.createElement('td'),
+			td2 = d.createElement('td');
+		td1.appendChild(anchor(file));
+		td2.appendChild(d.createTextNode(file.help));
+		r.appendChild(td1);
+		r.appendChild(td2);
+		return r;
+	}
+
+	function buildTable() {
+		var t = d.createElement('table'),
+			r;
+
+		for (f in files) {
+			if (files.hasOwnProperty(f)) {
+				r = row(files[f]);
+				t.appendChild(r);
+			}
+		}
+		return t;
+	}
+
+	function buildImage() {
+		var i = d.createElement('img');
+		i.src = "battle_slug.png";
+		i.width = 300;
+		i.height = 300;
+		return i;
+	}
+
+	function buildPage() {
+		document.body.appendChild(buildImage());
+		document.body.appendChild(suggest());
+		document.body.appendChild(buildTable());
+	}
+
+	document.addEventListener('DOMContentLoaded', buildPage, false);
+	
+}());
+</script>
+<body>
+</body>
+</html>
