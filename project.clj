@@ -39,6 +39,7 @@
                  [com.taoensso/timbre  "3.2.0"]]
   :java-source-paths ["src-java"]
   :target-path  "target/%s"
+  :clean-targets [:target-path :compile-path "build"]
   :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberwrap"]]
             ; XXX this is a bit raw
             "docinstall" ["do"
@@ -47,11 +48,9 @@
             "uberwrap" ["do"
                         ["uberjar"]
                         ["uberfix"]
-                        ["cleanbuild"]
                         ["install4j"]
                         ["downloads"]]
-            "cleanbuild" ["shell" "rm" "-f" "build/*.{exe,dmg,tar.gz}"]
-            "downloads"  ["shell" "cp" "get-xena/*" "build"]
+            "downloads"  ["shell" "sh" "-c" "cp get-xena/* build"]
             "uberfix" ["shell" "./fixjar" ~(str "target/uberjar/cavm-" version "-standalone.jar")]
             "install4j" ["shell" "install4jc" "-r" ~version "build1.install4j"]
             "clientsrc" ["shell" "cp" "-r" "python" "doc/_build"]
