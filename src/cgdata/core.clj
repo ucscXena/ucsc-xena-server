@@ -502,15 +502,16 @@
   :strand are reused if necessary."
   [columns start-index]
   (let [poscols (select-keys (group-by :header columns) position-columns)                ; columns matching position types.
-        poscols (update-in poscols [:chrom] #(concat % (repeat (last %))))               ; repeat last chrom if necessary.
-        poscols (update-in poscols [:strand] #(concat % (repeat (last %))))              ; repeat last strand if necessary.
+        limit (apply max (map count (vals poscols)))
+        poscols (update-in poscols [:chrom] #(take limit (concat % (repeat (last %)))))  ; repeat last chrom if necessary.
+        poscols (update-in poscols [:strand] #(take limit (concat % (repeat (last %))))) ; repeat last strand if necessary.
         positions (filter #(every? (set (map :header %)) [:chrom :chromStart :chromEnd]) ; find groups with the required fields.
-                          (apply map vector (vals poscols)))                             ;   collate into groups.
+                           (apply map vector (vals poscols)))                            ;   collate into groups.
         consumed (set (apply concat positions))]                                         ; columns used by position fields.
     (into (mapv #(-> {:type :position
                       :start-index start-index
                       :header :position
-                      :columns (filter identity %)}) ; write out position field specs.
+                      :columns (filter identity %)})                                     ; write out position field specs.
                 positions)
           (filter (comp not consumed) columns))))                                        ;   append all remaining fields.
 
@@ -659,10 +660,13 @@
 (def probemap-columns
   {#"(?i)chr(om)?" :chrom
    #"(?i)start" :chromStart
+   #"(?i)chromStart" :chromStart
    #"(?i)end" :chromEnd
+   #"(?i)chromEnd" :chromEnd
    #"(?i)strand" :strand
    #"(?i)genes?" :genes
-   #"(?i)name" :name})
+   #"(?i)name" :name
+   #"(?i)id" :name})
 
 ; XXX refactor this function pattern. It appears three times.
 (defn probemap-file
