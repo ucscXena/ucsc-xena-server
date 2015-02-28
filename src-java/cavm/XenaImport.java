@@ -68,7 +68,7 @@ public class XenaImport implements ActionListener {
 	static final Logger LOG = LoggerFactory.getLogger(XenaImport.class);
 
 	// local host
-	String localHost = "http://localhost:7222";
+	String localHost = "https://local.xena.ucsc.edu:7223";
 
 	String cgi = /*"https://genome-cancer.ucsc.edu"; */ "https://tcga1.kilokluster.ucsc.edu/~jzhu/";
 
