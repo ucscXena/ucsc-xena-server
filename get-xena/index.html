@@ -81,15 +81,27 @@ td {
 	},
 	d = document;
 
+	function get_in(v, path) {
+		var n;
+		if (path.length === 0) {
+			return v;
+		}
+		n = v[path[0]];
+		return n && get_in(n, path.slice(1));
+	}
+
 	function getOs() {
-		if (platform.os.family.indexOf('Windows') !== -1) {
-			return 'Windows';
-		}
-		if (platform.os.family.indexOf('OS X') !== -1) {
-			return 'OS X';
-		}
-		if (platform.os.family.indexOf('Linux') !== -1) {
-			return 'Linux';
+		var family = get_in(platform, ['os', 'family']);
+		if (family) {
+			if (family.indexOf('Windows') !== -1) {
+				return 'Windows';
+			}
+			if (family.indexOf('OS X') !== -1) {
+				return 'OS X';
+			}
+			if (family.indexOf('Linux') !== -1) {
+				return 'Linux';
+			}
 		}
 	}
 
