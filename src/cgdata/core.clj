@@ -495,6 +495,8 @@
             (filter (comp not match-set) columns))
       columns)))
 
+; This is a really weak attempt to infer types of position columns. We
+; need a better vision.
 (defn find-position-fields
   "Rewrite a list of column objects having a :header attribute,
   collating chrom position columns into position fields, having
@@ -652,7 +654,12 @@
    :chromStart :float
    :chromEnd :float
    :position :position
-   :genes :gene})
+   :genes :gene
+   :thickStart :category
+   :thickEnd :category
+   :blockCount :category
+   :blockSizes :category
+   :blockStarts :category})
 
 (def ^:private probemap-default-columns
   [:name :genes :chrom :chromStart :chromEnd :strand])
@@ -666,7 +673,12 @@
    #"(?i)strand" :strand
    #"(?i)genes?" :genes
    #"(?i)name" :name
-   #"(?i)id" :name})
+   #"(?i)id" :name
+   #"(?i)thickStart" :thickStart
+   #"(?i)thickEnd" :thickEnd
+   #"(?i)blockCount" :blockCount
+   #"(?i)blockSizes" :blockSizes
+   #"(?i)blockStarts" :blockStarts})
 
 ; XXX refactor this function pattern. It appears three times.
 (defn probemap-file
