@@ -21,7 +21,8 @@
   (:require [cavm.h2-unpack-rows :as unpack])
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
   (:require [cavm.conn-pool :refer [pool]])
-  (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]]))
+  (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
+  (:import [org.h2.jdbc JdbcBatchUpdateException]))
 
 ;
 ; Note that "bin" in this file is like a "segement" in the column store
@@ -83,15 +84,19 @@
 ; Table definitions.
 ;
 
+(def ^:private max-probe-length 250)
+(def ^:private probe-version-length 5) ; to disambiguate probes by appending " (dd)"
+
 ; Note H2 has one int type: signed, 4 byte. Max is approximately 2 billion.
 (def ^:private field-table
   ["CREATE SEQUENCE IF NOT EXISTS FIELD_IDS CACHE 2000"
-   "CREATE TABLE IF NOT EXISTS `field` (
-   `id` INT NOT NULL DEFAULT NEXT VALUE FOR FIELD_IDS PRIMARY KEY,
-   `dataset_id` INT NOT NULL,
-   `name` VARCHAR(255),
-   UNIQUE(`dataset_id`, `name`),
-   FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`) ON DELETE CASCADE)"])
+   (format "CREATE TABLE IF NOT EXISTS `field` (
+           `id` INT NOT NULL DEFAULT NEXT VALUE FOR FIELD_IDS PRIMARY KEY,
+           `dataset_id` INT NOT NULL,
+           `name` VARCHAR(%d),
+           UNIQUE(`dataset_id`, `name`),
+           FOREIGN KEY (`dataset_id`) REFERENCES `dataset` (`id`) ON DELETE CASCADE)"
+           (+ max-probe-length probe-version-length))])
 
 (def ^:private field-score-table
   [(format  "CREATE TABLE IF NOT EXISTS `field_score` (
@@ -533,6 +538,14 @@
 (defn- run-delays [m]
   (into {} (for [[k v] m] [k (force v)])))
 
+(def ^:private max-insert-retry 20)
+
+(defn trunc [^String s n]
+  (subs s 0 (min (.length s) n)))
+
+(defn- numbered-suffix [n]
+  (if (== 1 n) "" (str " (" n ")")))
+
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
               position-stmt (insert-stmt :field_position
@@ -563,7 +576,7 @@
                   :insert-gene gene-stmt}
           row-count (atom 0)
           data (matrix-fn)
-          warnings (meta data)
+          warnings (atom (meta data))
           inserts (lazy-mapcat #(do
                                   (swap! row-count max (count (force (:rows %))))
                                   (load-field-feature
@@ -578,9 +591,33 @@
           (doseq [[insert-type values] insert-batch]
             (when (= :insert-field insert-type)
               (trace "writing" (:name values)))
-            ((writer insert-type) (run-delays values)))))
+            (let [values (run-delays values)
+                  values (if (and (= :insert-field insert-type)
+                                  (> (.length ^String (:name values)) max-probe-length))
+                           (do
+                             (swap! warnings update-in ["too-long-probes"] conj (:name values))
+                             (warn "Too-long probe" (:name values))
+                             (update-in values [:name] trunc max-probe-length))
+                           values)
+                  write (fn write [i] ; on field inserts we retry on certain failures, with sanitized probe ids.
+                          {:pre [(< i max-insert-retry)]} ; XXX change this to drop field & write remainer of dataset instead.
+                          (let [values (if (= :insert-field insert-type)
+                                         (update-in values [:name] str (numbered-suffix i))
+                                         values)]
+                            (try
+                              ((writer insert-type) values)
+                              (catch JdbcBatchUpdateException ex
+                                (cond
+                                  (and (= :insert-field insert-type)
+                                       (.startsWith (.getMessage ex) "Unique index"))
+                                  (do
+                                    (swap! warnings update-in ["duplicate-probes"] conj (:name values))
+                                    (warn "Duplicate probe" (:name values))
+                                    (write (inc i)))
+                                  :else (throw ex))))))]
+              (write 1)))))
       {:rows @row-count
-       :warnings warnings})))
+       :warnings @warnings})))
 ;
 ;
 ; Table writer that updates one table at a time by writing to temporary files.

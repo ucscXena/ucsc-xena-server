@@ -517,6 +517,7 @@
                 positions)
           (filter (comp not consumed) columns))))                                        ;   append all remaining fields.
 
+; XXX change this so numbering starts at 2?
 (defn- numbered-suffix [n]
   (if (== 0 n) "" (str " (" n ")")))
 

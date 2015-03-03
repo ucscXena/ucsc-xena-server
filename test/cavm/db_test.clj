@@ -440,6 +440,70 @@
         (ct/is (nearly-equal probe1 [2.1 1.1]))
         (ct/is (nearly-equal probe2 [2.2 1.2]))))))
 
+(defn matrix-dup [db]
+  (ct/testing "tsv matrix from file with duplicate probe"
+    (loader db detector docroot "test/cavm/test_inputs/matrix2") ; odd that loader & detector both require docroot
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:code [:= :field.id :field_id]]
+                                  :order-by [:ordering]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})
+          data (cdb/fetch db [{:table "matrix2"
+                               :columns ["probe1" "probe2"]
+                               :samples ["sample2" "sample1"]}])]
+      (ct/is (= exp [{:name "matrix2"}]))
+      (ct/is (= samples
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}]))
+      (ct/is (= probes
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "probe1" :id 2 :dataset_id 1}
+                 {:name "probe2" :id 3 :dataset_id 1}
+                 {:name "probe2 (2)" :id 4 :dataset_id 1}
+                 {:name "probe4" :id 5 :dataset_id 1}
+                 {:name "probe5" :id 6 :dataset_id 1} ]))
+      (let [[probe1 probe2]
+            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
+        (ct/is (nearly-equal probe1 [2.1 1.1]))
+        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
+
+(defn matrix-bad-probe [db]
+  (ct/testing "tsv matrix from file with too long probe"
+    (loader db detector docroot "test/cavm/test_inputs/matrix3") ; odd that loader & detector both require docroot
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:code [:= :field.id :field_id]]
+                                  :order-by [:ordering]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})
+          data (cdb/fetch db [{:table "matrix3"
+                               :columns ["probe1" "probe2"]
+                               :samples ["sample2" "sample1"]}])]
+      (ct/is (= exp [{:name "matrix3"}]))
+      (ct/is (= samples
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}]))
+      (ct/is (= probes
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "probe1" :id 2 :dataset_id 1}
+                 {:name "probe2" :id 3 :dataset_id 1}
+                 {:name "probe3aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" :id 4 :dataset_id 1} ; truncated to 250 chars
+                 {:name "probe4" :id 5 :dataset_id 1}
+                 {:name "probe5" :id 6 :dataset_id 1} ]))
+      (let [[probe1 probe2]
+            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
+        (ct/is (nearly-equal probe1 [2.1 1.1]))
+        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
+
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
     (let [{file-type :file-type} (detector "test/cavm/test_inputs/cgdata_matrix")]
@@ -639,12 +703,15 @@
 ; clojure.test fixtures don't work with nested tests, so we
 ; have to invoke fixtures ourselves.
 (defn run-tests [fixture]
-  (doseq [t [matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3
-             matrix2-reload
-             detect-cgdata-probemap probemap1
-             detect-cgdata-clinical clinical1
-             detect-cgdata-mutation mutation1 mutation2
-             gene-pred1]]
+  (doseq [t [;matrix1 detect-matrix matrix2 detect-cgdata-genomic matrix3
+             ;matrix2-reload
+             ;detect-cgdata-probemap probemap1
+             ;detect-cgdata-clinical clinical1
+             ;detect-cgdata-mutation mutation1 mutation2
+             ;gene-pred1
+             matrix-dup
+             matrix-bad-probe
+             ]]
     (fixture t)))
 
 (ct/deftest test-h2
