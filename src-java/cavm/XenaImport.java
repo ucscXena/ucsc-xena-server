@@ -70,7 +70,7 @@ public class XenaImport implements ActionListener {
 	// local host
 	String localHost = "https://local.xena.ucsc.edu:7223";
 
-	String cgi = /*"https://genome-cancer.ucsc.edu"; */ "https://tcga1.kilokluster.ucsc.edu/~jzhu/";
+	String cgi = "https://genone-cancer.ucsc.edu/";
 
 	// Destination directory
 	String dest = System.getProperty("user.home") + "/xena/files/";
