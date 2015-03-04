@@ -50,27 +50,27 @@ td {
 (function() {
  	var files = {
 		osxJre: {
-			path: "ucsc_xena_macos_0_6_1_with_jre.dmg",
+			pattern: "ucsc_xena_macos_[_0-9]*_with_jre.dmg",
 			description: "OSX installer, bundled JRE",
 			help: "Recommended for OSX 10.7 and above"
 		},
 		osxNoJre: {
-			path: "ucsc_xena_macos_0_6_1.dmg",
+			pattern: "ucsc_xena_macos_[_0-9]*.dmg",
 			description: "OSX installer, no JRE",
 			help: "Recommended for OSX 10.6"
 		},
 		win32: {
-			path: "ucsc_xena_windows_0_6_1.exe",
+			pattern: "ucsc_xena_windows_[_0-9]*.exe",
 			description: "Windows 32 bit installer, bundled JRE",
 			help: "Recommended for all 32 bit versions of Windows"
 		},
 		win64: {
-			path: "ucsc_xena_windows-x64_0_6_1.exe",
+			pattern: "ucsc_xena_windows-x64_[_0-9]*.exe",
 			description: "Windows 64 bit installer, bundled JRE",
 			help: "Recommended for all 64 bit versions of Windows"
 		},
 		tar: {
-			path: "ucsc_xena_0_6_1.tar.gz",
+			pattern: "ucsc_xena_[_0-9]*.tar.gz",
 			description: "Tar archive, no updater or JRE",
 			help: "Recommended for linux server deployments"
 		}
@@ -79,19 +79,20 @@ td {
 		'Windows': {32: 'win32', 64: 'win64'},
 		'Linux': {32: 'tar', 64: 'tar'}
 	},
-	d = document;
+	d = document,
+	map = Array.prototype.map;
 
-	function get_in(v, path) {
+	function getIn(v, path) {
 		var n;
 		if (path.length === 0) {
 			return v;
 		}
 		n = v[path[0]];
-		return n && get_in(n, path.slice(1));
+		return n && getIn(n, path.slice(1));
 	}
 
 	function getOs() {
-		var family = get_in(platform, ['os', 'family']);
+		var family = getIn(platform, ['os', 'family']);
 		if (family) {
 			if (family.indexOf('Windows') !== -1) {
 				return 'Windows';
@@ -114,6 +115,7 @@ td {
 			btn = d.createElement('a');
 			btn.text = "Download UCSC Xena for your platform";
 			btn.href = files[defaults[os][arch]].path;
+			btn.download = '';
 			div.appendChild(btn);
 			div.appendChild(d.createElement('br'));
 			div.appendChild(d.createTextNode('... or select from the table below.'));
@@ -128,6 +130,7 @@ td {
 		var a = d.createElement('a');
 		a.href = file.path;
 		a.text = file.description;
+		a.download = '';
 		return a;
 	}
 
@@ -146,7 +149,7 @@ td {
 		var t = d.createElement('table'),
 			r;
 
-		for (f in files) {
+		for (var f in files) {
 			if (files.hasOwnProperty(f)) {
 				r = row(files[f]);
 				t.appendChild(r);
@@ -163,14 +166,79 @@ td {
 		return i;
 	}
 
-	function buildPage() {
+	function findMatch(pattern, list) {
+		var matches = list.filter(function (s) {
+			return s.match(pattern);
+		});
+		if (matches.length > 0) {
+			return matches[0];
+		}
+	}
+
+	function warn(s) {
+		if (console && console.warn) {
+			console.warn(s);
+		}
+	}
+
+	function writePaths(serverFiles) {
+		var m;
+		for (var f in files) {
+			if (files.hasOwnProperty(f)) {
+				m = findMatch(files[f].pattern, serverFiles);
+				if (m) {
+					files[f].path = m;
+				} else {
+					warn("No match for " + files[f].pattern);
+				}
+			}
+		}
+	}
+
+	function buildPage(serverFiles) {
+		writePaths(serverFiles);
 		document.body.appendChild(buildImage());
 		document.body.appendChild(suggest());
 		document.body.appendChild(buildTable());
 	}
 
-	document.addEventListener('DOMContentLoaded', buildPage, false);
-	
+	function requestServerFiles(done) {
+		var xhr = new XMLHttpRequest();
+		xhr.onreadystatechange = function () {
+			if (xhr.readyState === 4) {
+				if (xhr.status === 200) {
+					done(xhr.responseXML);
+				}
+			}
+		};
+		xhr.open("GET", "updates.xml");
+		xhr.send();
+		return xhr;
+	}
+
+	function getFileNameAttribute(e) {
+		return e.getAttribute('fileName');
+	}
+
+	function main() {
+		var pageReady, files, xhr;
+		function start() {
+			if (pageReady && files) {
+				buildPage(files);
+			}
+		}
+		function pageEvent() {
+			pageReady = true;
+			start();
+		}
+		function fileEvent(xml) {
+			files = map.call(xml.getElementsByTagName('entry'), getFileNameAttribute);
+			start();
+		}
+		document.addEventListener('DOMContentLoaded', pageEvent, false);
+		xhr = requestServerFiles(fileEvent);
+	}
+	main();
 }());
 </script>
 <body>
