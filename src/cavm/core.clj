@@ -26,6 +26,7 @@
   (:require [clj-http.client :as client])
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
+  (:require [less.awful.ssl :as ssl])
   (:import cavm.XenaImport cavm.XenaServer)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
@@ -91,13 +92,13 @@
       (wrap-stacktrace-web)
       (wrap-access-control)))
 
-(defn- serv [app host port]
+(defn- serv [app host port {:keys [keystore password]}]
   (ring.adapter.jetty/run-jetty app {:host host
                                      :port port
                                      :ssl? true
                                      :ssl-port (+ port 1)
-                                     :keystore (.toString (io/resource "localhost.keystore"))
-                                     :key-password "localxena"
+                                     :keystore keystore
+                                     :key-password password
                                      :join? true}))
 
 ; XXX call clean-sources somewhere?? Should be automated.
@@ -168,6 +169,8 @@
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
    ["-d" "--database FILE" "Database to use" :default db-default]
    [nil "--logfile FILE" "Log file to use" :default logfile-default]
+   [nil "--keyfile FILE" "Private key file to use (requires --certfile)"]
+   [nil "--certfile FILE" "Cert file to use (requires --keyfile)"]
    [nil "--version" "Print version and exit"]
    ["-j" "--json" "Fix json"]
    ["-t" "--tmp DIR" "Set tmp dir" :default tmp-dir-default]])
@@ -232,9 +235,14 @@
                       :fn (fn [{:keys [ns level throwable message]}]
                             (log/log ns level throwable message))}}}))
 
+(defn validate-certkey [{{:keys [keyfile certfile]} :options :as p-opts}]
+  (if (or (and certfile (not keyfile)) (and (not certfile) keyfile))
+    (update-in p-opts [:errors] conj "--certfile and --keyfile must be used together")
+    p-opts))
+
 ; XXX create dir for database as well?
 (defn -main [& args]
-  (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
+  (let [{:keys [options arguments summary errors]} (validate-certkey (parse-opts args argspec))
         docroot (:root options)
         port (:port options)
         host (:host options)
@@ -242,6 +250,13 @@
         logfile (:logfile options)
         always (:force options)
         gui (:gui options)
+        certfile (:certfile options)
+        keyfile (:keyfile options)
+        keystore (if keyfile
+                   {:keystore (ssl/key-store keyfile certfile)
+                    :password (String. ssl/key-store-password)}
+                   {:keystore (.toString (io/resource "localhost.keystore"))
+                    :password  "localxena"})
         database (h2-opts (:database options))]
     (if errors
       (binding [*out* *err*]
@@ -279,7 +294,7 @@
                               (println "Failed to start gui. Logging error.")
                               (error "Failed to start gui." ex)))))
                       (when (:serve options)
-                        (serv (get-app db loader) host port))))))
+                        (serv (get-app db loader) host port keystore))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]
