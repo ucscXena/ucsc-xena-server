@@ -221,7 +221,7 @@ td {
 	}
 
 	function main() {
-		var pageReady, files, xhr;
+		var pageReady, files;
 		function start() {
 			if (pageReady && files) {
 				buildPage(files);
@@ -236,7 +236,7 @@ td {
 			start();
 		}
 		document.addEventListener('DOMContentLoaded', pageEvent, false);
-		xhr = requestServerFiles(fileEvent);
+		requestServerFiles(fileEvent);
 	}
 	main();
 }());
