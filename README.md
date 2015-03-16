@@ -1,35 +1,34 @@
-# cavm
+# UCSC Xena Server
 
-FIXME: description
+Work in progress.
+
+Turn-key data server for functional genomics visualization.
+
+View private genomic data on your laptop or institutional server, together with public data sets, without moving your data off-site, via UCSC cancer genomics web tools.
 
 ## Installation
 
-Download from http://example.com/FIXME.
+Download from https://genome-cancer.ucsc.edu/download/public/get-xena/index.html.
 
 ## Usage
 
-FIXME: explanation
+### With installer
+Double-click, or select from the application menu. This will start UCSC Xena, and present a UI for importing local data files.
 
-    $ java -jar cavm-0.1.0-standalone.jar [args]
+### Jar (server install)
+
+    $ java -jar cavm-0.10.0-standalone.jar [args]
+
+If a display is available, the file import UI will be opened. Otherwise it will run headless. File imports are queued by running the jar again, with the -l (load) option.
 
 ## Options
 
-FIXME: listing of options this app accepts.
+A full list of options can be displayed with
 
-## Examples
-
-...
-
-### Bugs
-
-...
-
-### Any Other Sections
-### That You Think
-### Might be Useful
+    $ java -jar cavm-0.10.0-standalone.jar --help
 
 ## License
 
-Copyright © 2013 FIXME
+Copyright © 2015 The Regents of the University of California
 
-Distributed under the Eclipse Public License, the same as Clojure.
+Distributed under the Apache License, version 2.0.
