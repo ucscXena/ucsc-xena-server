@@ -44,7 +44,8 @@
 ; web services
 
 (def trusted-hosts
-  #"https://[-_A-Za-z0-9]+.kilokluster.ucsc.edu|https://genome-cancer.ucsc.edu")
+  ;#"https://[-_A-Za-z0-9]+.kilokluster.ucsc.edu|https://genome-cancer.ucsc.edu"
+  #".*")
 
 (defn- wrap-access-control [handler]
   (fn [request]
