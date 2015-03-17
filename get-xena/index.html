@@ -97,7 +97,7 @@ td {
 
 	function osxArch() {
 		var version = getIn(platform, ['os', 'version']),
-			parts = version && version.match(/(\d*)\.(\d*)\.(\d*)/).slice(1).map(parseInt10); // [maj, min, patch]
+			parts = version && version.match(/(\d*)\.(\d*)/).slice(1).map(parseInt10); // [maj, min, patch]
 		return (parts && parts[0] === 10 && parts[1] <= 6) ? 32 : 64;
 	}
 
