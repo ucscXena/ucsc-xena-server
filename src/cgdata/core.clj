@@ -341,7 +341,7 @@
   (let [lines (->> lines
                   (map tabbed)
                   (transpose))]
-    (matrix-data-parse metadata #(data-line features %) lines identity)))
+    (matrix-data-parse metadata features lines identity)))
 
 (defn- cgdata-meta [file]
   (let [mfile (io/as-file (str file ".json"))]
