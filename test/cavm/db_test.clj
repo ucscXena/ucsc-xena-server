@@ -604,7 +604,7 @@
                  {:name "probe4" :id 5 :dataset_id 1}])))))
 
 (defn clinical2 [db]
-  (ct/testing "cgdata clinical matrix2"
+  (ct/testing "cgdata clinical matrix2, clinical features"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix2")
     (let [exp (cdb/run-query db {:select [:name :type] :from [:dataset]})
           samples (cdb/run-query db
@@ -622,6 +622,36 @@
                  {:name "sample3"}
                  {:name "sample4"}
                  {:name "sample5"}]))
+      (ct/is (= probes
+                [{:name "sampleID" :id 1 :dataset_id 1}
+                 {:name "probe1" :id 2 :dataset_id 1}
+                 {:name "probe2" :id 3 :dataset_id 1}
+                 {:name "probe3" :id 4 :dataset_id 1}
+                 {:name "probe4" :id 5 :dataset_id 1}]))
+      (ct/is (= features
+                [{:longtitle nil :field_id 1} ; sample name
+                 {:longtitle "A primary probe" :field_id 2}
+                 {:longtitle "A secondary probe" :field_id 3}])))))
+
+(defn clinical3 [db]
+  (ct/testing "cgdata clinical matrix3, numeric sample id"
+    (loader db detector docroot "test/cavm/test_inputs/clinical_matrix3")
+    (let [exp (cdb/run-query db {:select [:name :type] :from [:dataset]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:code [:= :field.id :field_id]]
+                                  :order-by [:ordering]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})
+          features (cdb/run-query db {:select [:longtitle :field_id] :from [:feature]})]
+      (ct/is (= exp [{:name "clinical_matrix3" :type "clinicalMatrix"}]))
+      (ct/is (= samples
+                [{:name "1"}
+                 {:name "2"}
+                 {:name "3"}
+                 {:name "4"}
+                 {:name "5"}]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -739,7 +769,7 @@
              detect-cgdata-clinical clinical1
              detect-cgdata-mutation mutation1 mutation2
              gene-pred1 matrix-dup matrix-bad-probe
-             clinical2]]
+             clinical2 clinical3]]
     (fixture t)))
 
 (ct/deftest test-h2
