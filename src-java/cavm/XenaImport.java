@@ -693,6 +693,7 @@ public class XenaImport implements ActionListener {
 				textArea(notifications,sourceFile.getPath(),40);
 				buttonSelect.setText("Change");
 
+				metadata = new HashMap<String, Object>();
 				Type type = new TypeToken<Map<String, Object>>(){}.getType();
 				formatList.setSelectedIndex(0);
 				dataTypeList.setSelectedIndex(0);
