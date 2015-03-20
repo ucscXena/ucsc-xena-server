@@ -1,0 +1,5 @@
+{
+	"type": "clinicalMatrix",
+	"cohort": "a cohort",
+	":clinicalFeature": "clinical_feature2"
+}
