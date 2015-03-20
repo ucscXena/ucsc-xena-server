@@ -39,12 +39,8 @@ public class Splash {
 	    dialog.setLocationRelativeTo(null);
 	    dialog.setVisible(true);
 	    dialog.repaint();
-//	    try {
-		Class<?> uim = Class.forName("javax.swing.UIManager");
-		uim.getDeclaredMethod("setLookAndFeel", String.class).invoke(null, (String) uim.getDeclaredMethod("getSystemLookAndFeelClassName").invoke(null));
-//	    } catch (Exception ex) {
-//		ex.printStackTrace(); // XXX better logging
-//	    }
+	    Class<?> uim = Class.forName("javax.swing.UIManager"); // XXX do we need this?
+	    uim.getDeclaredMethod("setLookAndFeel", String.class).invoke(null, (String) uim.getDeclaredMethod("getSystemLookAndFeelClassName").invoke(null));
 	} catch (Exception ex) {
 	    LOG.error("Unable to open splash screen.", ex);
 	}
