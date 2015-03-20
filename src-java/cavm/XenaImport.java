@@ -41,6 +41,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.event.*;
+import java.awt.EventQueue;
 import java.awt.FileDialog;
 import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
@@ -55,6 +56,8 @@ import java.util.TimerTask;
 import java.text.*;
 import javax.swing.*;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
 import com.google.gson.GsonBuilder;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
@@ -63,8 +66,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class XenaImport implements ActionListener {
-	// java
-	String javaProgram = System.getProperty("java.home")+"/bin/java";
 	static final Logger LOG = LoggerFactory.getLogger(XenaImport.class);
 
 	// local host
@@ -76,14 +77,9 @@ public class XenaImport implements ActionListener {
 	String dest = System.getProperty("user.home") + "/xena/files/";
 
 	XenaServer server;
-	/// xena serer process
-	MyXenaServer xena= null;
-	String xenaProgram = "xena-0.4.0-SNAPSHOT.jar";
-	String xenaServer ="server/" + xenaProgram;
-
 
 	// meta data
-	Map metadata;
+	Map<String, Object> metadata;
 
 	String mutationFormat = "Mutation by Position";
 	String snpDataType = "somatic mutation (SNP and small INDELs)";
@@ -96,7 +92,7 @@ public class XenaImport implements ActionListener {
 		}
 	};
 
-	Object [] formatStrings =formats.keySet().toArray();
+	String[] formatStrings =formats.keySet().toArray(new String[formats.size()]);
 
 
 	String[] dataTypeStrings = { "Select or Enter your own",
@@ -125,67 +121,50 @@ public class XenaImport implements ActionListener {
 	File sourceFile;
 	File probeMapFile = null;
 
-	JTabbedPane tabbedPane = new javax.swing.JTabbedPane();
+	JFrame jfrm;
 
-	JFrame jfrm = new JFrame("Local Xena Data Import");
-
-	// Panel that literally holds everything
-	JPanel panel = new JPanel();
-
-	//select area
-	JPanel selectPanel = new JPanel();
 	JButton buttonSelect;
 	JTextArea notifications;
 
 	//format/type area
-	JPanel typePanel = new JPanel();
-	JComboBox formatList;
+	JPanel typePanel;
+	JComboBox<String> formatList;
 
 	//data type/dataSubType
-	JPanel dataTypePanel = new JPanel();
-	JComboBox dataTypeList;
+	JPanel dataTypePanel;
+	JComboBox<String> dataTypeList;
 
 	//assembly area
-	JPanel assemblyPanel = new JPanel();
-	JComboBox assemblyList;
+	JPanel assemblyPanel;
+	JComboBox<String> assemblyList;
 
 	//cohort
-	JPanel cohortPanel = new JPanel();
-	JTextField cohort = new JTextField();
+	JPanel cohortPanel;
+	JTextField cohort;
 
 	// color
-	JPanel colorPanel = new JPanel();
-	JTextField minColor = new JTextField();
-	JTextField maxColor = new JTextField();
+	JPanel colorPanel;
+	JTextField minColor;
+	JTextField maxColor;
 
 	// display label
-	JPanel displayLabelPanel = new JPanel();
-	JTextField displayLabel = new JTextField();
+	JPanel displayLabelPanel;
+	JTextField displayLabel;
 
 	//description
-	JPanel descPanel = new JPanel();
-	JTextArea description = new JTextArea();
+	JPanel descPanel;
+	JTextArea description;
 	JScrollPane scrollDescription;
 
 	//probeMap area
-	JPanel mappingPanel = new JPanel();
+	JPanel mappingPanel;
 	JButton mappingButton;
 	JTextArea mappingNotifications;
 
 	//submit
-	JPanel submitPanel = new JPanel();
+	JPanel submitPanel;
 	JButton submitButton;
 	JButton cancelButton;
-
-	//start xena button
-	JPanel startXenaPanel = new JPanel();
-	JButton startXenaButton;
-	JTextArea xenaNotifications;
-
-	// xena repair
-	JPanel repairPanel = new JPanel();
-	JButton repairButton;
-	JTextArea repairNotifications;
 
 	private void setUp() {
 		// $HOME/files directory set up
@@ -197,43 +176,14 @@ public class XenaImport implements ActionListener {
 			JOptionPane.showMessageDialog(jfrm,"We expect "+dest+" to be a directory. Program will quit.");
 			onExit();
 		}
-
-		// automatically start xena if not started yet
-//		boolean xenaRunning=detectXena();
-//		if (!xenaRunning) {
-//			startXena();
-//		}
-//		try {
-//			Thread.sleep(50);
-//		}
-//		catch (InterruptedException e) {
-//        	// We've been interrupted: no more messages.
-//        	return;
-//    	}
-//		xenaRunning=detectXena();
-//		if (xenaRunning) {
-//			tabbedPane.setSelectedIndex(1);
-//		}
-//		else {
-//			tabbedPane.setSelectedIndex(0);
-//		}
 	}
 
 	private void onExit() {
-		if (detectXena() && (xena!=null) && xena.isAlive()) {
-			int reply = JOptionPane.showConfirmDialog( jfrm,
-				"Shut down local xena.", "WARNING",
-				JOptionPane.YES_NO_CANCEL_OPTION);
-			if (reply== JOptionPane.CANCEL_OPTION)
-				return;
-			if (reply == JOptionPane.YES_OPTION)
-				xena.kill();
-				//xena.interrupt();
-		}
 		System.exit(0);
 	}
 
 	private void displayGUI() {
+		jfrm = new JFrame("Local Xena Data Import");
 		JMenuBar menuBar = new JMenuBar();
 		JMenu fileMenu = new JMenu("File");
 		fileMenu.setMnemonic(KeyEvent.VK_F);
@@ -253,10 +203,14 @@ public class XenaImport implements ActionListener {
 		menuBar.add(fileMenu);
 		jfrm.setJMenuBar(menuBar);
 
+		// Panel that literally holds everything
+		JPanel panel = new JPanel();
+
 
 		panel.setLayout(new FlowLayout(FlowLayout.LEFT));
 
-		// select data
+		//select area
+		JPanel selectPanel = new JPanel();
 		selectPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		// area to show the file being selected
 		notifications = new JTextArea("");
@@ -270,13 +224,14 @@ public class XenaImport implements ActionListener {
 		selectPanel.add(buttonSelect);
 
 		// format / type
+		typePanel = new JPanel();
 		typePanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		JTextArea label = new JTextArea("File format",1,11);
 		label.setBackground(panel.getBackground());
 		label.setEditable(false);
 		typePanel.add(label);
 		//format drop down list
-		formatList = new JComboBox(formatStrings);
+		formatList = new JComboBox<String>(formatStrings);
 		formatList.setBackground(Color.WHITE);
 		formatList.addActionListener(this);
 
@@ -284,13 +239,14 @@ public class XenaImport implements ActionListener {
 		typePanel.setVisible(false);
 
 		// assembly
+		assemblyPanel = new JPanel();
 		assemblyPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("Assembly",1,11);
 		label.setBackground(panel.getBackground());
 		label.setEditable(false);
 		assemblyPanel.add(label);
 		//format drop down list
-		assemblyList = new JComboBox(assemblyStrings);
+		assemblyList = new JComboBox<String>(assemblyStrings);
 		assemblyList.setBackground(Color.WHITE);
 		assemblyList.addActionListener(this);
 
@@ -298,6 +254,7 @@ public class XenaImport implements ActionListener {
 		assemblyPanel.setVisible(false);
 
 		//dataSubtype
+		dataTypePanel = new JPanel();
 		dataTypePanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("Type of data",1,11);
 		label.setBackground(panel.getBackground());
@@ -305,7 +262,7 @@ public class XenaImport implements ActionListener {
 		dataTypePanel.add(label);
 		//data type drop down list
 
-		dataTypeList = new JComboBox(dataTypeStrings);
+		dataTypeList = new JComboBox<String>(dataTypeStrings);
 		dataTypeList.setMaximumRowCount (dataTypeStrings.length);
 		dataTypeList.addActionListener(this);
 		dataTypeList.setEditable(true);
@@ -313,6 +270,7 @@ public class XenaImport implements ActionListener {
 		dataTypePanel.setVisible(false);
 
 		// cohort
+		cohortPanel = new JPanel();
 		cohortPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("Cohort",1,11);
 		label.setBackground(panel.getBackground());
@@ -324,6 +282,7 @@ public class XenaImport implements ActionListener {
 		cohortPanel.setVisible(false);
 
 		// color
+		colorPanel = new JPanel();
 		colorPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("Color\t(optional)",2,11);
 		label.setBackground(panel.getBackground());
@@ -348,6 +307,7 @@ public class XenaImport implements ActionListener {
 		colorPanel.setVisible(false);
 
 		// display label
+		displayLabelPanel = new JPanel();
 		displayLabelPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("Display Name (optional)",1,11);
 		label.setBackground(panel.getBackground());
@@ -361,6 +321,7 @@ public class XenaImport implements ActionListener {
 		displayLabelPanel.setVisible(false);
 
 		// description
+		descPanel = new JPanel();
 		descPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("Description (optional)",1,11);
 		label.setBackground(panel.getBackground());
@@ -377,6 +338,7 @@ public class XenaImport implements ActionListener {
 		descPanel.setVisible(false);
 
 		// probeMap data
+		mappingPanel = new JPanel();
 		mappingPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		label = new JTextArea("ID/Gene mapping (optional)",1,11);
 		label.setLineWrap(true);
@@ -397,6 +359,7 @@ public class XenaImport implements ActionListener {
 		mappingPanel.setVisible(false);
 
 		//submit button
+		submitPanel = new JPanel();
 		submitPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
 		submitButton = new JButton("Submit");
 		submitButton.setActionCommand(submitButton.getText());
@@ -421,40 +384,10 @@ public class XenaImport implements ActionListener {
 		panel.add(mappingPanel);
 		panel.add(submitPanel);
 
-		// start and stop xena panel
-		startXenaPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
-		xenaNotifications = new JTextArea("", 2, 50);
-		xenaNotifications.setBackground(panel.getBackground());
-		xenaNotifications.setEditable(false);
-		xenaNotifications.setLineWrap(true);
-		xenaNotifications.setWrapStyleWord(true);
-		startXenaPanel.add(xenaNotifications);
+		JTabbedPane tabbedPane = new javax.swing.JTabbedPane();
 
-		startXenaButton = new JButton("Start Xena");
-		startXenaButton.setActionCommand(startXenaButton.getText());
-		startXenaButton.addActionListener(this);
-		startXenaPanel.add(startXenaButton);
-
-		// xena repair
-		repairPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
-		repairNotifications = new JTextArea("",2,50);
-		repairNotifications.setBackground(panel.getBackground());
-		repairNotifications.setEditable(false);
-		repairNotifications.setLineWrap(true);
-		repairNotifications.setWrapStyleWord(true);
-		repairPanel.add(repairNotifications);
-
-		repairButton = new JButton("Reset/Repair");
-		repairButton.setActionCommand(repairButton.getText());
-		repairButton.addActionListener(this);
-		repairPanel.add(repairButton);
-
-//		tabbedPane.addTab("Start/Stop Xena", startXenaPanel);
-//		startXenaPanel.setPreferredSize(new Dimension(670, 500));
 		tabbedPane.addTab("Data Import", panel);
 		panel.setPreferredSize(new Dimension(670, 500));
-//		tabbedPane.addTab("Database Reset", repairPanel);
-//		repairPanel.setPreferredSize(new Dimension(670, 500));
 
 		// sets the size of the application
 		jfrm.setSize(720, 600);
@@ -475,40 +408,7 @@ public class XenaImport implements ActionListener {
 		jfrm.add(tabbedPane);
 		// makes the application visible
 		jfrm.setVisible(true);
-
-		java.util.Timer t1 = new java.util.Timer();
-		int timeInterval =2000;
-//	  	XenaStatusTask tt = new XenaStatusTask(timeInterval);
-//  		t1.schedule(tt, 0, timeInterval);
 	}
-
-//	private class XenaStatusTask extends TimerTask {
-//
-//	  	private int timerInterval;
-//
-//  		public XenaStatusTask (int timeInterval){
-//    		this.timerInterval=timeInterval;
-//  		}
-//
-//		public void run() {
-//			if (detectXena()) {
-//				if ((xena!=null) && (xena.isAlive())) {
-//					buttonSelect.setVisible(true);
-//					startXenaButton.setText("Stop Xena");
-//					xenaNotifications.setText("Local xena ("+xenaProgram+") is running.");
-//
-//					repairNotifications.setText("Reset/Repair local xena database with data in "+dest+".");
-//					repairButton.setVisible(true);
-//				}
-//				else {
-//					whenXenaStartedByOther();
-//				}
-//			}
-//			else {
-//				whenXenaStopped();
-//			}
-//    	}
-//	}
 
 
 	private boolean detectXena() {
@@ -710,42 +610,6 @@ public class XenaImport implements ActionListener {
 		}
 	}
 
-	private void whenXenaStopped() {
-		startXenaButton.setText("Start Xena");
-		xenaNotifications.setText("Local xena ("+xenaProgram+") is not running.");
-		startXenaButton.setVisible(true);
-
-		notifications.setText("Local xena ("+xenaProgram+") is not running.");
-		buttonSelect.setVisible(false);
-		disableImportSubPanels();
-
-		repairNotifications.setText("Reset/Repair local xena database with data in "+dest+".");
-		repairButton.setVisible(true);
-
-		return;
-	}
-
-	private void whenXenaStartedByOther(){
-		String id= getXenaPID();
-
-		String message = "Local xena is running, but started by another program (PID = "+id+").\nWe require xena started by this tool to use XenaImport.";
-		xenaNotifications.setText(message);
-		startXenaButton.setVisible(false);
-
-		notifications.setText(message);
-		buttonSelect.setVisible(false);
-		disableImportSubPanels();
-
-		repairNotifications.setText(message);
-		repairButton.setVisible(false);
-	}
-
-	private void killThisXena(){
-		xena.kill();
-		xena = null;
-		whenXenaStopped();
-	}
-
 	private void textArea(JTextArea area, String text, int col){
 		if (!text.equals("")){
 			area.setRows(2);
@@ -760,51 +624,6 @@ public class XenaImport implements ActionListener {
 			area.setWrapStyleWord(false);
 		}
 		area.setText(text);
-	}
-
-	private class MyXenaServer extends Thread  {
-		private Process p = null;
-
-		public void run() {
-			Runtime runTime = Runtime.getRuntime();
-			try {
-				ProcessBuilder pb = new ProcessBuilder(
-					javaProgram, "-Xmx2048m", "-jar", xenaServer , "--no-auto");
-				p = pb.start();
-				try {
-					p.waitFor();
-				}
-				catch (InterruptedException e) {
-					p.destroy();
-				}
-
-			}
-			catch (IOException e) {
-				p.destroy();
-				xenaNotifications.setText("error occured");
-			}
-		}
-
-    	public void kill () {
-    		p.destroy();
-    	}
-  	}
-
-	private void startXena() {
-		if (!detectXena()) {
-			xena = new MyXenaServer();
-			xena.start();
-
-			if (xena!=null && xena.isAlive()) {
-				startXenaButton.setText("Stop Xena");
-				resetImport();
-			}
-			else {
-				xena = null;
-				xenaNotifications.setText("An error occurred 4.");
-				startXenaButton.setText("Start Xena");
-			}
-		}
 	}
 
 	private void loadData (File destFile)  throws Exception{
@@ -874,7 +693,7 @@ public class XenaImport implements ActionListener {
 				textArea(notifications,sourceFile.getPath(),40);
 				buttonSelect.setText("Change");
 
-				metadata = new HashMap<String, String>();
+				Type type = new TypeToken<Map<String, Object>>(){}.getType();
 				formatList.setSelectedIndex(0);
 				dataTypeList.setSelectedIndex(0);
 				cohort.setText("");
@@ -896,13 +715,13 @@ public class XenaImport implements ActionListener {
 					try {
 						FileInputStream fis = new FileInputStream(f);
 	   		 			byte[] data = new byte[(int)f.length()];
-	    				fis.read(data);
-	    				fis.close();
-	    				String content = new String(data, "UTF-8");
+						fis.read(data);
+						fis.close();
+						String content = new String(data, "UTF-8");
 
 						Gson gson = new Gson();
 
-	 					metadata = gson.fromJson(content, Map.class);
+						metadata = gson.fromJson(content, type);
 
 						if (metadata.containsKey("type")){
 							value = metadata.get("type").toString();
@@ -1001,49 +820,6 @@ public class XenaImport implements ActionListener {
 			resetImport();
 			submit();
 		}
-		else if ("Start Xena".equals(e.getActionCommand())) {
-			boolean xenaRunning=detectXena();
-			if (!xenaRunning) {
-				startXena();
-			}
-			else {
-				if (xena!=null && xena.isAlive()) {
-					killThisXena();
-				}
-			}
-		}
-		else if("Reset/Repair".equals(e.getActionCommand())) {
-			if (xena!=null && xena.isAlive()) {
-				killThisXena();
-			}
-			try {
-				deleteFile(new File(System.getProperty("user.home"), "/xena/database.h2.db"));
-				deleteFile(new File(System.getProperty("user.home"), "/xena/database.lock.db"));
-
-				File folder = new File(dest);
-  				File[] listOfFiles = folder.listFiles();
- 				repairNotifications.setText("loading data..");
-
-				while (detectXena()){
-	  				Thread.sleep(1000);
-	  			}
-				startXena();
-				Thread.sleep(2000);
-
-	 			// load data in files // memory going up and up
-				for (int i = 0; i < listOfFiles.length; i++) {
-					String filePath = listOfFiles[i].getPath();
-					String fileName = listOfFiles[i].getName();
-					if ( (filePath != null) && !filePath.contains(".json") &&
-						!(filePath.substring(filePath.length()-1).equals("~")) &&
-						!fileName.substring(0,1).equals(".")) {
-						loadData(listOfFiles[i]);
-					}
-				}
-			}
-			catch(Exception exp) {
-			}
-		}
 		else{
 			notifications.setText(e.getActionCommand());
 		}
@@ -1065,10 +841,13 @@ public class XenaImport implements ActionListener {
 	/**
 	 * @param args
 	 */
-	public static void start(XenaServer server) throws IOException {
-		XenaImport obj = new XenaImport(server);
-		obj.displayGUI();
-		obj.setUp();
+	public static void start(final XenaServer server) throws IOException {
+		EventQueue.invokeLater(new Runnable() {
+		    public void run() {
+			XenaImport obj = new XenaImport(server);
+			obj.displayGUI();
+			obj.setUp();
+		    }
+		});
 	}
-
 }

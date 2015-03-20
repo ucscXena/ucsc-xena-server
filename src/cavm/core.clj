@@ -27,7 +27,7 @@
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
   (:require [less.awful.ssl :as ssl])
-  (:import cavm.XenaImport cavm.XenaServer)
+  (:import cavm.XenaImport cavm.XenaServer cavm.Splash)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
@@ -271,7 +271,8 @@
           (:delete options) (delete-files port arguments)
           :else (if-let [error (some mkdir [tmp docroot])]
                   (binding [*out* *err*] ; XXX move below log-config? What if we can't create the log file?
-                    (println error))
+                    (println error)
+                    (System/exit 1)) ; XXX notify gui
                   (do
                     (log-config logfile)
                     (info "Xena server starting"
@@ -284,6 +285,7 @@
                           loader (cl/loader-agent db detector docroot)]
                       (when (:auto options)
                         (watch (partial file-changed loader docroot) docroot))
+                      (Splash/close)
                       (when gui
                         (try
                           (XenaImport/start
