@@ -3,7 +3,7 @@
 (defproject cavm version
   :description "Cancer Analytics Virtual Machine"
   :url "https://genome-cancer.ucsc.edu"
-  :license {:name "Eclipse Public License"
+  :license {:name "Apache License Version 2.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :profiles {:dev {:dependencies
                    [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
