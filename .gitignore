@@ -2,6 +2,9 @@
 /lib
 /classes
 /checkouts
+/build
+/sphinxEnv
+/virtualenv-*
 pom.xml
 *.jar
 *.class

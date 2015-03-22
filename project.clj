@@ -56,8 +56,11 @@
             "install4j" ["shell" "install4jc" "-r" ~version "build1.install4j"]
             "clientsrc" ["shell" "cp" "-r" "python" "doc/_build"]
             "schemaspy" ["shell" "./schemaspy"]
+            "ensure-sphinx" ["shell" "./getsphinx"]
+            "sphinx-with-path" ["shell" "sh" "-c" "PATH=sphinxEnv/bin:$PATH lein sphinx"]
             "alldocs" ["do"
-                       ["sphinx"]
+                       ["ensure-sphinx"]
+                       ["sphinx-with-path"]
                        ["doc"]
                        ["hiera"]
                        ["schemaspy"]]}
