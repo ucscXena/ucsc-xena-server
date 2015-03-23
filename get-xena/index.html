@@ -44,6 +44,12 @@ td {
 	padding-bottom: 4px;
 	padding-top: 4px;
 }
+.install4j {
+    display: block;
+    background-image: url(install4j_small.png);
+    width: 92;
+    height: 26;
+}
 </style>
 </head>
 <script>
@@ -168,6 +174,17 @@ td {
 		return t;
 	}
 
+    function buildReference() {
+        var r = d.createElement('div'),
+            b = d.createElement('a');
+        b.className = 'install4j';
+        b.href = 'http://www.ej-technologies.com/products/install4j/overview.html';
+        r.appendChild(d.createElement('br'));
+        r.appendChild(d.createTextNode('Installers were created with install4j.'));
+        r.appendChild(b);
+        return r;
+    }
+
 	function buildImage() {
 		var i = d.createElement('img');
 		i.src = "battle_slug_300.png";
@@ -208,6 +225,7 @@ td {
 		document.body.appendChild(buildImage());
 		document.body.appendChild(suggest());
 		document.body.appendChild(buildTable());
+		document.body.appendChild(buildReference());
 	}
 
 	function requestServerFiles(done) {
