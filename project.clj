@@ -5,6 +5,12 @@
   :url "https://genome-cancer.ucsc.edu"
   :license {:name "Apache License Version 2.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
+  :repl-options  {
+                  ;; If nREPL takes too long to load it may timeout,
+                  ;; increase this to wait longer before timing out.
+                  ;; Defaults to 30000 (30 seconds)
+                  :timeout 12000000
+                  }
   :profiles {:dev {:dependencies
                    [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
@@ -31,17 +37,17 @@
                  [com.h2database/h2 "1.3.175"]
                  [filevents "0.1.0"]
                  [clj-http "0.9.1"]
-                 [org.clojure/core.cache  "0.6.3"]
-                 [ch.qos.logback/logback-classic  "1.1.1"]
-                 [org.clojure/tools.logging  "0.3.0"]
-                 [org.clojure/test.check  "0.5.9"]
-                 [com.google.code.gson/gson  "2.2.4"]
-                 [less-awful-ssl  "1.0.0"]
+                 [org.clojure/core.cache "0.6.3"]
+                 [ch.qos.logback/logback-classic "1.1.1"]
+                 [org.clojure/tools.logging "0.3.0"]
+                 [org.clojure/test.check "0.5.9"]
+                 [com.google.code.gson/gson "2.2.4"]
+                 [less-awful-ssl "1.0.0"]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.1"]
-                 [com.taoensso/timbre  "3.2.0"]]
+                 [com.taoensso/timbre "3.2.0"]]
   :java-source-paths ["src-java"]
-  :target-path  "target/%s"
+  :target-path "target/%s"
   :clean-targets [:target-path :compile-path "build"]
   :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberwrap"]]
             ; XXX this is a bit raw
@@ -71,12 +77,12 @@
   :javac-options ["-target" "1.6" "-source" "1.6"]
   :aot [cavm.core cavm.h2-binary cavm.h2-unpack-rows cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
-  :plugins [[lein-sphinx  "1.0.1"]
-            [codox  "0.8.10"]
-            [lein-shell  "0.4.0"]
-            [lein-hiera  "0.8.0"]]
+  :plugins [[lein-sphinx "1.0.1"]
+            [codox "0.8.10"]
+            [lein-shell "0.4.0"]
+            [lein-hiera "0.8.0"]]
   :sphinx {:setting-values {:version ~version
-                            :project ~(str  "UCSC Xena Server " version)}}
+                            :project ~(str "UCSC Xena Server " version)}}
   :codox {:output-dir "doc/_build/implementation"}
   :hiera {:ignore-ns #{cavm.h2-query}
           :cluster-depth 1
