@@ -37,6 +37,8 @@
                  [org.clojure/test.check  "0.5.9"]
                  [com.google.code.gson/gson  "2.2.4"]
                  [less-awful-ssl  "1.0.0"]
+                 [org.clojure/core.match "0.3.0-alpha4"]
+                 [org.clojure/math.combinatorics "0.1.1"]
                  [com.taoensso/timbre  "3.2.0"]]
   :java-source-paths ["src-java"]
   :target-path  "target/%s"
