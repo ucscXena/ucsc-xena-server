@@ -17,7 +17,7 @@
 (defn op-in [rows fetch field values]
   (let [col (fetch rows field)
         s (set values)]
-    (into (sorted-set) (filter #(s (get col %)) rows))))
+    (into (sorted-set) (filter #(s (col %)) rows))))
 
 (defn evaluate [rows fetch exp]
   (match [exp]

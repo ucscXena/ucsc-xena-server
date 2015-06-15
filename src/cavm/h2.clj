@@ -4,6 +4,7 @@
   cavm.h2
   (:require [clojure.java.jdbc.deprecated :as jdbcd])
   (:require [clojure.java.jdbc :as jdbc])
+  (:require [cavm.jdbc])
   (:require [org.clojars.smee.binary.core :as binary])
   (:require [clojure.java.io :as io])
   (:require [honeysql.core :as hsql])
@@ -13,7 +14,6 @@
   (:use [cavm.binner :only (calc-bin)])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable)])
-  (:require [me.raynes.fs :as fs])
   (:require [cavm.db :refer [XenaDb]])
   (:require [clojure.tools.logging :refer [spy trace info warn]])
   (:require [taoensso.timbre.profiling :refer [profile p]])
@@ -22,6 +22,8 @@
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
   (:require [cavm.conn-pool :refer [pool]])
   (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
+  (:require [clojure.core.match :refer [match]])
+  (:require [cavm.sqleval :refer [evaluate]])
   (:import [org.h2.jdbc JdbcBatchUpdateException]))
 
 ;
@@ -387,10 +389,10 @@
 (defn- codec [blob]
   (codec-length (/ (count blob) float-size)))
 
-(defn- score-decode [blob]
+(defn score-decode [blob]
   (bytes-to-floats blob))
 
-(defn- score-encode-orig [slist]
+(defn score-encode-orig [slist]
   (floats-to-bytes (float-array slist)))
 
 (defn- score-encodez
@@ -418,7 +420,7 @@
         gzis (java.util.zip.GZIPInputStream. bais)]
     (binary/decode (binary/repeated :float-le :length 10) gzis)))
 
-(def ^:private score-encode score-encode-orig)
+(def score-encode score-encode-orig)
 
 (defn- encode-row [encode row]
   (mapv encode (partition-all bin-size row)))
@@ -785,15 +787,18 @@
                   (when warnings
                     (merge-m-ent mname (assoc metadata :loader warnings))))))))))))
 
-(defn- dataset-by-name [dname]
-  (jdbcd/with-query-results rows
-    ["SELECT `id`
-     FROM `dataset`
-     WHERE `name` = ?" (str dname)]
-    (-> rows first :id)))
+(defn- dataset-by-name [dname & kprops]
+  (let [props (clojure.string/join "," (map name kprops))]
+    (jdbcd/with-query-results rows
+      [(format "SELECT %s
+               FROM `dataset`
+               WHERE `name` = ?" props) (str dname)]
+      (-> rows first))))
+
+(def dataset-id-by-name (comp :id #(dataset-by-name % :id)))
 
 (defn delete-dataset [dataset]
-  (let [dataset-id (dataset-by-name dataset)]
+  (let [dataset-id (dataset-id-by-name dataset)]
     (if dataset-id
       (with-delete-status dataset-id
         (jdbcd/transaction
@@ -824,7 +829,7 @@
 ; Code queries
 ;
 
-(def ^:private codes-for-values-query
+(def ^:private codes-for-field-query
   (cached-statement
     "SELECT `ordering`, `value`
     FROM `field`
@@ -832,8 +837,8 @@
     WHERE  `name` = ? AND `dataset_id` = ?"
     true))
 
-(defn- codes-for-values [dataset-id field]
-  (->> (codes-for-values-query field dataset-id)
+(defn- codes-for-field [dataset-id field]
+  (->> (codes-for-field-query field dataset-id)
        (map #(mapv % [:value :ordering]))
        (into {})))
 
@@ -843,40 +848,43 @@
 
 ; All bins for the given fields.
 
+; XXX inner join here? really? not just a where?
 (def ^:private all-rows-query
    (cached-statement
-     "SELECT `name`, `i`, `scores`
-     FROM (SELECT `name`, `id`
-     FROM `field`
-     INNER JOIN (TABLE(`name2` VARCHAR = ?) T) ON `name2` = `field`.`name`
-     WHERE `dataset_id` = ?) AS P
+     "SELECT `name`, `i`, `scores` FROM
+       (SELECT `name`, `id` FROM
+         `field`
+         INNER JOIN (TABLE(`name2` VARCHAR = ?) T) ON `name2` = `field`.`name`
+       WHERE `dataset_id` = ?) AS P
      LEFT JOIN `field_score` ON `P`.`id` = `field_score`.`field_id`"
      true))
 
+; bins will all be the same size, except the last one. bin size is thus
+; max of count of first two bins.
+; Loop over bins, copying into pre-allocated output array.
 ; {"foxm1" [{:name "foxm1" :scores <bytes>} ... ]
-(let [concat-field-bins
-      (fn [bins]
-        (let [sorted (map :scores (sort-by :i bins))
-              float-bins (map score-decode sorted)
-              row-count (apply + (map count float-bins))
-              out (float-array row-count)]
-          (loop [bins float-bins offset 0]
-            (let [b (first bins)
-                  c (count b)]
-              (when b
-                (System/arraycopy (first bins) 0 out offset c) ; XXX mutate "out" in place
-                (recur (rest bins) (+ offset c)))))
-          out))]
+(defn concat-field-bins [bins]
+  (let [float-bins (mapv #(update-in % [:scores] score-decode) bins)
+        sizes (mapv #(count (:scores %)) float-bins)
+        bin-size (apply max (take 2 sizes))
+        row-count (apply + sizes)
+        out (float-array row-count)]
+    (doseq [{:keys [scores i]} float-bins]
+      (System/arraycopy scores 0 out (* i bin-size) (count scores))) ; XXX mutate "out" in place
+    out))
 
-  ; return float arrays of all rows for the given fields
-  (defn- all-rows [dataset-id fields]
-    (let [field-bins (->> (all-rows-query (to-array fields) dataset-id)
-                          (group-by :name))]
-      (into {} (for [[k v] field-bins] [k (concat-field-bins v)])))))
+; return float arrays of all rows for the given fields
+(defn- all-rows [dataset-id fields]
+  (let [field-bins (->> (all-rows-query (to-array fields) dataset-id)
+                        (group-by :name))]
+    (into {} (for [[k v] field-bins] [k (concat-field-bins v)]))))
 
 ;
 ;
 ;
+
+(defn bin-offset [i]
+  [(quot i bin-size) (rem i bin-size)])
 
 ; merge bin number and bin offset for a row
 (defn- merge-bin-off [{i :i :as row}]
@@ -922,13 +930,10 @@
 
 ; XXX performance of the :in clause?
 ; XXX make a prepared statement
-; One would hope that an array could be passed in the for IN
-; clause, since an array can be passed in elsewhere, but that
-; doesn't appear to be the case. At least, I haven't found an
-; incantation that works. h2 complains about the syntax. Maybe
-; if it were written as a subquery? Would need to do an
-; explain analyze if trying this. Meanwhile, we have to dynamically
-; build the query to paste in the right number of ?.
+; Instead of building a custom query each time, this can be
+; rewritten as a join against a TABLE literal, or as
+; IN (SELECT * FROM TABLE(x INT = (?))). Should check performance
+; of both & drop the (format) call.
 (def ^:private dataset-fields-query
   "SELECT name, i, scores
    FROM (SELECT  `field`.`name`, `field`.`id`
@@ -981,8 +986,8 @@
 
 (defn- genomic-read-req [req]
   (let [{:keys [samples table columns]} req
-        dataset-id (dataset-by-name table)
-        samp->code (codes-for-values dataset-id "sampleID")
+        dataset-id (dataset-id-by-name table)
+        samp->code (codes-for-field dataset-id "sampleID")
         order (mapv (comp float-nil samp->code) samples)     ; codes in request order
         rows (rows-matching dataset-id "sampleID" order)
         rows-to-copy (->> rows
@@ -996,6 +1001,109 @@
     (-> (select-scores-full dataset-id columns (distinct bins))
         (#(mapv cvt-scores %))
         (build-score-arrays bfns (col-arrays columns (count rows))))))
+
+
+;
+;
+;
+
+(def ^:private field-ids-query
+  (cached-statement
+    "SELECT `id`, `name` FROM `field`
+     WHERE `dataset_id` = ? AND `name` IN (SELECT * FROM TABLE(x VARCHAR = (?)))"
+    true))
+
+(defn- fetch-field-ids [dataset-id names]
+  (when-let [ids (field-ids-query dataset-id names)]
+    (map (juxt :name :id) ids)))
+
+;
+;
+
+(def ^:private codes-for-values-query
+  (cached-statement
+    "SELECT `ordering`, `value`
+    FROM `code`
+    JOIN TABLE(x INT = (?)) V on `x` = `ordering`
+    WHERE  `field_id` = ?"
+    true))
+
+(defn- codes-for-values [field-id values]
+  (when-let [codes (codes-for-values-query values field-id)]
+    (map (juxt :ordering :value) codes)))
+
+;
+
+(def ^:private field-bins-query
+  (cached-statement
+    "SELECT `scores`, `i` FROM `field_score`
+     WHERE `field_id` = ? AND `i` IN (SELECT * FROM TABLE(x INT = (?)))"
+    true))
+
+(defn- fetch-bins [field-id bins]
+  (when-let [scores (field-bins-query field-id bins)]
+    (map #(update-in % [:scores] bytes-to-floats) scores)))
+
+(def ^:private has-codes-query
+  (cached-statement
+    "SELECT EXISTS(SELECT `ordering` FROM `code` WHERE `field_id` = ?) hascodes"
+    true))
+
+(defn has-codes? [field-id]
+  (-> (has-codes-query field-id) first :hascodes))
+
+(defn update-codes-cache [codes field-id new-bins cache]
+  (match [codes]
+         [nil] (update-codes-cache (if (has-codes? field-id)
+                                     [:yes {}]
+                                     [:no])
+                                   field-id new-bins cache)
+         [[:no]] codes
+         [[:yes code-cache]]
+         [:yes
+          (let [values (distinct (mapcat cache new-bins))
+                missing (filterv #(not (contains? code-cache %)) values)]
+            (into code-cache (codes-for-values field-id missing)))]))
+
+; XXX Use a variant to id b-tree fields in cache.
+(defn update-cache [cache field-id rows]
+  (let [bins (distinct (map #(quot % bin-size) rows))
+        missing (filterv #(not (contains? cache %)) bins)]
+    (if (seq missing)
+      (let [new-cache (->> missing
+                           (fetch-bins field-id)
+                           (map (juxt :i :scores))
+                           (into (or cache {})))]
+        (update-in new-cache [:codes] update-codes-cache field-id missing new-cache))
+       cache)))
+
+; return fn of rows->vals
+(defn fetch-rows [fields cache rows field]
+  (swap! cache update-in [field] update-cache (fields field) rows)
+  (let [f (@cache field)
+        getter (match [(:codes f)]
+                      ; XXX cast to int here is pretty horrible.
+                      ; Really calls for an int array bin in h2.
+                      [[:yes vals->codes]] (fn [bin off]
+                                                (vals->codes (int (get (f bin) off))))
+                      [[:no]] (fn [bin off] (get (f bin) off)))]
+    (fn [row]
+      (apply getter (bin-offset row)))))
+
+; might want to use a reader literal for field names, so we
+; find them w/o knowing syntax.
+(defn collect-fields [exp]
+  (match [exp]
+         [[:in field _]] [field]
+         [[:and & subexps]] (mapcat collect-fields subexps)
+         [[:or & subexps]] (mapcat collect-fields subexps)))
+
+(defn eval-sql [{[from] :from where :where}]
+  (let [{dataset-id :id N :rows} (dataset-by-name from :id :rows)
+        fields (into {} (fetch-field-ids dataset-id (collect-fields where)))
+        fetch (partial fetch-rows fields (atom {}))]
+    ; XXX project, perhaps in sqleval
+  (evaluate (range N) fetch where)))
 
 ; Each req is a map of
 ;  :table "tablename"
