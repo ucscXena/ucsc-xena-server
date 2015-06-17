@@ -1005,7 +1005,10 @@
 
 ;
 ;
+; Methods for providing a sql abstraction over the column store.
 ;
+;
+
 
 (def ^:private field-ids-query
   (cached-statement
@@ -1093,10 +1096,17 @@
         (update-in new-cache [:codes] update-codes-cache field-id missing new-cache))
        cache)))
 
+(defmulti fetch-rows
+  (fn [cache rows field-id]
+    (cond
+      (has-genes? field-id) :gene
+      (has-position? field-id) :position
+      :else :binned)))
+
 ; return fn of rows->vals
-(defn fetch-rows [fields cache rows field]
-  (swap! cache update-in [field] update-cache (fields field) rows)
-  (let [f (@cache field)
+(defmethod fetch-rows :binned [cache rows field-id]
+  (swap! cache update-in [field-id] update-cache field-id rows)
+  (let [f (@cache field-id)
         getter (match [(:codes f)]
                       ; XXX cast to int here is pretty horrible.
                       ; Really calls for an int array bin in h2.
@@ -1105,6 +1115,34 @@
                       [[:no]] (fn [bin off] (get (f bin) off)))]
     (fn [row]
       (apply getter (bin-offset row)))))
+
+(def ^:private field-genes-by-row-query
+  (cached-statement
+    "SELECT `row`, `gene` FROM `field_gene`
+    INNER JOIN TABLE(x VARCHAR = (?)) X ON X.x = `row`
+    WHERE `field_id` = ?"
+    true))
+
+(defn field-genes-by-row [field-id rows]
+  (->> (field-genes-by-row-query rows field-id)
+      (map (juxt :row :gene))))
+
+(defmethod fetch-rows :gene [cache rows field-id]
+  (into {} (field-genes-by-row field-id rows)))
+
+(def ^:private field-position-by-row-query
+  (cached-statement
+    "SELECT `row`, `chrom`, `chromStart`, `chromEnd` FROM `field_position`
+    INNER JOIN TABLE(x VARCHAR = (?)) X ON X.x = `row`
+    WHERE `field_id` = ?"
+    true))
+
+(defn field-position-by-row [field-id rows]
+  (->> (field-position-by-row-query rows field-id)
+      (map (fn [{:keys [row] :as values}] [row (dissoc values :row)]))))
+
+(defmethod fetch-rows :position [cache rows field-id]
+  (into {} (field-position-by-row field-id rows)))
 
 ; might want to use a reader literal for field names, so we
 ; find them w/o knowing syntax.
@@ -1132,24 +1170,45 @@
       (map :row)))
 
 (defn fetch-genes [field-id values]
-  (into #{} (field-genes field-id values)))
+  (into (sorted-set) (field-genes field-id values)))
+
+; fetch-indexed doesn't cache, and it's unclear
+; if we should cache the indexed fields during 'restrict'.
+; h2 also has caches, so it might be better to rely on them,
+; simply doing the query again if we need it. 
+
+; Otherwise, we might want to inform the cache of what columns are
+; required later during 'restrict', or in 'project', so
+; we know if they should be cached.
 
 (defn fetch-indexed [fields field values]
   (let [field-id (fields field)]
     (cond
-      (has-position? field-id) #{})
+      (has-position? field-id) #{}) ; XXX fix this!
       (has-genes? field-id) (fetch-genes field-id values)))
 
+; XXX Look at memory use of pulling :gene field. If it's not
+; interned, it could be expensive.
+
+; XXX Add some param guards, esp. unknown field.
 (defn eval-sql [{[from] :from where :where select :select :as exp}]
   (let [{dataset-id :id N :rows} (dataset-by-name from :id :rows)
         fields (into {} (fetch-field-ids dataset-id
                                          (into (collect-fields where) select)))
-        fetch (partial fetch-rows fields (atom {}))]
+        cache (atom {})
+        fetch (fn [rows field] (fetch-rows cache rows (fields field)))]
     ; XXX project, perhaps in sqleval
-  (evaluate (range N) {:fetch fetch
+  (evaluate (apply sorted-set (range N)) {:fetch fetch
                        :fetch-indexed (partial fetch-indexed fields)
                        :indexed? (partial has-index? fields)} exp)))
 
+
+;
+;
+;
+;
+;
+;
 
 ; Each req is a map of
 ;  :table "tablename"
