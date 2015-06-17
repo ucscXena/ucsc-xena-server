@@ -1,11 +1,11 @@
 (ns cavm.sqleval
   (:require [clojure.core.match :refer [match]]))
 
-(declare evaluate1)
+(declare restrict)
 
 (defn op-or [all rows store subexps]
   (reduce clojure.set/union
-          (map #(evaluate1 all rows store %) subexps)))
+          (map #(restrict all rows store %) subexps)))
 
 (defn exp-indexed? [indexed? exp]
   (match [exp]
@@ -29,7 +29,7 @@
     (reduce (fn [acc subexp]
               (clojure.set/intersection
                 acc
-                (evaluate1 all acc store subexp)))
+                (restrict all acc store subexp)))
             rows subexps)))
 
 (defn op-in [all rows {:keys [fetch indexed? fetch-indexed]} field values]
@@ -43,11 +43,19 @@
 ; consider using the index if the list of rows has not already been
 ; narrowed, i.e. when (= rows all).  We pass 'all' through the code
 ; so we can track this.
-(defn evaluate1 [all rows store exp]
+(defn restrict [all rows store exp]
   (match [exp]
          [[:and & subexps]] (op-and all rows store subexps)
          [[:or & subexps]]  (op-or all rows store subexps)
          [[:in field values]] (op-in all rows store field values)))
 
-(defn evaluate [rows store exp]
-  (evaluate1 rows rows store exp))
+; XXX profile the map over the col function.
+(defn project [rows {fetch :fetch} fields]
+  (map (fn [field]
+         (let [col (fetch rows field)]
+           (mapv col rows)))
+       fields))
+
+(defn evaluate [rows store {:keys [select where]}]
+  (let [result-rows (restrict rows rows store where)]
+    (zipmap select (project result-rows store select))))

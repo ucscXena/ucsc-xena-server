@@ -1140,14 +1140,15 @@
       (has-position? field-id) #{})
       (has-genes? field-id) (fetch-genes field-id values)))
 
-(defn eval-sql [{[from] :from where :where}]
+(defn eval-sql [{[from] :from where :where select :select :as exp}]
   (let [{dataset-id :id N :rows} (dataset-by-name from :id :rows)
-        fields (into {} (fetch-field-ids dataset-id (collect-fields where)))
+        fields (into {} (fetch-field-ids dataset-id
+                                         (into (collect-fields where) select)))
         fetch (partial fetch-rows fields (atom {}))]
     ; XXX project, perhaps in sqleval
   (evaluate (range N) {:fetch fetch
                        :fetch-indexed (partial fetch-indexed fields)
-                       :indexed? (partial has-index? fields)} where)))
+                       :indexed? (partial has-index? fields)} exp)))
 
 
 ; Each req is a map of
