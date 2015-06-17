@@ -11,41 +11,42 @@
 (ct/deftest in-test
   (ct/testing "basic :in"
     (let [data {"a" [:a :b :c :d :e :f :g :h]}
-          rows (sorted-set 1 3 4 5 6 7)]
+          rows (sorted-set 1 3 4 5 6 7)
+          store {:indexed? #{}
+                 :fetch (fn [rows-in field]
+                          (let [r (or rows-in rows)]
+                            (zipmap r
+                                    (map (data field) r))))}]
       (ct/is (= (sorted-set 4 5 7)
                 (sqleval/op-in rows
-                                  (fn [q-rows field]
-                                    (zipmap q-rows
-                                            (map (data field) q-rows)))
-                                  "a"
-                                  [:e :f :h]))))))
+                               rows
+                               store
+                               "a"
+                               [:e :f :h]))))))
 
 (ct/deftest eval-test
   (ct/testing "eval")
   (let [data {"a" [:a :b :c :d :e :f :g :h]
               "b" (into [] (range 20 30))}
-        rows (apply sorted-set (range 8))]
+        rows (apply sorted-set (range 8))
+        store {:indexed? #{}
+               :fetch (fn [rows-in field]
+                          (let [r (or rows-in rows)]
+                            (zipmap r
+                                    (map (data field) r))))}]
     (ct/is (= (sorted-set 4 5 7)
               (sqleval/evaluate rows
-                                (fn [q-rows field]
-                                  (zipmap q-rows
-                                          (map (data field) q-rows)))
+                                store
                                 [:in "a" [:e :f :h]])))
     (ct/is (= (sorted-set 4 5 7)
               (sqleval/evaluate rows
-                                (fn [q-rows field]
-                                  (zipmap q-rows
-                                          (map (data field) q-rows)))
+                                store
                                 [:and [:in "a" [:e :f :h]]])))
     (ct/is (= (sorted-set 4 5)
               (sqleval/evaluate rows
-                                (fn [q-rows field]
-                                  (zipmap q-rows
-                                          (map (data field) q-rows)))
+                                store
                                 [:and [:in "a" [:e :f :h]] [:in "b" [24 25]]])))
     (ct/is (= (sorted-set 0 1 4 5 7)
               (sqleval/evaluate rows
-                                (fn [q-rows field]
-                                  (zipmap q-rows
-                                          (map (data field) q-rows)))
+                                store
                                 [:or [:in "a" [:e :f :h]] [:in "b" [20 21]]])))))

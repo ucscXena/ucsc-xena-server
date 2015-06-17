@@ -1052,6 +1052,22 @@
 (defn has-codes? [field-id]
   (-> (has-codes-query field-id) first :hascodes))
 
+(def ^:private has-genes-query
+  (cached-statement
+    "SELECT EXISTS(SELECT `gene` FROM `field_gene` WHERE `field_id` = ?) hasgenes"
+    true))
+
+(defn has-genes? [field-id]
+  (-> (has-genes-query field-id) first :hasgenes))
+
+(def ^:private has-position-query
+  (cached-statement
+    "SELECT EXISTS(SELECT `bin` FROM `field_position` WHERE `field_id` = ?) hasposition"
+    true))
+
+(defn has-position? [field-id]
+  (-> (has-position-query field-id) first :hasposition))
+
 (defn update-codes-cache [codes field-id new-bins cache]
   (match [codes]
          [nil] (update-codes-cache (if (has-codes? field-id)
@@ -1098,12 +1114,41 @@
          [[:and & subexps]] (mapcat collect-fields subexps)
          [[:or & subexps]] (mapcat collect-fields subexps)))
 
+(defn has-index? [fields field]
+  (let [field-id (fields field)]
+    (or (has-genes? field-id) (has-position? field-id))))
+
+; Selecting `gene` as well adds a lot to the query time. Might
+; need it if we need to cache gene names.
+(def ^:private field-genes-query
+  (cached-statement
+    "SELECT `row` FROM `field_gene`
+    INNER JOIN TABLE(x VARCHAR = (?)) X ON X.x = `gene`
+    WHERE `field_id` = ?"
+    true))
+
+(defn field-genes [field-id genes]
+  (->> (field-genes-query genes field-id)
+      (map :row)))
+
+(defn fetch-genes [field-id values]
+  (into #{} (field-genes field-id values)))
+
+(defn fetch-indexed [fields field values]
+  (let [field-id (fields field)]
+    (cond
+      (has-position? field-id) #{})
+      (has-genes? field-id) (fetch-genes field-id values)))
+
 (defn eval-sql [{[from] :from where :where}]
   (let [{dataset-id :id N :rows} (dataset-by-name from :id :rows)
         fields (into {} (fetch-field-ids dataset-id (collect-fields where)))
         fetch (partial fetch-rows fields (atom {}))]
     ; XXX project, perhaps in sqleval
-  (evaluate (range N) fetch where)))
+  (evaluate (range N) {:fetch fetch
+                       :fetch-indexed (partial fetch-indexed fields)
+                       :indexed? (partial has-index? fields)} where)))
+
 
 ; Each req is a map of
 ;  :table "tablename"
