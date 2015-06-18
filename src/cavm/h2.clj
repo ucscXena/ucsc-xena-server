@@ -639,51 +639,6 @@
 (defn- insert-field-score-out [^java.io.BufferedWriter out field-id i score-id]
   (.write out (str field-id "\t" i "\t" score-id "\n")))
 
-(comment
-  (defn- read-from-tsv [table file & cols]
-    (-> "INSERT INTO %s DIRECT SORTED SELECT * FROM CSVREAD('%s', '%s', 'fieldSeparator=\t')"
-        (format table file (clojure.string/join "\t" cols))
-        (exec-raw))))
-
-(defn- tsv-encoder [scores]
-  (let [s (score-encode scores)]
-    {:scores s :hex (bytes->hex s)}))
-
-(comment
-  (defn- table-writer-csv [dir dataset-id matrix-fn]
-    (let [field-seq (-> "FIELD_IDS" sequence-seq seq-iterator)
-          scores-seq (-> "SCORES_IDS" sequence-seq seq-iterator)
-          ffname (fs/file dir "field.tmp") ; XXX add pid to these, or otherwise make them unique
-          sfname (fs/file dir "scores.tmp")
-          fsfname (fs/file dir "field_score.tmp")
-
-          fields (encode-fields tsv-encoder matrix-fn)]
-      (try
-        (let [field-meta (with-open
-                           [field-file (io/writer ffname)
-                            scores-file (io/writer sfname)
-                            field-score-file (io/writer fsfname)]
-                           (let [writer
-                                 {:insert-field (partial
-                                                  insert-field-out
-                                                  field-file field-seq)
-                                  :insert-score (memoize-key
-                                                  #(ahashable (:scores (first %)))
-                                                  #(insert-scores-out scores-file scores-seq %))
-                                  :insert-field-score (partial
-                                                        insert-field-score-out
-                                                        field-score-file)}]
-                             (reduce #(load-field-feature writer dataset-id %1 %2) '() fields)))]
-          (read-from-tsv "field" ffname "ID" "DATASET_ID" "NAME")
-          (read-from-tsv "scores" sfname "ID" "SCORES")
-          (read-from-tsv "field_score" fsfname "FIELD_ID" "I" "SCORES_ID")
-          (jdbcd/transaction
-            (load-probe-meta field-meta)))
-        (finally
-          (fs/delete ffname)
-          (fs/delete sfname)
-          (fs/delete fsfname))))))
-
 (def ^:private table-writer #'table-writer-default)
 
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
