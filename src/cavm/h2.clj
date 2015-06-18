@@ -1021,7 +1021,6 @@
     (map (juxt :name :id) ids)))
 
 ;
-;
 
 (def ^:private codes-for-values-query
   (cached-statement
@@ -1047,6 +1046,8 @@
   (when-let [scores (field-bins-query field-id bins)]
     (map #(update-in % [:scores] bytes-to-floats) scores)))
 
+;
+
 (def ^:private has-codes-query
   (cached-statement
     "SELECT EXISTS(SELECT `ordering` FROM `code` WHERE `field_id` = ?) hascodes"
@@ -1054,6 +1055,8 @@
 
 (defn has-codes? [field-id]
   (-> (has-codes-query field-id) first :hascodes))
+
+;
 
 (def ^:private has-genes-query
   (cached-statement
@@ -1063,6 +1066,8 @@
 (defn has-genes? [field-id]
   (-> (has-genes-query field-id) first :hasgenes))
 
+;
+
 (def ^:private has-position-query
   (cached-statement
     "SELECT EXISTS(SELECT `bin` FROM `field_position` WHERE `field_id` = ?) hasposition"
@@ -1070,6 +1075,8 @@
 
 (defn has-position? [field-id]
   (-> (has-position-query field-id) first :hasposition))
+
+;
 
 (defn update-codes-cache [codes field-id new-bins cache]
   (match [codes]
@@ -1084,7 +1091,6 @@
                 missing (filterv #(not (contains? code-cache %)) values)]
             (into code-cache (codes-for-values field-id missing)))]))
 
-; XXX Use a variant to id b-tree fields in cache.
 (defn update-cache [cache field-id rows]
   (let [bins (distinct (map #(quot % bin-size) rows))
         missing (filterv #(not (contains? cache %)) bins)]
@@ -1096,6 +1102,11 @@
         (update-in new-cache [:codes] update-codes-cache field-id missing new-cache))
        cache)))
 
+;
+;
+; return fn of rows->vals
+;
+
 (defmulti fetch-rows
   (fn [cache rows field-id]
     (cond
@@ -1103,7 +1114,8 @@
       (has-position? field-id) :position
       :else :binned)))
 
-; return fn of rows->vals
+; binned fields
+
 (defmethod fetch-rows :binned [cache rows field-id]
   (swap! cache update-in [field-id] update-cache field-id rows)
   (let [f (@cache field-id)
@@ -1127,6 +1139,8 @@
   (->> (field-genes-by-row-query rows field-id)
       (map (juxt :row :gene))))
 
+; gene fields
+
 (defmethod fetch-rows :gene [cache rows field-id]
   (into {} (field-genes-by-row field-id rows)))
 
@@ -1137,6 +1151,8 @@
     WHERE `field_id` = ?"
     true))
 
+; position fields
+
 (defn field-position-by-row [field-id rows]
   (->> (field-position-by-row-query rows field-id)
       (map (fn [{:keys [row] :as values}] [row (dissoc values :row)]))))
@@ -1144,6 +1160,9 @@
 (defmethod fetch-rows :position [cache rows field-id]
   (into {} (field-position-by-row field-id rows)))
 
+;
+; Indexed field lookups (gene & position)
+;
 
 (defn has-index? [fields field]
   (let [field-id (fields field)]
@@ -1177,7 +1196,7 @@
 (defn fetch-indexed [fields field values]
   (let [field-id (fields field)]
     (cond
-      (has-position? field-id) #{}) ; XXX fix this!
+      (has-position? field-id) #{}) ; XXX fix this! Maybe should be a bin query?
       (has-genes? field-id) (fetch-genes field-id values)))
 
 ;
@@ -1195,7 +1214,7 @@
 
 ; XXX Look at memory use of pulling :gene field. If it's not
 ; interned, it could be expensive.
-
+; XXX Map keywords to strings, for dataset & field names?
 ; XXX Add some param guards, esp. unknown field.
 (defn eval-sql [{[from] :from where :where select :select :as exp}]
   (let [{dataset-id :id N :rows} (dataset-by-name from :id :rows)
@@ -1208,6 +1227,10 @@
                        :fetch-indexed (partial fetch-indexed fields)
                        :indexed? (partial has-index? fields)} exp)))
 
+;(jdbcd/with-connection @(:db cavm.core/testdb)
+;   (eval-sql {:select ["sampleID"] :from ["BRCA1"] :where [:in "sampleID"
+;                                                            ["HG00122" "NA07056" "HG01870" "NA18949" "HG02375"
+;                                                             "HG00150" "NA18528" "HG02724"]]}))
 
 ;
 ;
@@ -1277,6 +1300,9 @@
   (run-query [this query]
     (jdbcd/with-connection @(:db this)
       (run-query query)))
+  (column-query [this query]
+    (jdbcd/with-connection @(:db this)
+      (eval-sql query)))
   (fetch [this reqs]
     (jdbcd/with-connection @(:db this)
       (doall (genomic-source reqs))))

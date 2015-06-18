@@ -93,6 +93,7 @@
 ; convert as necessary. Is there a protocol we can extend?
 (defn functions [db]
   {'fetch #(p ::fetch (map vec (apply concat (map collect (cdb/fetch db %))))) ; XXX concat? see below
+   'xena-query #(p ::query (cdb/column-query db %))
    'query #(p ::query (cdb/run-query db %))})
 
 ; XXX concat is copied from cavm.query.sources. This is something to do with

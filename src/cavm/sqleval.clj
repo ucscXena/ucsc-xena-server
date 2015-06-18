@@ -57,6 +57,7 @@
            (mapv col rows)))
        fields))
 
+; XXX Add some param guards, esp. rows is a sorted-set, keys in store, select is vec of string.
 (defn evaluate [rows store {:keys [select where]}]
   (let [result-rows (restrict rows rows store where)]
     (zipmap select (project result-rows store select))))

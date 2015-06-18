@@ -19,6 +19,8 @@
                  <mname> --- the (unique) name of the dataset.")
   (run-query [this query] "Execute a sql query.
                           <query> is a honeysql map.")
+  (column-query [this query] "Execute a sql query against abstract column store.
+                          <query> is a honeysql map.")
   (fetch [this reqs] "Retrieve rows from specified fields in a dataset,
                      matching a list of sampleIDs, as an array of floats.
 
