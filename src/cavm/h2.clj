@@ -1144,13 +1144,6 @@
 (defmethod fetch-rows :position [cache rows field-id]
   (into {} (field-position-by-row field-id rows)))
 
-; might want to use a reader literal for field names, so we
-; find them w/o knowing syntax.
-(defn collect-fields [exp]
-  (match [exp]
-         [[:in field _]] [field]
-         [[:and & subexps]] (mapcat collect-fields subexps)
-         [[:or & subexps]] (mapcat collect-fields subexps)))
 
 (defn has-index? [fields field]
   (let [field-id (fields field)]
@@ -1186,6 +1179,19 @@
     (cond
       (has-position? field-id) #{}) ; XXX fix this!
       (has-genes? field-id) (fetch-genes field-id values)))
+
+;
+; sql eval methods
+;
+
+; might want to use a reader literal for field names, so we
+; find them w/o knowing syntax.
+(defn collect-fields [exp]
+  (match [exp]
+         [[:in field _]] [field]
+         [[:and & subexps]] (mapcat collect-fields subexps)
+         [[:or & subexps]] (mapcat collect-fields subexps)
+         [nil] []))
 
 ; XXX Look at memory use of pulling :gene field. If it's not
 ; interned, it could be expensive.

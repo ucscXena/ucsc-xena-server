@@ -47,7 +47,8 @@
   (match [exp]
          [[:and & subexps]] (op-and all rows store subexps)
          [[:or & subexps]]  (op-or all rows store subexps)
-         [[:in field values]] (op-in all rows store field values)))
+         [[:in field values]] (op-in all rows store field values)
+         [nil] rows))
 
 ; XXX profile the map over the col function.
 (defn project [rows {fetch :fetch} fields]
