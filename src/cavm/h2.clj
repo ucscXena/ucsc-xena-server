@@ -11,7 +11,7 @@
   (:require [honeysql.format :as hsqlfmt])
   (:require [honeysql.types :as hsqltypes])
   (:require [clojure.data.json :as json])
-  (:use [cavm.binner :only (calc-bin)])
+  (:require [cavm.binner :refer [calc-bin overlapping-bins]])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable)])
   (:require [cavm.db :refer [XenaDb]])
@@ -1139,6 +1139,29 @@
 (defn fetch-genes [field-id values]
   (into (sorted-set) (field-genes field-id values)))
 
+; position
+
+(def ^:private field-position-one-query
+  (cached-statement
+    "SELECT `row` FROM `field_position`
+    WHERE `field_id` = ? AND `chrom` = ? AND
+    (`bin` >= ? AND `bin` <= ?) AND `chromStart` <= ? AND `chromEnd` >= ?"
+    true))
+
+; [:in "position" [["chr17" 100 20000]]]
+(defn field-position [field-id values]
+  (->>
+    (mapcat (fn [[chr start end]]
+              (let [istart (int start)
+                    iend (int end)
+                    bins (overlapping-bins istart iend)]
+                (mapcat (fn [[s e]] (field-position-one-query field-id chr s e iend istart)) bins)))
+            values)
+    (map :row)))
+
+(defn fetch-position [field-id values]
+  (into (sorted-set) (field-position field-id values)))
+
 ; fetch-indexed doesn't cache, and it's unclear
 ; if we should cache the indexed fields during 'restrict'.
 ; h2 also has caches, so it might be better to rely on them,
@@ -1151,8 +1174,8 @@
 (defn fetch-indexed [fields field values]
   (let [field-id (fields field)]
     (cond
-      (has-position? field-id) #{}) ; XXX fix this! Maybe should be a bin query?
-      (has-genes? field-id) (fetch-genes field-id values)))
+      (has-position? field-id) (fetch-position field-id values)
+      (has-genes? field-id) (fetch-genes field-id values))))
 
 ;
 ; sql eval methods
