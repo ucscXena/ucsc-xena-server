@@ -1123,6 +1123,8 @@
   (let [field-id (fields field)]
     (or (has-genes? field-id) (has-position? field-id))))
 
+; gene
+
 ; Selecting `gene` as well adds a lot to the query time. Might
 ; need it if we need to cache gene names.
 (def ^:private field-genes-query
@@ -1200,7 +1202,6 @@
                                          (into (collect-fields where) select)))
         cache (atom {})
         fetch (fn [rows field] (fetch-rows cache rows (fields field)))]
-    ; XXX project, perhaps in sqleval
   (evaluate (apply sorted-set (range N)) {:fetch fetch
                        :fetch-indexed (partial fetch-indexed fields)
                        :indexed? (partial has-index? fields)} exp)))
@@ -1209,6 +1210,9 @@
 ;   (eval-sql {:select ["sampleID"] :from ["BRCA1"] :where [:in "sampleID"
 ;                                                            ["HG00122" "NA07056" "HG01870" "NA18949" "HG02375"
 ;                                                             "HG00150" "NA18528" "HG02724"]]}))
+
+;(jdbcd/with-connection @(:db cavm.core/testdb)
+;   (eval-sql {:select ["alt"] :from ["BRCA1"] :where [:in "position" [["chr17" 10000 100000000]]]}))
 
 ;
 ;
