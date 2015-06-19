@@ -33,16 +33,21 @@
         end-bin (bit-shift-right (- end 1) first-shift)]
     (find-bin start-bin end-bin offsets)))
 
-
-; Alternative implementation using lazy seqs instead of recur.
-; match is a lazy seq that is nil until start-bin == end-bin.
-;(defn- calc-bin-for-offsets [start end offsets]
-;  (let [start-bin (bit-shift-right start first-shift)
-;        end-bin (bit-shift-right (- end 1) first-shift)
-;        start-bins (iterate #(bit-shift-right % next-shift) start-bin)
-;        end-bins (iterate #(bit-shift-right % next-shift) end-bin)
-;        match (map #(when (= %1 %2) (+ %1 %3)) start-bins end-bins offsets)]
-;    (first (filter identity match)))) ; note that filter is also lazy
-
 (defn calc-bin [start end]
   (calc-bin-for-offsets start end bin-offsets))
+
+; XXX check that we're not off by one when matching.
+(defn- overlapping-bins-for-offsets [start end offsets]
+  (loop [start-bin (bit-shift-right start first-shift)
+         end-bin (bit-shift-right (- end 1) first-shift)
+         [offset & offsets] offsets
+         bins []]
+    (if offset
+      (recur (bit-shift-right start-bin next-shift)
+             (bit-shift-right end-bin next-shift)
+             offsets
+             (conj bins [(+ start-bin offset) (+ end-bin offset)]))
+      bins)))
+
+(defn overlapping-bins [start end]
+  (overlapping-bins-for-offsets start end bin-offsets))
