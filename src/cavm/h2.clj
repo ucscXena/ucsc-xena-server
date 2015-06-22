@@ -1101,7 +1101,7 @@
 
 (def ^:private field-position-by-row-query
   (cached-statement
-    "SELECT `row`, `chrom`, `chromStart`, `chromEnd` FROM `field_position`
+    "SELECT `row`, `chrom`, `chromStart`, `chromEnd`, `strand` FROM `field_position`
     INNER JOIN TABLE(x VARCHAR = (?)) X ON X.x = `row`
     WHERE `field_id` = ?"
     true))
