@@ -1297,6 +1297,11 @@
     (H2Db. db)))
 
 ;
+; The following is deprecated, due to poor performance.  Will be dropped after the next
+; client code release.
+;
+
+;
 ; Support for pulling a row from a blob column. Implements
 ; an LRU cache of retrieved blobs.
 ;
