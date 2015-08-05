@@ -95,7 +95,9 @@
 
 (defn- json-add [acc [file {n "name" t "type" :as metadata}]]
   (if-let [group (and (= t "probeMap") (metadata "group"))]
-    (assoc-in acc [t (str group "::" (metadata ":assembly"))] file)
+    (-> acc
+        (assoc-in [t (str group "::" (metadata ":assembly"))] file)
+        (assoc-in [t n] file))
     (assoc-in acc [t n] file)))
 
 (defn- json-table [json-list]
