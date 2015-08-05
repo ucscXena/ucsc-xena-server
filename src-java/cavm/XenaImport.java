@@ -42,6 +42,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.event.*;
 import java.awt.EventQueue;
+import java.awt.Desktop;
 import java.awt.FileDialog;
 import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
@@ -129,6 +130,8 @@ public class XenaImport implements ActionListener, CohortCallback {
 
 	JButton buttonSelect;
 	JTextArea notifications;
+	JButton openXena;
+	String xenaTarget;
 
 	//format/type area
 	JPanel typePanel;
@@ -215,12 +218,19 @@ public class XenaImport implements ActionListener, CohortCallback {
 
 		//select area
 		JPanel selectPanel = new JPanel();
-		selectPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+		selectPanel.setLayout(new BoxLayout(selectPanel, BoxLayout.PAGE_AXIS));
 		// area to show the file being selected
 		notifications = new JTextArea("");
 		notifications.setBackground(panel.getBackground());
 		notifications.setEditable(false);
 		selectPanel.add(notifications);
+
+		openXena = new JButton("View dataset");
+		openXena.setActionCommand(openXena.getText());
+		openXena.addActionListener(this);
+		openXena.setVisible(false);
+		selectPanel.add(openXena);
+
 		// creates the button for uploading a file and aligns it
 		buttonSelect = new JButton("Import Data");
 		buttonSelect.setActionCommand(buttonSelect.getText());
@@ -671,6 +681,10 @@ public class XenaImport implements ActionListener, CohortCallback {
 
 			textArea(notifications, text,40);
 			buttonSelect.setText("Import More Data");
+			if (Desktop.isDesktopSupported()) {
+			    xenaTarget = url;
+			    openXena.setVisible(true);
+			}
 		}
 		catch(Exception e){
 			notifications.setText("An error occurred 3." + e.toString());
@@ -703,7 +717,15 @@ public class XenaImport implements ActionListener, CohortCallback {
 			resetImport();
 		}
 
+		else if ("View dataset".equals(e.getActionCommand())) {
+			try {
+			    Desktop.getDesktop().browse(new URI(xenaTarget));
+			} catch (IOException ex) { /* TODO: error handling */ }
+			catch (URISyntaxException ex) { /* TODO: error handling */ }
+		}
+
 		else if ("Import Data".equals(e.getActionCommand())) {
+			openXena.setVisible(false);
 			sourceFile= selectFile();
 			if (sourceFile== null) {
 				resetImport();
