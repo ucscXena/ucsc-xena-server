@@ -357,11 +357,13 @@
 ; (logback-config "log" "logback_repl.xml")
 
 ; (def testdb (h2/create-xenadb "test;TRACE_LEVEL_FILE=3"))
+
 ; (def testdb (h2/create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
 ; (def testdetector (apply cr/detector "/inside/home/craft/xena/files" detectors))
 ; (def testloader (cl/loader-agent testdb testdetector "/inside/home/craft/xena/files"))
 ;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
 ; (def app (get-app testdb testloader))
-; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
+; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7321 :join? false}))
 ; (.start server)
+
 ; (.stop server)
