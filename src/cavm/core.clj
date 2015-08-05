@@ -47,6 +47,39 @@
   ;#"https://[-_A-Za-z0-9]+.kilokluster.ucsc.edu|https://genome-cancer.ucsc.edu"
   #".*")
 
+(def public-url "https://genome-cancer.ucsc.edu/")
+(def public-xena (str public-url "proj/public/xena"))
+
+(defn local-url [port] (str "https://local.xena.ucsc.edu:" (inc port)))
+(defn local-xena [port] (str "http://local.xena.ucsc.edu:" port))
+
+(def cohort-query
+  '(map :cohort (query
+                  {:select [:%distinct.cohort]
+                   :from [:dataset]})))
+
+(defn async-post [url post cb]
+  (let [x (agent nil)]
+    (set-error-handler! x (fn [_ err] (println "Error" err) (cb [])))
+    (send-off x (fn [_]
+                  (cb (:body (client/post url {:body
+                                               (str post)
+                                               :as :json
+                                               :content-type
+                                               "text/plain"})))))))
+
+; need to block in an agent & then invoke callback
+(defn retrieve-cohorts [port cb]
+  (let [x (atom [])
+        update (fn [cohorts]
+                 (swap! x (fn [all]
+                            (let [ret (conj all cohorts)]
+                              (when (= 2 (count ret))
+                                (cb (filter identity (apply concat ret))))
+                              ret))))]
+    (async-post (str public-xena "/data/") cohort-query update)
+    (async-post (str (local-xena port) "/data/") cohort-query update)))
+
 (defn- wrap-access-control [handler]
   (fn [request]
     (let [response (handler request)]
@@ -241,6 +274,10 @@
     (update-in p-opts [:errors] conj "--certfile and --keyfile must be used together")
     p-opts))
 
+(defn notify-ui-cohorts [cb cohorts]
+  (.callback cb (into-array String
+                            (sort-by #(.toLowerCase ^String %) cohorts))))
+
 ; XXX create dir for database as well?
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (validate-certkey (parse-opts args argspec))
@@ -289,9 +326,11 @@
                       (when gui
                         (try
                           (XenaImport/start
-                            (proxy [XenaServer] [] (load [file]
-                                                     (loader (str file))
-                                                     true)))
+                            (proxy [XenaServer] []
+                              (load [file] (loader (str file)) true)
+                              (retrieveCohorts [cb] (retrieve-cohorts port #(notify-ui-cohorts cb %)))
+                              (publicUrl [] public-url)
+                              (localUrl [] (local-url port))))
                           (catch Exception ex
                             (binding [*out* *err*]
                               (println "Failed to start gui. Logging error.")

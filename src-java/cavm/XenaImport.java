@@ -64,19 +64,22 @@ import com.google.gson.stream.JsonWriter;
 import cavm.XenaServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import cavm.CohortCallback;
 
-public class XenaImport implements ActionListener {
+
+public class XenaImport implements ActionListener, CohortCallback {
+	private class DatafileFilter implements FilenameFilter {
+	    public boolean accept(File dir, String name) {
+		return !name.endsWith(".json");
+	    }
+	}
+
 	static final Logger LOG = LoggerFactory.getLogger(XenaImport.class);
 
-	// local host
-	String localHost = "https://local.xena.ucsc.edu:7223";
-
-	String cgi = "https://genome-cancer.ucsc.edu/";
+	XenaServer server;
 
 	// Destination directory
 	String dest = System.getProperty("user.home") + "/xena/files/";
-
-	XenaServer server;
 
 	// meta data
 	Map<String, Object> metadata;
@@ -94,8 +97,9 @@ public class XenaImport implements ActionListener {
 
 	String[] formatStrings =formats.keySet().toArray(new String[formats.size()]);
 
+	String hintString = "Select or Enter your own";
 
-	String[] dataTypeStrings = { "Select or Enter your own",
+	String[] dataTypeStrings = {hintString,
 								 "phenotype",
 								 "copy number",
 							   "DNA methylation",
@@ -140,7 +144,7 @@ public class XenaImport implements ActionListener {
 
 	//cohort
 	JPanel cohortPanel;
-	JTextField cohort;
+	JComboBox<String> cohortList;
 
 	// color
 	JPanel colorPanel;
@@ -272,13 +276,19 @@ public class XenaImport implements ActionListener {
 		// cohort
 		cohortPanel = new JPanel();
 		cohortPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+
 		label = new JTextArea("Cohort",1,11);
 		label.setBackground(panel.getBackground());
 		label.setEditable(false);
-		cohort = new JTextField ("",25);
-		cohort.setEditable(true);
 		cohortPanel.add(label);
-		cohortPanel.add(cohort);
+
+		String[] cohortStrings = {hintString};
+		cohortList = new JComboBox<String>(cohortStrings);
+		cohortList.setMaximumRowCount (20);
+		cohortList.setPrototypeDisplayValue("A cohort name should be about like this");
+		cohortList.addActionListener(this);
+		cohortList.setEditable(true);
+		cohortPanel.add(cohortList);
 		cohortPanel.setVisible(false);
 
 		// color
@@ -423,6 +433,7 @@ public class XenaImport implements ActionListener {
 		// opens the operating system's default file explorer
 		FileDialog fileChooser = new FileDialog((java.awt.Frame) null,
 				"Upload a File to the Cancer Browser", FileDialog.LOAD);
+		fileChooser.setFilenameFilter(new DatafileFilter());
 		fileChooser.setVisible(true);
 
 		String name = fileChooser.getFile();
@@ -436,7 +447,7 @@ public class XenaImport implements ActionListener {
 
 	private void createJSONdataset(String dest, File sourceFile, File probeMapFile) {
 		// the cohort, type, and data subtype of the file
-		String nameOfCohort = cohort.getText();
+		String nameOfCohort = cohortList.getSelectedItem().toString();
 		String nameOfMin = minColor.getText();
 		String nameOfMax = maxColor.getText();
 		String nameOfLabel = displayLabel.getText();
@@ -454,9 +465,14 @@ public class XenaImport implements ActionListener {
 
 		nameOfDescription = nameOfDescription.replace(System.getProperty("line.separator"), " ");
 
-		if (nameOfDataSubType =="Select or Enter your own") {
+		if (nameOfDataSubType == hintString) {
 			nameOfDataSubType="";
 		}
+
+		if (nameOfCohort == hintString) {
+			nameOfCohort = "";
+		}
+
 		if (nameOfAssembly =="Select") {
 			nameOfAssembly="";
 		}
@@ -648,12 +664,10 @@ public class XenaImport implements ActionListener {
 				loadData(destFile);
 			}
 
-			String url = cgi+"proj/site/hgHeatmap-cavm/datapages/?dataset="+sourceFile.getName() +
-				"&host="+ localHost;
+			String url = server.publicUrl() + "proj/site/xena/datapages/?dataset="+sourceFile.getName() +
+				"&host="+ server.localUrl();
 
-			String text = "View data at: "+url+
-				"\n\nIf the above url only shows a blank screen."+
-				"It is likely that you need to click the SHIELD icon if you are using newer chrome or firefox browsers.";
+			String text = "View data at: " + url + "\n";
 
 			textArea(notifications, text,40);
 			buttonSelect.setText("Import More Data");
@@ -670,6 +684,11 @@ public class XenaImport implements ActionListener {
 		}
 	}
 
+	public void callback(String[] cohorts) {
+	    for (int i = 0; i < cohorts.length; ++i) {
+		cohortList.addItem(cohorts[i]);
+	    }
+	}
 
 	public void actionPerformed (ActionEvent e) {
 		if ("Close".equals(e.getActionCommand())) {
@@ -697,7 +716,6 @@ public class XenaImport implements ActionListener {
 				Type type = new TypeToken<Map<String, Object>>(){}.getType();
 				formatList.setSelectedIndex(0);
 				dataTypeList.setSelectedIndex(0);
-				cohort.setText("");
 				displayLabel.setText(sourceFile.getName());
 				description.setText("");
 				mappingNotifications.setText("");
@@ -748,7 +766,7 @@ public class XenaImport implements ActionListener {
 							metadata.remove("dataSubType");
 						}
 		 				if (metadata.containsKey("cohort")){
-							cohort.setText(metadata.get("cohort").toString());
+							cohortList.setSelectedItem(metadata.get("cohort").toString());
 							metadata.remove("cohort");
 						}
 						if (metadata.containsKey("min")){
@@ -801,6 +819,7 @@ public class XenaImport implements ActionListener {
 				}
 				importSubPanels(true);
 				optionalPanels();
+				server.retrieveCohorts(this);
 			}
 		}
 		else if ("Find mapping file".equals(e.getActionCommand())) {
