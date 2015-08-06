@@ -579,6 +579,7 @@
           row-count (atom 0)
           data (matrix-fn)
           warnings (atom (meta data))
+          last-log (atom 0)
           inserts (lazy-mapcat #(do
                                   (swap! row-count max (count (force (:rows %))))
                                   (load-field-feature
@@ -592,7 +593,10 @@
         (jdbcd/transaction
           (doseq [[insert-type values] insert-batch]
             (when (= :insert-field insert-type)
-              (trace "writing" (:name values)))
+              (let [t (System/currentTimeMillis)]
+                (when (> (- t @last-log) 10000)
+                  (trace "writing" (:name values))
+                  (reset! last-log t))))
             (let [values (run-delays values)
                   values (if (and (= :insert-field insert-type)
                                   (> (.length ^String (:name values)) max-probe-length))
