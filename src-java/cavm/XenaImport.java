@@ -699,9 +699,23 @@ public class XenaImport implements ActionListener, CohortCallback {
 	}
 
 	public void callback(String[] cohorts) {
-	    for (int i = 0; i < cohorts.length; ++i) {
-		cohortList.addItem(cohorts[i]);
+	    // Combine returned list + currently selected value,
+	    // make unique & sort.
+	    String selected = cohortList.getSelectedItem().toString();
+	    ArrayList<String> list = new ArrayList<String>(Arrays.asList(cohorts));
+	    if (selected != hintString) {
+		list.add(selected);
 	    }
+	    ArrayList<String> unique = new ArrayList<String>(new HashSet<String>(list));
+	    Collections.sort(unique, String.CASE_INSENSITIVE_ORDER);
+
+
+	    cohortList.removeAllItems();
+	    cohortList.addItem(hintString);
+	    for (int i = 0; i < unique.size(); ++i) {
+		cohortList.addItem(unique.get(i));
+	    }
+	    cohortList.setSelectedItem(selected);
 	}
 
 	public void actionPerformed (ActionEvent e) {
