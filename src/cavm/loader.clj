@@ -78,7 +78,7 @@
 
   [db detector docroot]
   (let [a (agent nil)]
-    (fn [filename & [{:keys [delete] :as opts}]]
+    (fn [filename & [{:keys [delete always]}]]
       (let [filename (fs/with-cwd docroot (fs/file filename))]
         (if delete
           (send-off a (fn [n]
@@ -95,7 +95,7 @@
                         (let [t (read-string
                                   (with-out-str
                                     (time (try
-                                            (loader db detector docroot filename opts)
+                                            (loader db detector docroot filename always)
                                             (catch Exception e (log-error filename e))))))]
                           (info (str "Loaded " filename ", " t)))
                         nil)))))))
