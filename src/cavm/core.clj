@@ -60,7 +60,7 @@
 
 (defn async-post [url post cb]
   (let [x (agent nil)]
-    (set-error-handler! x (fn [_ err] (println "Error" err) (cb [])))
+    (set-error-handler! x (fn [_ err] (error err "Fetching cohort list") (cb [])))
     (send-off x (fn [_]
                   (cb (:body (client/post url {:body
                                                (str post)
