@@ -470,14 +470,18 @@
                                        tlist ilist plist))
                            (tsv-rows in))))})))
 
-(defn normalize-column-name [patterns col]
-  (if-let [[pat canon] (first (filter #(re-matches (first %) col) patterns))]
-    canon
-    col))
+(defn normalize-column-name [patterns col fixed]
+  (if fixed
+    fixed
+    (if-let [[pat canon] (first (filter #(re-matches (first %) col) patterns))]
+      canon
+      col)))
 
 ; Add default pattern
-(defn columns-from-header [header patterns]
-  (map #(normalize-column-name patterns %) (tabbed header)))
+(defn columns-from-header [patterns header fixed-columns]
+  (map #(normalize-column-name patterns %1 %2)
+       (tabbed header)
+       (concat fixed-columns (repeat nil))))
 
 (defn pick-header
   "Pick first non-blank line. Return index and line"
@@ -566,13 +570,12 @@
       :category)))
 
 
-; drop default-columns
 (defn- tsv-data
   "Return the fields of a tsv file."
-  [start-index columns default-columns column-types in]
+  [start-index columns fixed-columns column-types in]
   (let [[header-i header-content] (pick-header (line-seq ((:reader in))))
         in (drop-from-reader in (inc header-i))
-        header (-> (columns-from-header (drop-hash header-content) columns)
+        header (-> (columns-from-header columns (drop-hash header-content) fixed-columns)
                     (#(for [[c i] (map vector % (range))]
                         {:header c
                          :type (or (column-types c) (guess-column-type in i))
@@ -621,8 +624,22 @@
    #"(?i)rna[-_ ]*v?af" :rna-vaf
    #"(?i)amino[-_ ]*acid[-_ ]*(change)?" :amino-acid})
 
-(def ^:private mutation-default-columns
-  [:sampleID :chrom :chromStart :chromEnd :genes :ref :alt :effect :dna-vaf :rna-vaf :amino-acid])
+(def mutation-required-columns
+  #{"sampleID" "position" "ref" "alt"})
+
+; This could be generalized by calling from tsv-data &
+; passing in the require columns.
+(defn enforce-mutation-fields [fields]
+  (let [field-set (set (map :field fields))]
+    (when
+      (not
+        (clojure.set/subset? mutation-required-columns field-set))
+      (throw (IllegalArgumentException. ^String
+                                        (str "Missing fields "
+                                             (s/join " " (map name (clojure.set/difference
+                                                                     mutation-required-columns
+                                                                     field-set)))))))
+    fields))
 
 (defn mutation-file
   "Return a map describing a cgData mutation file. This will read
@@ -633,12 +650,12 @@
         refs (references docroot file metadata)]
     {:metadata metadata
      :refs refs
-     :data-fn (fn [in] (tsv-data
-                         start-index
-                         mutation-columns
-                         mutation-default-columns
-                         mutation-column-types
-                         in))}))
+     :data-fn (fn [in] (enforce-mutation-fields (tsv-data
+                                                  start-index
+                                                  mutation-columns
+                                                  [:sampleID]
+                                                  mutation-column-types
+                                                  in)))}))
 
 ;
 ; genomic-segment
@@ -650,9 +667,6 @@
    :chromEnd :float
    :position :position
    :value :float})
-
-(def ^:private genomic-segment-default-columns
-  [:sampleID :chrom :chromStart :chromEnd :strand :value])
 
 (def genomic-segment-columns
   {#"(?i)sampleID" :sampleID
@@ -675,7 +689,7 @@
      :data-fn (fn [in] (tsv-data
                          start-index
                          genomic-segment-columns
-                         genomic-segment-default-columns
+                         []
                          genomic-segment-column-types
                          in))}))
 ;
@@ -693,9 +707,6 @@
    :blockCount :category
    :blockSizes :category
    :blockStarts :category})
-
-(def ^:private probemap-default-columns
-  [:name :genes :chrom :chromStart :chromEnd :strand])
 
 (def probemap-columns
   {#"(?i)chr(om)?" :chrom
@@ -726,7 +737,7 @@
      :data-fn (fn [in] (tsv-data
                          start-index
                          probemap-columns
-                         probemap-default-columns
+                         []
                          probemap-column-types
                          in))}))
 ;
@@ -777,10 +788,6 @@
    #"(?i)cdsEndStat" :cdsEndStat
    #"(?i)exonFrames" :exonFrames})
 
-(def ^:private gene-pred-default-columns
-  [:bin :name :strand :chrom :txStart :txEnd :cdsStart :cdsEnd :exonCount
-   :exonStarts :exonEnds :score :name2 :cdsStartStat :cdsEndStat :exonFrames])
-
 (defn gene-pred-file
   "Return a map describing a genePred(Ext) file. This will read
   any assoicated json."
@@ -793,7 +800,7 @@
      :data-fn (fn [in] (tsv-data
                          start-index
                          gene-pred-columns
-                         gene-pred-default-columns
+                         []
                          gene-pred-column-types
                          in))}))
 
