@@ -1,3 +1,4 @@
-sample1	chr5	100	102	FOXM1	G	T	missense_variant	0.4	NA	F1384L
-sample1	chr3	200	201	CUL1	G	A	frameshift_variant	0.2	NA	R151W
-sample2	chr7	300	303	CUL2	C	T	missense_variant	0.1	NA	R1011K
+sample	chrom	user-field	user-field2	start	end	gene	ref	alt	effect	dna-vaf	rna-vaf	amino-acid
+sample1	chr5	red	1.1	100	102	FOXM1	G	T	missense_variant	0.4	NA	F1384L
+sample1	chr3	blue	2.2	200	201	CUL1	G	A	frameshift_variant	0.2	NA	R151W
+sample2	chr7	green	3.3	300	303	CUL2	C	T	missense_variant	0.1	NA	R1011K

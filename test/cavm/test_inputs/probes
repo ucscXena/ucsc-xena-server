@@ -1,3 +1,4 @@
+#id	genes	chrom	start	end	strand
 probe1	GENEA	chr1	100	200	.
 probe2	GENEA	chr2	1000	2000	.
 probe3	GENEB	chr3	10000	20000	.

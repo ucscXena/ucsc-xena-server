@@ -470,18 +470,28 @@
                                        tlist ilist plist))
                            (tsv-rows in))))})))
 
+(defn normalize-column-name [patterns col]
+  (if-let [[pat canon] (first (filter #(re-matches (first %) col) patterns))]
+    canon
+    col))
+
+; Add default pattern
 (defn columns-from-header [header patterns]
-  (when header
-    (map (fn [c] (second (first (filter #(re-matches (first %) c) patterns))))
-         (tabbed header))))
+  (map #(normalize-column-name patterns %) (tabbed header)))
 
 (defn pick-header
-  "Pick first non-blank line if it starts with #. Don't scan more
-  than 20 lines."
+  "Pick first non-blank line. Return index and line"
   [lines]
-  (when-let [^String header (first (filter not-blank? (take 20 lines)))]
-    (when (comment? header)
-      (subs header (inc (.indexOf header "#"))))))
+  (first (keep-indexed
+           (fn [i line]
+             (when (not-blank? line)
+               [i line]))
+           lines)))
+
+(defn drop-hash
+  "Drop leading hash, e.g. in tsv header"
+  [s]
+  (clojure.string/replace s #"^\s*#" ""))
 
 (def ^:private position-columns #{:chrom :chromStart :chromEnd :strand})
 
@@ -538,14 +548,34 @@
   (let [rs (force rows)]
     (into (empty rs) (map rs order))))
 
+; Modify multireader to drop c lines
+(defn- drop-from-reader [mr c]
+  (assoc mr :reader (fn []
+                     (let [reader ((:reader mr))]
+                       (doseq [_ (range c)]
+                         (.readLine ^java.io.BufferedReader reader))
+                       reader))))
+
+(defn guess-column-type [in i]
+  (try
+    (do
+      (doall (take 20 (map #(parseFloatNA (get % i ""))
+                           (tsv-rows in))))
+      :float)
+    (catch NumberFormatException e
+      :category)))
+
+
+; drop default-columns
 (defn- tsv-data
   "Return the fields of a tsv file."
   [start-index columns default-columns column-types in]
-  (let [header (-> (or (columns-from-header (pick-header (line-seq ((:reader in)))) columns)
-                        default-columns)
+  (let [[header-i header-content] (pick-header (line-seq ((:reader in))))
+        in (drop-from-reader in (inc header-i))
+        header (-> (columns-from-header (drop-hash header-content) columns)
                     (#(for [[c i] (map vector % (range))]
                         {:header c
-                         :type (column-types c)
+                         :type (or (column-types c) (guess-column-type in i))
                          :start-index start-index
                          :i i}))
                     (find-position-fields start-index)

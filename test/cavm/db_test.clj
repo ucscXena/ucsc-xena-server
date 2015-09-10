@@ -695,6 +695,25 @@
          (into [])
          (map (comp codes int)))))
 
+(defn get-float [db table field samples]
+  (let [field-id (->> {:select [:field.id]
+                       :from [:dataset]
+                       :left-join [:field [:= :dataset.id :dataset_id]]
+                       :where [:and
+                               [:= :field.name field]
+                               [:= :dataset.name table]]}
+                      (cdb/run-query db)
+                      (first)
+                      (:id))]
+    (->> [{:table table
+           :columns [field]
+           :samples samples}]
+         (cdb/fetch db)
+         (first)
+         (#(% :data))
+         (#(% field))
+         (into []))))
+
 (defn mutation1 [db]
   (ct/testing "cgdata mutation"
     (loader db detector docroot "test/cavm/test_inputs/mutation")
@@ -702,6 +721,8 @@
           reference (get-categorical db "mutation" "ref" ["sample1" "sample2"])
           alt (get-categorical db "mutation" "alt" ["sample1" "sample2"])
           amino-acid (get-categorical db "mutation" "amino-acid" ["sample1" "sample2"])
+          user-field (get-categorical db "mutation" "user-field" ["sample1" "sample2"])
+          user-field2 (get-float db "mutation" "user-field2" ["sample1" "sample2"])
           dataset (first (cdb/run-query db {:select [:*] :from [:dataset]}))]
 
       (ct/is (= effect ["frameshift_variant"
@@ -710,6 +731,8 @@
       (ct/is (= reference ["G" "G" "C"]))
       (ct/is (= alt ["A" "T" "T"]))
       (ct/is (= amino-acid ["R151W" "F1384L" "R1011K"]))
+      (ct/is (= user-field ["blue" "red" "green"]))
+      (ct/is (= user-field2 (map float [2.2 1.1 3.3])))
       (ct/is (= (select-keys dataset [:name :datasubtype])
                 {:name "mutation" :datasubtype "somatic mutation"})))))
 
