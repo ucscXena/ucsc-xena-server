@@ -108,6 +108,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 							   "gene expression",
 								 "gene expression RNAseq",
 								 "gene expression Array",
+								 "miRNA expression",
 								 "somatic mutation (SNP and small INDELs)",
 								 "somatic mutation (gene-level)",
 								 "protein expression RPPA",
@@ -117,7 +118,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 	String [] noProbeMapList = {"phenotype","somatic mutation (SNP and small INDELs)"};
 
 	String [] colNormList={"exon expression","gene expression",
-							"gene expression RNAseq","gene expression Array"};
+							"gene expression RNAseq","gene expression Array","miRNA expression"};
 
 	String [] assemblyStrings = {"Select",
 								 "hg19"
@@ -149,11 +150,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 	JPanel cohortPanel;
 	JComboBox<String> cohortList;
 
-	// color
-	JPanel colorPanel;
-	JTextField minColor;
-	JTextField maxColor;
-
 	// display label
 	JPanel displayLabelPanel;
 	JTextField displayLabel;
@@ -167,6 +163,11 @@ public class XenaImport implements ActionListener, CohortCallback {
 	JPanel mappingPanel;
 	JButton mappingButton;
 	JTextArea mappingNotifications;
+
+	// data snippet
+	JPanel dataSnippetPanel;
+	JTextArea dataSnippet;
+	//JTextField minColor;
 
 	//submit
 	JPanel submitPanel;
@@ -200,20 +201,11 @@ public class XenaImport implements ActionListener, CohortCallback {
 		menuItem.addActionListener(this);
 		fileMenu.add(menuItem);
 
-		/*
-		menuItem =new JMenuItem("Quit");
-		menuItem.setAccelerator(KeyStroke.getKeyStroke( KeyEvent.VK_Q, ActionEvent.META_MASK));
-		menuItem.addActionListener(this);
-		fileMenu.add(menuItem);
-		*/
-
 		menuBar.add(fileMenu);
 		jfrm.setJMenuBar(menuBar);
 
 		// Panel that literally holds everything
 		JPanel panel = new JPanel();
-
-
 		panel.setLayout(new FlowLayout(FlowLayout.LEFT));
 
 		//select area
@@ -259,6 +251,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 		label.setBackground(panel.getBackground());
 		label.setEditable(false);
 		assemblyPanel.add(label);
+
 		//format drop down list
 		assemblyList = new JComboBox<String>(assemblyStrings);
 		assemblyList.setBackground(Color.WHITE);
@@ -301,30 +294,17 @@ public class XenaImport implements ActionListener, CohortCallback {
 		cohortPanel.add(cohortList);
 		cohortPanel.setVisible(false);
 
-		// color
-		colorPanel = new JPanel();
-		colorPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
-		label = new JTextArea("Color\t(optional)",2,11);
-		label.setBackground(panel.getBackground());
-		label.setLineWrap(true);
-		label.setWrapStyleWord(true);
-		label.setEditable(false);
-		colorPanel.add(label);
-		label = new JTextArea("min");
-		label.setBackground(panel.getBackground());
-		label.setEditable(false);
-		minColor = new JTextField ("",3);
-		minColor.setEditable(true);
-		colorPanel.add(label);
-		colorPanel.add(minColor);
-		label = new JTextArea("max");
-		label.setBackground(panel.getBackground());
-		label.setEditable(false);
-		maxColor = new JTextField ("",3);
-		maxColor.setEditable(true);
-		colorPanel.add(label);
-		colorPanel.add(maxColor);
-		colorPanel.setVisible(false);
+		// data snippet
+		dataSnippetPanel = new JPanel();
+		dataSnippetPanel.setLayout(new FlowLayout(FlowLayout.LEFT));
+		//label = new JTextArea("min");
+		//label.setBackground(panel.getBackground());
+		//label.setEditable(false);
+		dataSnippet = new JTextArea ("",10,50);
+		//colorPanel.add(label);
+		dataSnippetPanel.add(dataSnippet);
+		dataSnippetPanel.setVisible(false);
+
 
 		// display label
 		displayLabelPanel = new JPanel();
@@ -397,20 +377,20 @@ public class XenaImport implements ActionListener, CohortCallback {
 		panel.add(typePanel);
 		panel.add(dataTypePanel);
 		panel.add(cohortPanel);
-		panel.add(colorPanel);
 		panel.add(displayLabelPanel);
 		panel.add(descPanel);
 		panel.add(assemblyPanel);
 		panel.add(mappingPanel);
+		panel.add(dataSnippetPanel);
 		panel.add(submitPanel);
 
 		JTabbedPane tabbedPane = new javax.swing.JTabbedPane();
 
 		tabbedPane.addTab("Data Import", panel);
-		panel.setPreferredSize(new Dimension(670, 500));
+		panel.setPreferredSize(new Dimension(670, 600));
 
 		// sets the size of the application
-		jfrm.setSize(720, 600);
+		jfrm.setSize(720, 700);
 
 		// close Application
 		jfrm.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -458,8 +438,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 	private void createJSONdataset(String dest, File sourceFile, File probeMapFile) {
 		// the cohort, type, and data subtype of the file
 		String nameOfCohort = cohortList.getSelectedItem().toString();
-		String nameOfMin = minColor.getText();
-		String nameOfMax = maxColor.getText();
 		String nameOfLabel = displayLabel.getText();
 		String nameOfDescription = description.getText();
 		String nameOfFormat = formatList.getSelectedItem().toString();
@@ -488,20 +466,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 		}
 
 		if (!nameOfCohort.equals("")) metadata.put("cohort", nameOfCohort);
-		if (!nameOfMin.equals("")) {
-			try {
-				metadata.put("min",Float.parseFloat(nameOfMin));
-			}
-			catch (NumberFormatException e) {
-			}
-		}
-		if (!nameOfMax.equals("")) {
-			try {
-				metadata.put("max",Float.parseFloat(nameOfMax));
-			}
-			catch (NumberFormatException e) {
-			}
-		}
 		if (!nameOfLabel.equals("")) metadata.put("label", nameOfLabel);
 		if (!nameOfDescription.equals("")) metadata.put("description", nameOfDescription);
 		if (!nameOfDataSubType.equals("")) metadata.put("dataSubType", nameOfDataSubType);
@@ -593,10 +557,10 @@ public class XenaImport implements ActionListener, CohortCallback {
 		assemblyPanel.setVisible(status);
 		dataTypePanel.setVisible(status);
 		cohortPanel.setVisible(status);
-		colorPanel.setVisible(status);
 		displayLabelPanel.setVisible(status);
 		descPanel.setVisible(status);
 		mappingPanel.setVisible(status);
+		dataSnippetPanel.setVisible(status);
 		submitPanel.setVisible(status);
 		return;
 	}
@@ -615,15 +579,12 @@ public class XenaImport implements ActionListener, CohortCallback {
 		//id gene mapping
 		if (nameOfFormat.equals(mutationFormat)){ // mutationVector
 			mappingPanel.setVisible(false);
-			colorPanel.setVisible(false);
 		}
 		else if (Arrays.asList(noProbeMapList).contains(nameOfDataSubType)){
 			mappingPanel.setVisible(false);
-			colorPanel.setVisible(false);
 		}
 		else{
 			mappingPanel.setVisible(true);
-			colorPanel.setVisible(true);
 		}
 
 		//data type
@@ -722,11 +683,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 		if ("Close".equals(e.getActionCommand())) {
 			onExit();
 		}
-		/*
-		else if ("Quit".equals(e.getActionCommand())) {
-			onExit();
-		}
-		*/
+
 		else if ("Cancel".equals(e.getActionCommand())) {
 			resetImport();
 		}
@@ -805,14 +762,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 							cohortList.setSelectedItem(metadata.get("cohort").toString());
 							metadata.remove("cohort");
 						}
-						if (metadata.containsKey("min")){
-							minColor.setText(metadata.get("min").toString());
-							metadata.remove("min");
-						}
-						if (metadata.containsKey("max")){
-							maxColor.setText(metadata.get("max").toString());
-							metadata.remove("max");
-						}
 						if (metadata.containsKey("label")){
 							displayLabel.setText(metadata.get("label").toString());
 							metadata.remove("label");
@@ -853,6 +802,27 @@ public class XenaImport implements ActionListener, CohortCallback {
 	 				catch (Exception exp) {
 	 				}
 				}
+
+				//data snippet
+				try {
+					FileInputStream fstream = new FileInputStream(sourceFile.getPath());
+					BufferedReader br = new BufferedReader(new InputStreamReader(fstream));
+					StringBuilder sb = new StringBuilder();
+    			String line = br.readLine();
+    			int counter=0;
+
+    			while ( (line != null) && (counter < 10)) {
+        		counter = counter + 1;
+        		sb.append(line);
+        		sb.append(System.lineSeparator());
+        		line = br.readLine();
+    			}
+    			String everything = sb.toString();
+    			dataSnippet.setText(everything);
+    			br.close();
+    		} catch (Exception exp){
+    		}
+
 				importSubPanels(true);
 				optionalPanels();
 				server.retrieveCohorts(this);
