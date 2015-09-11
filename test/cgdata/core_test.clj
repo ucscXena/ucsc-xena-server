@@ -43,22 +43,22 @@
 (ct/deftest test-mutation-header
   (ct/is (=
           [:chrom :chromStart :chromEnd]
-          (cgdata/columns-from-header " chrom\tstart\tend" cgdata/mutation-columns)))
+          (cgdata/columns-from-header cgdata/mutation-columns " chrom\tstart\tend" [])))
   (ct/is (=
           [:genes :ref :alt]
-          (cgdata/columns-from-header "genes \tref\talternate" cgdata/mutation-columns)))
+          (cgdata/columns-from-header cgdata/mutation-columns "genes \tref\talternate" [])))
   (ct/is (=
           [:effect :dna-vaf :rna-vaf]
-          (cgdata/columns-from-header " effect \tDNA-VAF\tRNAVAF" cgdata/mutation-columns))))
+          (cgdata/columns-from-header cgdata/mutation-columns " effect \tDNA-VAF\tRNAVAF" []))))
 
 (ct/deftest test-pick-header
   (ct/is (=
-          " foo bar"
+          [2 " # foo bar"]
           (cgdata/pick-header [" " " \t" " # foo bar"]))))
 
 (ct/deftest test-pick-header-empty
   (ct/is (=
-          nil
+          [2 "12\t4.4"]
           (cgdata/pick-header [" " "\t" "12\t4.4"]))))
 
 (ct/deftest test-find-position-field
