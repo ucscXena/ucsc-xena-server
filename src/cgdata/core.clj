@@ -444,7 +444,7 @@
      :rows (delay (:values @row-vals))}))
 
 (let [parsers
-      {:chrom s/trim
+      {:chrom #(s/replace (s/trim %) #"^([0-9]+)$" "chr$1")
        :chromStart #(. Long parseLong (s/trim %))
        :chromStart0 #(+ (. Long parseLong (s/trim %)) 1)
        :chromEnd #(. Long parseLong (s/trim %))
@@ -468,7 +468,7 @@
                      (map #(into {}
                                  (mapv (fn [t i parse] [t (parse (get % i ""))])
                                        tlist ilist plist))
-                           (tsv-rows in))))})))
+                          (tsv-rows in))))})))
 
 (defn normalize-column-name [patterns col fixed]
   (if fixed
