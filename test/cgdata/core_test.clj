@@ -61,6 +61,17 @@
           [2 "12\t4.4"]
           (cgdata/pick-header [" " "\t" "12\t4.4"]))))
 
+(ct/deftest test-normalize-chrom
+  (ct/is (= "chrX" (cgdata/normalize-chrom "x")))
+  (ct/is (= "chrX" (cgdata/normalize-chrom "X")))
+  (ct/is (= "chrX" (cgdata/normalize-chrom "chrx")))
+  (ct/is (= "chrX" (cgdata/normalize-chrom "chrX")))
+  (ct/is (= "chrX" (cgdata/normalize-chrom "CHRX")))
+  (ct/is (= "chrM" (cgdata/normalize-chrom "m")))
+  (ct/is (= "chrY" (cgdata/normalize-chrom "y")))
+  (ct/is (= "chr1" (cgdata/normalize-chrom "1")))
+  (ct/is (= "chr1" (cgdata/normalize-chrom "CHR1"))))
+
 (ct/deftest test-find-position-field
   (ct/is (= #{{:header :chromStart :i 6}
               {:header :foo :i 3}

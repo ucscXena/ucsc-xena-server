@@ -444,8 +444,15 @@
      :row-val (fn [row] (map (:codes @row-vals) row))
      :rows (delay (:values @row-vals))}))
 
+(defn normalize-chrom [s]
+  (-> (s/trim s)
+      (s/replace  #"^(?i)(chr)?([0-9]+)$" "chr$2")
+      (s/replace  #"^(?i)(chr)?m$" "chrM")
+      (s/replace  #"^(?i)(chr)?y$" "chrY")
+      (s/replace  #"^(?i)(chr)?x$" "chrX")))
+
 (let [parsers
-      {:chrom #(s/replace (s/trim %) #"^([0-9]+)$" "chr$1")
+      {:chrom normalize-chrom
        :chromStart #(. Long parseLong (s/trim %))
        :chromStart0 #(+ (. Long parseLong (s/trim %)) 1)
        :chromEnd #(. Long parseLong (s/trim %))
