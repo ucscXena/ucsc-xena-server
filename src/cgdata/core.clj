@@ -11,6 +11,7 @@
   (:require [cavm.fs-utils :refer [normalized-path relativize]]) ; should copy these fns if releasing cgdata stand-alone
   (:require [cavm.chrom-pos :refer [chrom-pos-vec]]) ; move to this directory?
   (:require [cavm.lazy-utils :refer [consume-vec]])
+  (:require [clojure.set])
   (:gen-class))
 
 ;
