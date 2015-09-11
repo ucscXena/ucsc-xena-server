@@ -12,6 +12,7 @@
   (:require [liberator.core :refer [defresource]])
   (:require [compojure.core :refer [defroutes ANY GET POST]])
   (:require [compojure.route :refer [not-found]])
+  (:require [clojure.java.io :as io])
   (:import (java.io PrintWriter))
   (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
   (:gen-class))
@@ -123,6 +124,8 @@
 
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
+  (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
+       (response/file-response dataset {:root docroot :index-files? false}))
   (GET "/data/:exp" [exp] (expression exp))
   (POST "/data/" r (expression (body-string r)))
   (POST "/update/" [file always delete :as {ip :remote-addr loader :loader}]

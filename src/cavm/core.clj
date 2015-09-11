@@ -112,9 +112,10 @@
    (dorun (map println (datasets)))))
 
 ; XXX add ring jsonp?
-(defn- get-app [db loader]
+(defn- get-app [docroot db loader]
   (-> cavm.views.datasets/routes
       (wrap-trace :header :ui)
+      (attr-middleware :docroot docroot)
       (attr-middleware :db db)
       (attr-middleware :loader loader)
       (wrap-params)
@@ -336,7 +337,7 @@
                               (println "Failed to start gui. Logging error.")
                               (error "Failed to start gui." ex)))))
                       (when (:serve options)
-                        (serv (get-app db loader) host port keystore))))))
+                        (serv (get-app docroot db loader) host port keystore))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]
