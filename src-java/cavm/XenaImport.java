@@ -817,6 +817,9 @@ public class XenaImport implements ActionListener, CohortCallback {
         		sb.append(System.lineSeparator());
         		line = br.readLine();
     			}
+    			if (counter == 10){
+    				sb.append("...");
+    			}
     			String everything = sb.toString();
     			dataSnippet.setText(everything);
     			br.close();
