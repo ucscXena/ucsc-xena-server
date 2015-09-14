@@ -14,6 +14,8 @@
   (:require [ring.middleware.content-type :refer [wrap-content-type]])
   (:require [ring.middleware.not-modified :refer [wrap-not-modified]])
   (:require [ring.middleware.params :refer [wrap-params]])
+  (:require [ring.middleware.multipart-params :refer [wrap-multipart-params]])
+  (:require [ring.middleware.multipart-params.byte-array :refer [byte-array-store]])
   (:require [cavm.views.datasets])
   (:require [ring.middleware.gzip :refer [wrap-gzip]])
   (:require [ring.middleware.stacktrace :refer [wrap-stacktrace-web]]) ; XXX only in dev
@@ -119,6 +121,7 @@
       (attr-middleware :db db)
       (attr-middleware :loader loader)
       (wrap-params)
+      (wrap-multipart-params {:store (byte-array-store)})
       (wrap-resource "public")
       (wrap-content-type)
       (wrap-not-modified)

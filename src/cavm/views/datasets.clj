@@ -15,6 +15,7 @@
   (:require [clojure.java.io :as io])
   (:import (java.io PrintWriter))
   (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
+  (:require [cavm.fs-utils :refer [docroot-path]])
   (:gen-class))
 
 ;
@@ -122,8 +123,21 @@
               (loader f {:always (boolean always) :delete (boolean delete)})))
     "ok"))
 
+(defn upload-files [ip loader docroot file]
+  (when (is-local? ip)
+    (let [files (if (vector? file) file [file])]
+      (doseq [{:keys [bytes filename]} files]
+        ; XXX catch errors & return http code
+        (let [dest (docroot-path docroot filename)]
+          (with-open [w (clojure.java.io/output-stream dest)]
+            (.write w bytes)))))
+    "ok"))
+
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
+  (POST ["/upload/"] [file :as req]
+        (let [{loader :loader docroot :docroot ip :remote-addr} req]
+          (upload-files ip loader docroot file)))
   (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
        (response/file-response dataset {:root docroot :index-files? false}))
   (GET "/data/:exp" [exp] (expression exp))

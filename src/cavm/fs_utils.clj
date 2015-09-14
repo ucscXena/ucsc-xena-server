@@ -25,3 +25,12 @@
     (when-not (fs/child-of? docroot file)
       (throw (IllegalArgumentException. (str file " not in docroot path: " docroot))))
     (apply io/file (drop (count (fs/split docroot)) (fs/split file)))))
+
+(defn docroot-path
+  "Join path with docroot, throwing if result is outside of docroot"
+  [docroot path]
+  (let [docroot (normalized-path docroot)
+        file (normalized-path (fs/file docroot path))]
+    (when-not (fs/child-of? docroot file)
+      (throw (IllegalArgumentException. (str file " not in docroot path: " docroot))))
+    file))
