@@ -119,7 +119,7 @@
 (defn loader-request [ip loader files always delete]
   (when (is-local? ip)
     (future (doseq [f (if (coll? files) files [files])]
-       (loader f {:always (boolean always) :delete (boolean delete)})))
+              (loader f {:always (boolean always) :delete (boolean delete)})))
     "ok"))
 
 ; XXX add the custom pattern #".+" to avoid nil, as above?
