@@ -120,9 +120,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 	String [] colNormList={"exon expression","gene expression",
 							"gene expression RNAseq","gene expression Array","miRNA expression"};
 
-	String [] assemblyStrings = {"Select",
-								 "hg19"
-								};
+	String [] assemblyStrings = {"Select","hg19"};
 
 	File sourceFile;
 	File probeMapFile = null;
@@ -444,6 +442,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 		String nameOfDataSubType = dataTypeList.getSelectedItem().toString();
 		String nameOfAssembly = assemblyList.getSelectedItem().toString();
 
+
 		// rewrite with current date
 		DateFormat df = new SimpleDateFormat("yyyy-MM-dd");
 		Date today = Calendar.getInstance().getTime();
@@ -461,10 +460,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 			nameOfCohort = "";
 		}
 
-		if (nameOfAssembly =="Select") {
-			nameOfAssembly="";
-		}
-
 		if (!nameOfCohort.equals("")) metadata.put("cohort", nameOfCohort);
 		if (!nameOfLabel.equals("")) metadata.put("label", nameOfLabel);
 		if (!nameOfDescription.equals("")) metadata.put("description", nameOfDescription);
@@ -473,7 +468,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 			nameOfFormat = formats.get(nameOfFormat);
 			metadata.put("type", nameOfFormat);
 		}
-		if (assemblyPanel.isVisible() && !nameOfAssembly.equals("")) {
+		if ( nameOfFormat.equals("mutationVector") && (!nameOfAssembly.equals("Select"))) {
 			metadata.put("assembly", nameOfAssembly);
 		}
 
