@@ -29,7 +29,7 @@
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
   (:require [less.awful.ssl :as ssl])
-  (:import cavm.XenaImport cavm.XenaServer cavm.Splash)
+  (:import cavm.XenaImport cavm.XenaServer cavm.Splash cavm.CohortCallback)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
@@ -174,7 +174,7 @@
 
 (defn- filter-hidden
   [s]
-  (filter #(not (.isHidden %)) s))
+  (filter #(not (.isHidden ^java.io.File %)) s))
 
 ; Full reload metadata. The loader will skip
 ; data files with unchanged hashes.
@@ -218,17 +218,13 @@
   (when (not (.exists (io/file dir)))
     (str "Unable to create directory: " dir)))
 
-; XXX should move these to h2.clj
-(def h2-log-level
-  (into {} (map vector [:off :error :info :debug :slf4j] (range))))
-
 (def ^:private default-h2-opts-map
   {:cache_size 65536
    :undo_log 1
    :log 1
    :max_query_timeout 60000
    :multi_threaded "TRUE"
-   :trace_level_file (h2-log-level :slf4j)})
+   :trace_level_file (h2/h2-log-level :slf4j)})
 
 ; Enable transaction log, rollback log, and MVCC (so we can load w/o blocking readers).
 (def ^:private default-h2-opts
@@ -242,7 +238,7 @@
 
 (defn- h2-opts
   "Add default h2 options if none are specified"
-  [database]
+  [^String database]
   (if (= -1 (.indexOf database ";"))
     (str database ";" default-h2-opts)
     database))
@@ -278,7 +274,7 @@
     (update-in p-opts [:errors] conj "--certfile and --keyfile must be used together")
     p-opts))
 
-(defn notify-ui-cohorts [cb cohorts]
+(defn notify-ui-cohorts [^CohortCallback cb cohorts]
   (.callback cb (into-array String
                             (sort-by #(.toLowerCase ^String %) cohorts))))
 
@@ -296,7 +292,7 @@
         keyfile (:keyfile options)
         keystore (if keyfile
                    {:keystore (ssl/key-store keyfile certfile)
-                    :password (String. ssl/key-store-password)}
+                    :password (String. ^chars ssl/key-store-password)}
                    {:keystore (.toString (io/resource "localhost.keystore"))
                     :password  "localxena"})
         database (h2-opts (:database options))]
