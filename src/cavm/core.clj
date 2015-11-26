@@ -4,6 +4,7 @@
   cavm.core
   (:require [clojure.string :as s])
   (:require [cavm.h2 :as h2])
+  (:require [cavm.auth :as auth])
   (:require [clojure.java.io :as io])
   (:require [ring.adapter.jetty :refer [run-jetty]])
   (:require [clojure.data.json :as json])
@@ -20,6 +21,7 @@
   (:require [ring.middleware.gzip :refer [wrap-gzip]])
   (:require [ring.middleware.stacktrace :refer [wrap-stacktrace-web]]) ; XXX only in dev
   (:require [liberator.dev :refer [wrap-trace]])                   ; XXX only in dev
+  (:require [ring.middleware.reload :refer [wrap-reload]]) ; XXX only in dev
   (:require [filevents.core :refer [watch]])
   (:require [cavm.readers :as cr])
   (:require [cavm.loader :as cl])
@@ -29,10 +31,18 @@
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
   (:require [less.awful.ssl :as ssl])
+  (:require [ring.util.response :as response])
+  (:require hiccup.page)
   (:import cavm.XenaImport cavm.XenaServer cavm.Splash cavm.CohortCallback)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
+  (:require crypto.equality)
+  (:require ring.middleware.session)
+  (:require crypto.random)
+  (:import [com.google.api.client.json.gson GsonFactory])
+  (:import [com.google.api.client.http.javanet NetHttpTransport])
+  (:import [com.google.api.client.googleapis.auth.oauth2 GoogleIdToken GoogleIdToken$Payload GoogleIdTokenVerifier GoogleIdTokenVerifier$Builder])
   (:gen-class))
 
 (defn- in-data-path [root path]
@@ -83,13 +93,17 @@
     (async-post (str (local-xena port) "/data/") cohort-query update)))
 
 (defn- wrap-access-control [handler]
-  (fn [request]
-    (let [response (handler request)]
+  (fn [{:keys [request-method] :as request}]
+    (let [response (if (= request-method :options)
+                     (response/response "")
+                     (handler request))]
       (info "request" request)
       (if-let [origin (re-matches trusted-hosts (get-in request [:headers "origin"] ""))]
         (-> response
             (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
-            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api"))
+            (assoc-in [:headers "Access-Control-Expose-Headers"] "Location")
+            (assoc-in [:headers "Access-Control-Allow-Credentials"] "true")
+            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To"))
         response))))
 
 (defn- attr-middleware [app k v]
@@ -97,8 +111,9 @@
     (app (assoc req k v))))
 
 (defn- log-middleware [handler]
-  (fn [{:keys [uri query-string request-method] :as request}]
-    (info "Start:" (.toUpperCase (name request-method)) uri query-string)
+  (fn [{:keys [uri query-string request-method session] :as request}]
+    (info "Start:" (.toUpperCase (name request-method)) uri query-string
+          (or (:email (:user session)) "(no session)"))
     (try
       (let [resp (handler request)]
         (info "End:" uri (:status resp))
@@ -113,22 +128,36 @@
 (comment (defn- print-datasets []
    (dorun (map println (datasets)))))
 
+(defn load-edn-from
+  [filename]
+  (with-open [reader (-> (io/resource filename)
+                         io/reader
+                         java.io.PushbackReader.)]
+    (clojure.edn/read reader)))
+
 ; XXX add ring jsonp?
-(defn- get-app [docroot db loader]
+(defn- get-app [docroot db loader port]
   (-> cavm.views.datasets/routes
+      (auth/wrap-google-authentication
+       (str (local-url port) "/")
+       "/code"
+       (auth/load-users "users.txt")
+       (load-edn-from "auth.config"))
       (wrap-trace :header :ui)
       (attr-middleware :docroot docroot)
       (attr-middleware :db db)
       (attr-middleware :loader loader)
-      (wrap-params)
-      (wrap-multipart-params {:store (byte-array-store)})
       (wrap-resource "public")
       (wrap-content-type)
       (wrap-not-modified)
       (wrap-gzip)
       (log-middleware)
+      ring.middleware.session/wrap-session
+      (wrap-params)
+      (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
-      (wrap-access-control)))
+      (wrap-access-control)
+      (wrap-reload)))
 
 (defn- serv [app host port {:keys [keystore password]}]
   (ring.adapter.jetty/run-jetty app {:host host
@@ -336,7 +365,7 @@
                               (println "Failed to start gui. Logging error.")
                               (error "Failed to start gui." ex)))))
                       (when (:serve options)
-                        (serv (get-app docroot db loader) host port keystore))))))
+                        (serv (get-app docroot db loader port) host port keystore))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]
