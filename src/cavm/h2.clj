@@ -24,7 +24,11 @@
   (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
   (:require [clojure.core.match :refer [match]])
   (:require [cavm.sqleval :refer [evaluate]])
-  (:import [org.h2.jdbc JdbcBatchUpdateException]))
+  (:import [org.h2.jdbc JdbcBatchUpdateException])
+  (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
+
+(def h2-log-level
+  (into {} (map vector [:off :error :info :debug :slf4j] (range))))
 
 ;
 ; Note that "bin" in this file is like a "segement" in the column store
@@ -646,7 +650,7 @@
 (def ^:private table-writer #'table-writer-default)
 
 (let [fmtr (formatter "yyyy-MM-dd hh:mm:ss")]
-  (defn- format-timestamp [timestamp]
+  (defn- format-timestamp ^String [timestamp]
     (unparse fmtr timestamp)))
 
 (defn- fmt-time [file-meta]
@@ -1293,7 +1297,7 @@
     (jdbcd/with-connection @(:db this)
       (doall (genomic-source reqs))))
   (close [this] ; XXX test for pool, or datasource before running?
-    (.close (:datasource @(:db this)) false)))
+    (.close ^ComboPooledDataSource (:datasource @(:db this)) false)))
 
 (defn create-xenadb [& args]
   (let [db (apply create-db args)]

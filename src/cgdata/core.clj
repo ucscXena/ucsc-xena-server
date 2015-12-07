@@ -207,21 +207,19 @@
     Double/NaN
     (Float/parseFloat str)))
 
-(defn- parseChromCSV [str]
+(defn- parseChromCSV-1 [str i]
   (->> str
        csv/parse-csv
        first
        (filter #(not (s/blank? %)))
-       (mapv #(Integer/parseInt (s/trim %)))
+       (mapv #(+ (Integer/parseInt (s/trim %)) i))
        (s/join ",")))
 
+(defn- parseChromCSV [str]
+  (parseChromCSV-1 str 0))
+
 (defn- parseChromCSV0 [str]
-  (->> str
-       csv/parse-csv
-       first
-       (filter #(not (s/blank? %)))
-       (mapv #(+ (Integer/parseInt (s/trim %)) 1))
-       (s/join ",")))
+  (parseChromCSV-1 str 1))
 
 ; If we have no feature description, we try "float". If that
 ; fails, we try "category" by passing in a hint. We do not
@@ -649,21 +647,29 @@
                                                                      field-set)))))))
     fields))
 
-(defn mutation-file
-  "Return a map describing a cgData mutation file. This will read
-  any assoicated json."
-  [file & {docroot :docroot :or {docroot fs/unix-root}}]
+(defn map-file [file {docroot :docroot :or {docroot fs/unix-root}} data-fn]
   (let [metadata (cgdata-meta file)
         start-index (get metadata "start_index" 1)
         refs (references docroot file metadata)]
     {:metadata metadata
      :refs refs
-     :data-fn (fn [in] (enforce-mutation-fields (tsv-data
-                                                  start-index
-                                                  mutation-columns
-                                                  [:sampleID]
-                                                  mutation-column-types
-                                                  in)))}))
+     :data-fn (data-fn start-index)}))
+
+(defn mutation-file
+  "Return a map describing a cgData mutation file. This will read
+  any associated json."
+  [file & args]
+  (map-file
+   file args
+   (fn [start-index]
+     (fn [in]
+       (enforce-mutation-fields
+        (tsv-data
+         start-index
+         mutation-columns
+         [:sampleID]
+         mutation-column-types
+         in))))))
 
 ;
 ; genomic-segment
@@ -684,22 +690,21 @@
    #"(?i)strand" :strand
    #"(?i)value" :value})
 
-; XXX refactor this function pattern. It appears four times.
+(defn column-map-file [file args columns types]
+  (map-file
+   file args
+   (fn [start-index]
+     (fn [in]
+       (tsv-data start-index columns [] types in)))))
+
 (defn genomic-segment-file
   "Return a map describing a cgData genomicSegment file. This will read
-  any assoicated json."
-  [file & {docroot :docroot :or {docroot fs/unix-root}}]
-  (let [metadata (cgdata-meta file)
-        start-index (get metadata "start_index" 1)
-        refs (references docroot file metadata)]
-    {:metadata metadata
-     :refs refs
-     :data-fn (fn [in] (tsv-data
-                         start-index
-                         genomic-segment-columns
-                         []
-                         genomic-segment-column-types
-                         in))}))
+  any associated json."
+  [file & args]
+  (column-map-file
+   file args
+   genomic-segment-columns
+   genomic-segment-column-types))
 ;
 ; probemap
 ;
@@ -732,22 +737,14 @@
    #"(?i)blockSizes" :blockSizes
    #"(?i)blockStarts" :blockStarts})
 
-; XXX refactor this function pattern. It appears three times.
 (defn probemap-file
   "Return a map describing a cgData probemap file. This will read
-  any assoicated json."
-  [file & {docroot :docroot :or {docroot fs/unix-root}}]
-  (let [metadata (cgdata-meta file)
-        start-index (get metadata "start_index" 1)
-        refs (references docroot file metadata)]
-    {:metadata metadata
-     :refs refs
-     :data-fn (fn [in] (tsv-data
-                         start-index
-                         probemap-columns
-                         []
-                         probemap-column-types
-                         in))}))
+  any associated json."
+  [file & args]
+  (column-map-file
+   file args
+   probemap-columns
+   probemap-column-types))
 ;
 ; gene prediction
 ;
@@ -798,19 +795,12 @@
 
 (defn gene-pred-file
   "Return a map describing a genePred(Ext) file. This will read
-  any assoicated json."
-  [file & {docroot :docroot :or {docroot fs/unix-root}}]
-  (let [metadata (cgdata-meta file)
-        start-index (get metadata "start_index" 1)
-        refs (references docroot file metadata)]
-    {:metadata metadata
-     :refs refs
-     :data-fn (fn [in] (tsv-data
-                         start-index
-                         gene-pred-columns
-                         []
-                         gene-pred-column-types
-                         in))}))
+  any associated json."
+  [file & args]
+  (column-map-file
+   file args
+   gene-pred-columns
+   gene-pred-column-types))
 
 ;
 ; cgdata file detector

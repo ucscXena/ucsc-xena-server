@@ -27,6 +27,17 @@ A full list of options can be displayed with
 
     $ java -jar cavm-0.10.0-standalone.jar --help
 
+## Development
+
+Run `lein run` to install dependencies and run the server.  Make sure to
+have at least leiningen 2.4.1 available, otherwise the build process
+will fail.  `lein run -- --help` will explain the additional options.
+
+The server will prompt you to upload some sample data; there're some
+example files linked in the help file (click "Help" in the UCSC Xena
+Client interface and scroll down to "Installing a local Xena Hub to view
+your data from your laptop").
+
 ## License
 
 Copyright © 2015 The Regents of the University of California

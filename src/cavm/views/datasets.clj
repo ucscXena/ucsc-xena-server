@@ -130,7 +130,7 @@
         ; XXX catch errors & return http code
         (let [dest (docroot-path docroot filename)]
           (with-open [w (clojure.java.io/output-stream dest)]
-            (.write w bytes)))))
+            (.write w ^bytes bytes)))))
     "ok"))
 
 ; XXX add the custom pattern #".+" to avoid nil, as above?
