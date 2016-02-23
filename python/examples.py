@@ -4,7 +4,7 @@ import xena_query as xena
 
 huburl = "https://genome-cancer.ucsc.edu/proj/public/xena"
 dataset = "public/TCGA/TCGA.PANCAN.sampleMap/HiSeqV2"
-samples = ["TCGA-44-6778-01","TCGA-44-6778-01"]
+samples = ["TCGA-44-6778-01","TCGA-VM-A8C8-01"]
 identifiers = ["TP53"]
 
 
@@ -21,7 +21,5 @@ print allsamples[:5]
 #Find value matrix of a particular set of samples and identifiers (genes, probes, isoforms)
 values = xena.dataset_probe_values(huburl, dataset, samples, identifiers)
 print values
-#[[10.4169, 10.4169]]
-
-
+#[[10.4169, 9.6591]]
 
