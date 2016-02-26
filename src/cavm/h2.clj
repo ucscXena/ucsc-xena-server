@@ -1211,8 +1211,8 @@
         cache (atom {})
         fetch (fn [rows field] (fetch-rows cache rows (fields field)))]
   (evaluate (apply sorted-set (range N)) {:fetch fetch
-                       :fetch-indexed (partial fetch-indexed fields)
-                       :indexed? (partial has-index? fields)} exp)))
+                                          :fetch-indexed (partial fetch-indexed fields)
+                                          :indexed? (partial has-index? fields)} exp)))
 
 ;(jdbcd/with-connection @(:db cavm.core/testdb)
 ;   (eval-sql {:select ["sampleID"] :from ["BRCA1"] :where [:in "sampleID"
