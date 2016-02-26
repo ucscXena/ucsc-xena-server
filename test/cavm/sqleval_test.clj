@@ -34,19 +34,19 @@
                           (let [r (or rows-in rows)]
                             (zipmap r
                                     (map (data field) r))))}]
-    (ct/is (= (sorted-set 4 5 7)
+    (ct/is (= {"b" [24 25 27]}
               (sqleval/evaluate rows
                                 store
-                                [:in "a" [:e :f :h]])))
-    (ct/is (= (sorted-set 4 5 7)
+                                {:select ["b"] :where [:in "a" [:e :f :h]]})))
+    (ct/is (= {"b" [24 25 27]}
               (sqleval/evaluate rows
                                 store
-                                [:and [:in "a" [:e :f :h]]])))
-    (ct/is (= (sorted-set 4 5)
+                                {:select ["b"] :where [:and [:in "a" [:e :f :h]]]})))
+    (ct/is (= {"a" [:e :f] "b" [24 25]}
               (sqleval/evaluate rows
                                 store
-                                [:and [:in "a" [:e :f :h]] [:in "b" [24 25]]])))
-    (ct/is (= (sorted-set 0 1 4 5 7)
+                                {:select ["a" "b"] :where [:and [:in "a" [:e :f :h]] [:in "b" [24 25]]]})))
+    (ct/is (= {"a" [:a :b :e :f :h] "b" [20 21 24 25 27]}
               (sqleval/evaluate rows
                                 store
-                                [:or [:in "a" [:e :f :h]] [:in "b" [20 21]]])))))
+                                {:select ["a" "b"] :where [:or [:in "a" [:e :f :h]] [:in "b" [20 21]]]})))))
