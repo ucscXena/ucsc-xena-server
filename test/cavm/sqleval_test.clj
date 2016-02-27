@@ -49,4 +49,28 @@
     (ct/is (= {"a" [:a :b :e :f :h] "b" [20 21 24 25 27]}
               (sqleval/evaluate rows
                                 store
-                                {:select ["a" "b"] :where [:or [:in "a" [:e :f :h]] [:in "b" [20 21]]]})))))
+                                {:select ["a" "b"] :where [:or [:in "a" [:e :f :h]] [:in "b" [20 21]]]})))
+    (ct/is (= {"a" [] "b" []}
+              (sqleval/evaluate rows
+                                store
+                                {:select ["a" "b"] :where [:in "a" [:z :y]]})))
+    ))
+
+(ct/deftest limit-test
+  (ct/testing "limit clause")
+  (let [data {"gene" [[:a :b :c] [:a] [:b :c] [:a :c] [:b]]
+              "row" (into [] (range 5))}
+        rows (apply sorted-set (range 5))
+        store {:indexed? #{}
+               :fetch (fn [rows-in field]
+                          (let [r (or rows-in rows)]
+                            (zipmap r
+                                    (map (data field) r))))}]
+    (ct/is (= {"row" [0 1 2] "gene" [[:a :b :c] [:a] [:b :c]]}
+              (sqleval/evaluate rows
+                                store
+                                {:select ["row" "gene"] :where [:in :any "gene" [:a :b]] :limit 3})))
+    (ct/is (= {"row" [1 2 3] "gene" [[:a] [:b :c] [:a :c]]}
+              (sqleval/evaluate rows
+                                store
+                                {:select ["row" "gene"] :where [:in :any "gene" [:a :b]] :limit 3 :offset 1})))))

@@ -57,9 +57,16 @@
            (mapv col rows)))
        fields))
 
+; XXX This could be optimized in a top-level 'or' by early exit.
+; As a subexpression, we can't exit early.
+(defn limit-result [limit offset rows]
+  (let [to-drop (if offset offset 0)]
+    (if limit
+      (take limit (drop to-drop rows))
+      (drop to-drop rows))))
+
 ; XXX Add some param guards, esp. rows is a sorted-set, keys in store, select is vec of string.
-(defn evaluate [rows store {:keys [select where]}]
-  (let [result-rows (restrict rows rows store where)]
-    (if (seq result-rows)
-      (zipmap select (project result-rows store select))
-      '())))
+(defn evaluate [rows store {:keys [select where limit offset]}]
+  (let [result-rows (restrict rows rows store where)
+        limited-rows (limit-result limit offset result-rows)]
+    (zipmap select (project limited-rows store select))))
