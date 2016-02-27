@@ -1100,7 +1100,8 @@
 
 (defn field-genes-by-row [field-id rows]
   (->> (field-genes-by-row-query rows field-id)
-      (map (juxt :row :gene))))
+       (group-by :row)
+       (map (fn [[k rows]] [k (mapv :gene rows)]))))
 
 ; gene fields
 
@@ -1196,6 +1197,7 @@
 (defn collect-fields [exp]
   (match [exp]
          [[:in field _]] [field]
+         [[:in arrmod field _]] [field]
          [[:and & subexps]] (mapcat collect-fields subexps)
          [[:or & subexps]] (mapcat collect-fields subexps)
          [nil] []))

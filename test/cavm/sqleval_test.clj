@@ -56,6 +56,29 @@
                                 {:select ["a" "b"] :where [:in "a" [:z :y]]})))
     ))
 
+(ct/deftest arr-test
+  (ct/testing "array operations")
+  (let [data {"gene" [[:a :b :c] [:a] [:b :c] [:a :c] [:b]]
+              "row" (into [] (range 5))}
+        rows (apply sorted-set (range 5))
+        store {:indexed? #{}
+               :fetch (fn [rows-in field]
+                          (let [r (or rows-in rows)]
+                            (zipmap r
+                                    (map (data field) r))))}]
+    (ct/is (= {"row" [0 1 3] "gene" [[:a :b :c] [:a] [:a :c]]}
+              (sqleval/evaluate rows
+                                store
+                                {:select ["row" "gene"] :where [:in :any "gene" [:a]]})))
+    (ct/is (= {"row" [0 2 3 4]}
+              (sqleval/evaluate rows
+                                store
+                                {:select ["row"] :where [:in :any "gene" [:c :b]]})))
+    (ct/is (= {"row" [2 4]}
+              (sqleval/evaluate rows
+                                store
+                                {:select ["row"] :where [:in :all "gene" [:c :b]]})))))
+
 (ct/deftest limit-test
   (ct/testing "limit clause")
   (let [data {"gene" [[:a :b :c] [:a] [:b :c] [:a :c] [:b]]

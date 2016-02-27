@@ -32,12 +32,22 @@
                 (restrict all acc store subexp)))
             rows subexps)))
 
-(defn op-in [all rows {:keys [fetch indexed? fetch-indexed]} field values]
+; Perform 'in' operator with given compare function.
+(defn op-in-cmp [cmp all rows {:keys [fetch indexed? fetch-indexed]} field values]
   (if (and (= all rows) (indexed? field))
     (fetch-indexed field values)
     (let [col (fetch rows field) ; scan
           s (set values)]
-      (into (sorted-set) (filter #(s (col %)) rows)))))
+      (into (sorted-set) (filter #(cmp s (col %)) rows)))))
+
+; Scalar compare.
+(defn in-set [a-set value] (a-set value))
+; Array 'any' compare.
+(defn any-in-set [a-set arrValue]
+  (some #(a-set %) arrValue))
+; Array 'all' compare.
+(defn all-in-set [a-set arrValue]
+  (every? #(a-set %) arrValue))
 
 ; We optimize lookups over indexed fields, if possible. We only
 ; consider using the index if the list of rows has not already been
@@ -47,8 +57,10 @@
   (match [exp]
          [[:and & subexps]] (op-and all rows store subexps)
          [[:or & subexps]]  (op-or all rows store subexps)
-         [[:in field values]] (op-in all rows store field values)
-         [nil] rows))
+         [[:in field values]] (op-in-cmp in-set all rows store field values)
+         [[:in :all field values]] (op-in-cmp all-in-set all rows store field values)
+         [[:in :any field values]] (op-in-cmp any-in-set all rows store field values)
+         [nil] rows)) ; No 'where' clause.
 
 ; XXX profile the map over the col function.
 (defn project [rows {fetch :fetch} fields]
