@@ -21,7 +21,7 @@
 		">": "&gt;"
 	};
 
-	function makeRequest(url, success, error) {
+	function makeRequest(url, content, success, error) {
 		var httpRequest = new XMLHttpRequest();
 
 		httpRequest.onreadystatechange = function () {
@@ -39,8 +39,9 @@
 			}
 		};
 
-		httpRequest.open('GET', url);
-		httpRequest.send();
+		httpRequest.open('POST', url, true);
+		httpRequest.setRequestHeader("Content-type", "text/plain");
+		httpRequest.send(content);
 	}
 
 	function main() {
@@ -62,7 +63,7 @@
 
 	CodeMirror.commands.xena_run = function (e) {
 		var query = e.getValue();
-		makeRequest("data/" + encodeURIComponent(query),
+		makeRequest("data/", query,
 			function (r) {
 				var pr;
 				try {
