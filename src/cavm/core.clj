@@ -135,14 +135,20 @@
                          java.io.PushbackReader.)]
     (clojure.edn/read reader)))
 
+(defn wrap-authentication [app userauth port]
+  (if userauth
+    (auth/wrap-google-authentication
+      app
+      (str (local-url port) "/") ; XXX local-url? Is this correct?
+      "/code"
+      (auth/load-users "users.txt")
+      (load-edn-from "auth.config"))
+    app))
+
 ; XXX add ring jsonp?
-(defn- get-app [docroot db loader port]
+(defn- get-app [docroot db loader port userauth]
   (-> cavm.views.datasets/routes
-      (auth/wrap-google-authentication
-       (str (local-url port) "/")
-       "/code"
-       (auth/load-users "users.txt")
-       (load-edn-from "auth.config"))
+      (wrap-authentication userauth port)
       (wrap-trace :header :ui)
       (attr-middleware :docroot docroot)
       (attr-middleware :db db)
@@ -240,6 +246,7 @@
    [nil "--certfile FILE" "Cert file to use (requires --keyfile)"]
    [nil "--version" "Print version and exit"]
    ["-j" "--json" "Fix json"]
+   [nil "--userauth" "Enable user-based authentication"]
    ["-t" "--tmp DIR" "Set tmp dir" :default tmp-dir-default]])
 
 (defn- mkdir [dir]
@@ -319,6 +326,7 @@
         gui (:gui options)
         certfile (:certfile options)
         keyfile (:keyfile options)
+        userauth (:userauth options)
         keystore (if keyfile
                    {:keystore (ssl/key-store keyfile certfile)
                     :password (String. ^chars ssl/key-store-password)}
@@ -365,7 +373,7 @@
                               (println "Failed to start gui. Logging error.")
                               (error "Failed to start gui." ex)))))
                       (when (:serve options)
-                        (serv (get-app docroot db loader port) host port keystore))))))
+                        (serv (get-app docroot db loader port userauth) host port keystore))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]
