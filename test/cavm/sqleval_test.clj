@@ -18,11 +18,12 @@
                             (zipmap r
                                     (map (data field) r))))}]
       (ct/is (= (sorted-set 4 5 7)
-                (sqleval/op-in rows
-                               rows
-                               store
-                               "a"
-                               [:e :f :h]))))))
+                (sqleval/op-in-cmp sqleval/in-set
+                                   rows
+                                   rows
+                                   store
+                                   "a"
+                                   [:e :f :h]))))))
 
 (ct/deftest eval-test
   (ct/testing "eval")
