@@ -1211,7 +1211,10 @@
         fields (into {} (fetch-field-ids dataset-id
                                          (into (collect-fields where) select)))
         cache (atom {})
-        fetch (fn [rows field] (fetch-rows cache rows (fields field)))]
+        fetch (fn [rows field]
+                (if (not-empty rows)
+                  (fetch-rows cache rows (fields field))
+                  {}))]
   (evaluate (apply sorted-set (range N)) {:fetch fetch
                                           :fetch-indexed (partial fetch-indexed fields)
                                           :indexed? (partial has-index? fields)} exp)))
