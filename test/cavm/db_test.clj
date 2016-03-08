@@ -802,3 +802,89 @@
         (try (f db) ; 'finally' ensures our teardown always runs
           (finally (cdb/close db)))))))
 
+;
+;
+;
+
+(defn db-in-memory-test-run
+  "Run an in-memory db test case."
+  [fields testfn]
+  (db-fixture
+    db
+    (cdb/write-matrix
+      db "foo"
+      [{:name "foo"
+        :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0)
+        :hash "1234"}]
+      {} (fn [] fields) nil false)
+    (testfn db)))
+
+(defn gene-field [name rows]
+  {:field name
+   :valueType "genes"
+   :row-val identity
+   :rows rows})
+
+(defn category-field [name values]
+  {:rows (range (count values))
+   :field name
+   :valueType "category"
+   :feature {:state values
+             :order (zipmap values (range))}})
+
+(ct/deftest gene-test
+  (let [field0 (gene-field "genes"
+                           [["a"]
+                            ["a" "b"]
+                            ["c"]
+                            ["d" "e"]])
+
+        field1 (category-field "name"
+                               ["probe0"
+                                "probe1"
+                                "probe2"
+                                "probe3"])]
+    (db-in-memory-test-run
+      [field0 field1]
+      (fn [db]
+        (ct/is (= (cdb/column-query db
+                    {:select ["genes"]
+                     :from ["foo"]
+                     :where [:in :any "genes" ["a"]]})
+                  {"genes" [["a"] ["a" "b"]]}))
+        (ct/is (= (cdb/column-query db
+                    {:select ["genes"]
+                     :from ["foo"]
+                     :where [:in :any "genes" ["a" "z"]]})
+                  {"genes" [["a"] ["a" "b"]]}))
+        (ct/is (= (cdb/column-query db
+                    {:select ["name"]
+                     :from ["foo"]
+                     :where [:in :any "genes" ["z"]]})
+                  {"name" []}))))))
+
+;
+; Some experiments with generators for gene fields.
+;
+
+; Generate list of gene names.
+(def gen-genes
+  (gen/such-that not-empty (gen/vector (gen/not-empty gen/string-alpha-numeric))))
+
+; Generate list of genes, and list of rows of genes selected from it, e.g.
+; [["foxm1" "tp53" "her2"] [["foxm1"] ["tp53"] ["foxm1" "tp53"]]]
+(def gen-gene-rows
+  (gen/bind gen-genes
+            (fn [genes] (gen/tuple (gen/return genes)
+                                   (gen/vector (gen/vector (gen/one-of (map gen/return genes))))))))
+
+; Generate field name + rows of genes.
+(def gen-gene-field
+  (gen/fmap #(apply gene-field (% 1)) (gen/tuple gen/string-alpha-numeric gen-gene-rows)))
+
+;(def sql-prop
+;  (prop/for-all [field gen-gene-rows]
+;                (db-in-memory-test-run [field] (fn [db] (ct/is (= 1 1))))))
+
+;(tc/quick-check 100
+;                sql-prop)
