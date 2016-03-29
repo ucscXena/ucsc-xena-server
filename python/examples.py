@@ -3,7 +3,7 @@
 import xena_query as xena
 
 huburl = "https://genome-cancer.ucsc.edu/proj/public/xena"
-dataset = "public/TCGA/TCGA.PANCAN.sampleMap/HiSeqV2"
+dataset = "TCGA/TCGA.PANCAN.sampleMap/HiSeqV2"
 samples = ["TCGA-44-6778-01","TCGA-VM-A8C8-01"]
 identifiers = ["TP53"]
 
@@ -23,3 +23,13 @@ values = xena.dataset_probe_values(huburl, dataset, samples, identifiers)
 print values
 #[[10.4169, 9.6591]]
 
+#Final all the cohorts at a huburl
+allCohorts = xena.all_cohorts(huburl)
+print allCohorts
+#[u'grayBreastCellLines_public', u'NCI60_public', ...]
+
+#Final all samples belong to a cohort at a huburl
+cohort = allCohorts[0]
+cohortSamples = xena.all_samples(huburl, cohort)
+print cohortSamples
+#[u'SUM44PE', u'184A1N4', u'HCC2185', ...]

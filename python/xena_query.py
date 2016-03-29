@@ -87,6 +87,15 @@ cohort_query_str = """
                      :where [:not [:is nil :cohort]]}))
 """
 
+all_samples_query = """
+(map :value (query {:select [:%%distinct.value]
+                    :from [:dataset]
+                    :join [:field [:= :dataset.id :dataset_id]
+                           :code [:= :field_id :field.id]]
+                    :where [:and [:= :cohort %s]
+                                 [:= :field.name "sampleID"]]}))
+"""
+
 datasets_list_in_cohort_str ="""
 (map :name (query {:select [:name :type :datasubtype :probemap :text :status]
       :from [:dataset]
@@ -117,11 +126,15 @@ dataset_samples_str = """
 """
 
 dataset_probe_str = """
-    (fetch [{:table %s
-          :columns %s
-          :samples %s}])
+(fetch [{:table %s
+      :columns %s
+      :samples %s}])
 """
 
+
+def all_samples(host, cohort):
+    """return all the samples belong to a cohort on a hub host"""
+    return json.loads(post(host, all_samples_query % quote(cohort)))
 
 def find_sample_by_field_query(cohort, field, values):
     """Return a xena query which looks up sample ids for the given field=values."""
@@ -140,8 +153,8 @@ def post(url, query):
     result = response.read()
     return result
 
-def find_cohorts(url):
-    """ Return a list of cohorts on a host at a specific url """
+def all_cohorts(url):
+    """ Return a list of cohorts on a host """
     """ return example: ["chinSF2007_public","TCGA.BRCA.sampleMap","cohort3"] """
     return json.loads(post(url,cohort_query_str))
 
