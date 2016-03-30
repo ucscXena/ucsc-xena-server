@@ -101,6 +101,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 	String hintString = "Select or Enter your own";
 
 	String[] dataTypeStrings = {hintString,
+								 "filter",
 								 "phenotype",
 								 "copy number",
 							   "DNA methylation",
@@ -115,12 +116,12 @@ public class XenaImport implements ActionListener, CohortCallback {
 								 "PARADIGM pathway activity"
 								};
 
-	String [] noProbeMapList = {"phenotype","somatic mutation (SNP and small INDELs)"};
+	String [] noProbeMapList = {"phenotype","filter","somatic mutation (SNP and small INDELs)"};
 
 	String [] colNormList={"exon expression","gene expression",
 							"gene expression RNAseq","gene expression Array","miRNA expression"};
 
-	String [] assemblyStrings = {"Select","hg19"};
+	String [] assemblyStrings = {"Select","hg19","hg18"};
 
 	File sourceFile;
 	File probeMapFile = null;
