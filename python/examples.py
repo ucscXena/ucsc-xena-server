@@ -25,11 +25,11 @@ print values
 
 #Final all the cohorts at a huburl
 allCohorts = xena.all_cohorts(huburl)
-print allCohorts
-#[u'grayBreastCellLines_public', u'NCI60_public', ...]
+print allCohorts[:2]
+#[u'grayBreastCellLines_public', u'NCI60_public']
 
 #Final all samples belong to a cohort at a huburl
 cohort = allCohorts[0]
 cohortSamples = xena.all_samples(huburl, cohort)
-print cohortSamples
-#[u'SUM44PE', u'184A1N4', u'HCC2185', ...]
+print cohortSamples[:3]
+#[u'SUM44PE', u'184A1N4', u'HCC2185']

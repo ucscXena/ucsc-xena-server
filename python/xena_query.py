@@ -102,6 +102,11 @@ datasets_list_in_cohort_str ="""
       :where [:= :cohort %s]}))
 """
 
+datasets_list_str ="""
+(map :name (query {:select [:name :type :datasubtype :probemap :text :status]
+      :from [:dataset]}))
+"""
+
 dataset_type_str = """
 (map :type (query {:select [:type]
                    :from [:dataset]
@@ -165,6 +170,10 @@ def dataset_field(host, dataset):
 def datasets_list_in_cohort (host, cohort):
     """return datasets in a cohort"""
     return json.loads(post(host, datasets_list_in_cohort_str % (quote(cohort))))
+
+def datasets_list (host):
+    """return all datasets stored on a host"""
+    return json.loads(post(host, datasets_list_str))
 
 def dataset_samples (host, dataset):
     return json.loads(post(host, dataset_samples_str % (quote(dataset))))
