@@ -71,7 +71,48 @@ import cavm.CohortCallback;
 public class XenaImport implements ActionListener, CohortCallback {
 	private class DatafileFilter implements FilenameFilter {
 	    public boolean accept(File dir, String name) {
-		return !name.endsWith(".json");
+		return (!name.endsWith(".json") &&
+			!name.endsWith("~") &&
+			!name.endsWith(".bam") &&
+			!name.endsWith(".xlsx") &&
+			!name.endsWith(".xls") &&
+			!name.endsWith(".xltx") &&
+			!name.endsWith(".xlt") &&
+			!name.endsWith(".xlsb") &&
+			!name.endsWith(".xlsm") &&
+			!name.endsWith(".xltm") &&
+			!name.endsWith(".xml") &&
+			!name.endsWith(".xlam") &&
+			!name.endsWith(".xla") &&
+			!name.endsWith(".mht") &&
+			!name.endsWith(".prn") &&
+			!name.endsWith(".dif") &&
+			!name.endsWith(".csv") &&
+			!name.endsWith(".htm") &&
+			!name.endsWith(".html") &&
+			!name.endsWith(".rtf") &&
+			!name.endsWith(".pdf") &&
+			!name.endsWith(".PDF") &&
+			!name.endsWith(".svg") &&
+			!name.endsWith(".doc") &&
+			!name.endsWith(".DOC") &&
+			!name.endsWith(".docx") &&
+			!name.endsWith(".ppt") &&
+			!name.endsWith(".pptx") &&
+			!name.endsWith(".key") &&
+			!name.endsWith(".JPG") &&
+			!name.endsWith(".jpg") &&
+			!name.endsWith(".tiff") &&
+			!name.endsWith(".tif") &&
+			!name.endsWith(".png") &&
+			!name.endsWith(".zip") &&
+			!name.endsWith(".gz") &&
+			!name.endsWith(".tgz") &&
+			!name.endsWith(".dmg") &&
+			!name.endsWith(".pkg") &&
+			!name.endsWith(".tar") &&
+			!name.endsWith(".jar")
+			);
 	    }
 	}
 
@@ -86,7 +127,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 	Map<String, Object> metadata;
 
 	String mutationFormat = "Mutation by Position";
-	String snpDataType = "somatic mutation (SNP and small INDELs)";
 
 	HashMap<String, String> formats = new HashMap<String, String>() {
 		{
@@ -104,22 +144,30 @@ public class XenaImport implements ActionListener, CohortCallback {
 								 "filter",
 								 "phenotype",
 								 "copy number",
-							   "DNA methylation",
-							   "exon expression",
-							   "gene expression",
+							   	 "DNA methylation",
+							   	 "exon expression",
+							   	 "gene expression",
 								 "gene expression RNAseq",
 								 "gene expression Array",
 								 "miRNA expression",
 								 "somatic mutation (SNP and small INDELs)",
+								 "somatic mutation (structural variant)",
+								 "somatic mutation (SNP, INDELs and structural variant)",
 								 "somatic mutation (gene-level)",
 								 "protein expression RPPA",
 								 "PARADIGM pathway activity"
 								};
 
-	String [] noProbeMapList = {"phenotype","filter","somatic mutation (SNP and small INDELs)"};
+	String [] noProbeMapList = {
+		"phenotype","filter",
+		"somatic mutation (SNP and small INDELs)",
+		"somatic mutation (structural variant)",
+		"somatic mutation (SNP, INDELs and structural variant)"
+	};
 
 	String [] colNormList={"exon expression","gene expression",
-							"gene expression RNAseq","gene expression Array","miRNA expression"};
+							"gene expression RNAseq","gene expression Array",
+							"miRNA expression"};
 
 	String [] assemblyStrings = {"Select","hg19","hg18"};
 
@@ -581,15 +629,6 @@ public class XenaImport implements ActionListener, CohortCallback {
 		}
 		else{
 			mappingPanel.setVisible(true);
-		}
-
-		//data type
-		if (nameOfFormat.equals(mutationFormat)) {
-			dataTypeList.setSelectedItem(snpDataType);
-			dataTypeList.setEnabled(false);
-		}
-		else {
-			dataTypeList.setEnabled(true);
 		}
 	}
 
