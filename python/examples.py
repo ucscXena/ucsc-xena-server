@@ -28,6 +28,12 @@ allCohorts = xena.all_cohorts(huburl)
 print allCohorts[:2]
 #[u'grayBreastCellLines_public', u'NCI60_public']
 
+#Find all datasts belong to a cohort at a huburl
+cohort = allCohorts[0]
+allDatasets = xena.datasets_list_in_cohort (huburl, cohort)
+print allDatasets[:1]
+#[u'other/grayBreastCellLines_public/grayBreastCellLineExon_genomicMatrix']
+
 #Final all samples belong to a cohort at a huburl
 cohort = allCohorts[0]
 cohortSamples = xena.all_samples(huburl, cohort)
