@@ -5,27 +5,30 @@ A basic query example.
 Queries are scheme expressions.
 
 >>> import xena_query as xena
->>> xena.post("https://genome-cancer.ucsc.edu/proj/public/xena", "(+ 1 2)")
+>>> xena.post("https://ucscpublic.xenahubs.net", "(+ 1 2)")
 '3.0'
 
->>> xena.post("https://genome-cancer.ucsc.edu/proj/public/xena", "(let [x 2 y (+ x 3)] (* x y))")
+>>> xena.post("https://ucscpublic.xenahubs.net", "(let [x 2 y (+ x 3)] (* x y))")
 '10.0'
 
 Find all the identifiers of a dataset
->>> probes = xena.dataset_field("https://genome-cancer.ucsc.edu/proj/public/xena", "public/TCGA/TCGA.PANCAN.sampleMap/HiSeqV2")
+>>> probes = xena.dataset_field("https://tcga.xenahubs.net", "TCGA.PANCAN.sampleMap/HiSeqV2")
 >>> print probes[-10:]
 '[u'ZXDB', u'ZXDC', u'ZYG11A', u'ZYG11B', u'ZYX', u'ZZEF1', u'ZZZ3', u'psiTPTE22', u'sampleID', u'tAKR']'
 
 Find all the samples of a dataset
->>> samples = xena.dataset_samples("https://genome-cancer.ucsc.edu/proj/public/xena", "public/TCGA/TCGA.PANCAN.sampleMap/HiSeqV2")
+>>> samples = xena.dataset_samples("https://tcga.xenahubs.net", "TCGA.PANCAN.sampleMap/HiSeqV2")
 >>> print samples[:5]
 '[u'TCGA-S9-A7J2-01', u'TCGA-G3-A3CH-11', u'TCGA-EK-A2RE-01', u'TCGA-44-6778-01', u'TCGA-VM-A8C8-01']'
 
-Find value matrix of a particular set of samples and identifiers (genes, probes, isoforms)
->>> values = xena.dataset_probe_values("https://genome-cancer.ucsc.edu/proj/public/xena", "public/TCGA/TCGA.PANCAN.sampleMap/HiSeqV2",["TCGA-44-6778-01","TCGA-44-6778-01"],["TP53"])
+Find value matrix of a particular set of samples and identifiers (probes)
+>>> values = xena.dataset_probe_values("https://tcga.xenahubs.net", "TCGA.PANCAN.sampleMap/HiSeqV2",["TCGA-44-6778-01","TCGA-44-6778-01"],["TP53"])
 >>> print values
 [[10.4169, 10.4169]]
 
+Find value matrix of a particular set of samples and genes (identifier to gene mapping exists)
+>>> values = xena.dataset_gene_values("https://tcga.xenahubs.net", "TCGA.PANCAN.sampleMap/HiSeqV2",["TCGA-44-6778-01","TCGA-44-6778-01"],["TP53"])
+>>> print values
 
 Looking up sample ids for the TCGA LGG cohort.
 
@@ -137,6 +140,34 @@ dataset_probe_str = """
 """
 
 
+dataset_gene_probes_str = """
+           (let [probemap (:probemap (car (query {:select [:probemap]
+                                                  :from [:dataset]
+                                                  :where [:= :name %s]})))
+                 probes ((xena-query {:select ["name"] :from [probemap] :where [:in :any "genes" %s]}) "name")]
+             [probes
+               (fetch [{:table %s
+                        :samples %s
+                        :columns probes}])])
+"""
+
+
+dataset_gene_str = """
+(let [probemap (:probemap (car (query {:select [:probemap]
+                                      :from [:dataset]
+                                      :where [:= :name %s]})))
+     probes-for-gene (fn [gene] ((xena-query {:select ["name"] :from [probemap] :where [:in :any "genes" [gene]]}) "name"))
+     avg (fn [scores] (mean scores 0))
+     scores-for-gene (fn [gene]
+         (let [probes (probes-for-gene gene)
+               scores (fetch [{:table %s
+                               :samples %s
+                               :columns (probes-for-gene gene)}])]
+           {:gene gene
+            :scores (if (car probes) (avg scores) [[]])}))]
+ (map scores-for-gene %s))
+"""
+
 def all_samples(host, cohort):
     """return all the samples belong to a cohort on a hub host"""
     return json.loads(post(host, all_samples_query % quote(cohort)))
@@ -185,6 +216,18 @@ def dataset_probe_values (host, dataset, samples, probes):
     """ x21: sample 1 and probe 2"""
     """ x22: sample 2 and probe 2"""
     return json.loads(post(host, dataset_probe_str % (quote(dataset), array_fmt(probes), array_fmt(samples))))
+
+def dataset_gene_values (host, dataset, samples, genes):
+    """ return matrix of values [[x11, x12, ...],[x21, x22,...],...]"""
+    """ x11: sample 1 and gene 1"""
+    """ x12: sample 2 and gene 1"""
+    """ x21: sample 1 and gene 2"""
+    """ x22: sample 2 and gene 2"""
+    return json.loads(post(host, dataset_gene_str % (quote(dataset), quote(dataset), array_fmt(samples), array_fmt(genes))))
+
+def dataset_gene_probes_values (host,dataset,samples, gene):
+    return json.loads(post(host, dataset_gene_probes_str % (quote(dataset), array_fmt([gene]), quote(dataset), array_fmt(samples))))
+
 
 def dataset_type (host, dataset):
     return json.loads(post(host, dataset_type_str % (quote(dataset))))
