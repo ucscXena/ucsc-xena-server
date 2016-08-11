@@ -140,34 +140,38 @@ public class XenaImport implements ActionListener, CohortCallback {
 
 	String hintString = "Select or Enter your own";
 
-	String[] dataTypeStrings = {hintString,
-								 "filter",
-								 "phenotype",
-								 "copy number",
-							   	 "DNA methylation",
-							   	 "exon expression",
-							   	 "gene expression",
-								 "gene expression RNAseq",
-								 "gene expression Array",
-								 "miRNA expression",
-								 "somatic mutation (SNP and small INDELs)",
-								 "somatic mutation (structural variant)",
-								 "somatic mutation (SNP, INDELs and structural variant)",
-								 "somatic mutation (gene-level)",
-								 "protein expression RPPA",
-								 "PARADIGM pathway activity"
-								};
+	String[] dataTypeStrings = {
+		hintString,
+		"filter",
+		"phenotype",
+		"copy number",
+		"DNA methylation",
+		"exon expression",
+		"gene expression",
+		"gene expression RNAseq",
+		"gene expression Array",
+		"miRNA expression",
+		"somatic mutation (SNP and small INDELs)",
+		"somatic mutation (structural variant)",
+		"somatic mutation (gene-level)",
+		"protein expression RPPA",
+		"PARADIGM pathway activity"
+	};
 
 	String [] noProbeMapList = {
 		"phenotype","filter",
 		"somatic mutation (SNP and small INDELs)",
-		"somatic mutation (structural variant)",
-		"somatic mutation (SNP, INDELs and structural variant)"
+		"somatic mutation (structural variant)"
 	};
 
-	String [] colNormList={"exon expression","gene expression",
-							"gene expression RNAseq","gene expression Array",
-							"miRNA expression"};
+	String [] colNormList ={
+		"exon expression",
+		"gene expression",
+		"gene expression RNAseq",
+		"gene expression Array",
+		"miRNA expression",
+		"protein expression RPPA"
+	};
 
 	String [] assemblyStrings = {"Select","hg19","hg18"};
 
