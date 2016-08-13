@@ -60,8 +60,11 @@
   #".*")
 
 (def public-url "https://genome-cancer.ucsc.edu/")
-(def public-xena (str public-url "proj/public/xena"))
-
+;(def public-xena (str public-url "proj/public/xena"))
+(def tcga-xena "https://tcga.xenahubs.net")
+(def toil-xena "https://toil.xenahubs.net")
+(def icgc-xena "https://icgc.xenahubs.net")
+(def ucscPublic-xena "https://ucscpublic.xenahubs.net")
 (defn local-url [port] (str "https://local.xena.ucsc.edu:" (inc port)))
 (defn local-xena [port] (str "http://local.xena.ucsc.edu:" port))
 
@@ -86,10 +89,13 @@
         update (fn [cohorts]
                  (swap! x (fn [all]
                             (let [ret (conj all cohorts)]
-                              (when (= 2 (count ret))
+                              (when (= 5 (count ret))
                                 (cb (filter identity (apply concat ret))))
                               ret))))]
-    (async-post (str public-xena "/data/") cohort-query update)
+    (async-post (str tcga-xena "/data/") cohort-query update)
+    (async-post (str icgc-xena "/data/") cohort-query update)
+    (async-post (str toil-xena "/data/") cohort-query update)
+    (async-post (str ucscPublic-xena "/data/") cohort-query update)
     (async-post (str (local-xena port) "/data/") cohort-query update)))
 
 (defn- wrap-access-control [handler]
