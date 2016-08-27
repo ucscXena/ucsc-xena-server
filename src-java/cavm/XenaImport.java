@@ -173,7 +173,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 		"protein expression RPPA"
 	};
 
-	String [] assemblyStrings = {"Select","hg19","hg18"};
+	String [] assemblyStrings = {"Select","hg38","hg19","hg18"};
 
 	File sourceFile;
 	File probeMapFile = null;
