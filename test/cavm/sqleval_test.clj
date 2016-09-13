@@ -4,6 +4,7 @@
   (:require [clojure.test.check :as tc])
   (:require [clojure.test.check.generators :as gen])
   (:require [clojure.test.check.clojure-test :as tcct :refer [defspec]])
+  (:require [clojure.data.int-map :as i])
   (:require [clojure.test.check.properties :as prop]))
 
 (def ^:dynamic *test-runs* 4000)
@@ -29,7 +30,7 @@
   (ct/testing "eval"
     (let [data {"a" [:a :b :c :d :e :f :g :h]
                 "b" (into [] (range 20 30))}
-          rows (apply sorted-set (range 8))
+          rows (into (i/int-set) (range 8))
           store {:indexed? #{}
                  :fetch (fn [rows-in field]
                           (let [r (or rows-in rows)]
