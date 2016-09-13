@@ -24,6 +24,7 @@
   (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
   (:require [clojure.core.match :refer [match]])
   (:require [cavm.sqleval :refer [evaluate]])
+  (:require [clojure.data.int-map :as i])
   (:import [org.h2.jdbc JdbcBatchUpdateException])
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
 
@@ -1148,7 +1149,7 @@
       (map :row)))
 
 (defn fetch-genes [field-id values]
-  (into (sorted-set) (field-genes field-id values)))
+  (into (i/int-set) (field-genes field-id values)))
 
 ; position
 
@@ -1171,7 +1172,7 @@
     (map :row)))
 
 (defn fetch-position [field-id values]
-  (into (sorted-set) (field-position field-id values)))
+  (into (i/int-set) (field-position field-id values)))
 
 ; fetch-indexed doesn't cache, and it's unclear
 ; if we should cache the indexed fields during 'restrict'.
@@ -1202,6 +1203,48 @@
          [[:or & subexps]] (mapcat collect-fields subexps)
          [nil] []))
 
+;
+; Computing the "set of all rows" to begin a query was taking much too long
+; (minutes, for tens of millions of rows). Switching from sorted-set to int-set
+; brought this down to tens of seconds, which was still too slow. Here we
+; generate the int-set in parallel & merge with i/union, which is fast. This
+; brings the time down to a couple seconds for tens of millions of rows. We
+; then, additionally, cache the set, and re-use it if possible. We can
+; quickly create smaller sets with i/range, so we memoize such that we
+; compute a new base set only if the current memoized size is too small.
+;
+; Note that this means that if we load a very large dataset, then delete it,
+; the memory required to represent all the rows of that dataset is not released
+; until the server is restarted.
+;
+; Alternative fixes might be 1) use an agent to always maintain the largest
+; "set of all rows" required for the loaded datasets, updating on dataset add/remove;
+; 2) using a different representation of contiguous rows, e.g. [start, end]. We
+; would need to review the down-stream performance implications of this (i.e. computing
+; union and intersection, generating db queries, etc.)
+
+(def block-size 1e6)
+
+(defn int-set-bins [n]
+  (let [blocks (+ (quot n block-size) (if (= 0 (rem n block-size)) 0 1))]
+    (map (fn [i] [(* i block-size) (min (* (+ i 1) block-size) n)]) (range blocks))))
+
+(defn set-of-all [n]
+  (let [blocks (/ n block-size)]
+    (reduce #(i/union % %2)
+            (pmap (fn [[start end]] (into (i/int-set) (range start end))) (int-set-bins n)))))
+
+(defn mem-min [f]
+  (let [mem (atom nil)]
+    (fn [n]
+      (if (> n (count @mem))
+        (let [ret (f n)]
+          (reset! mem ret)
+          ret)
+        (i/range @mem 0 n)))))
+
+(def set-of-all-cache (mem-min set-of-all))
+
 ; XXX Look at memory use of pulling :gene field. If it's not
 ; interned, it could be expensive.
 ; XXX Map keywords to strings, for dataset & field names?
@@ -1215,7 +1258,7 @@
                 (if (not-empty rows)
                   (fetch-rows cache rows (fields field))
                   {}))]
-  (evaluate (apply sorted-set (range N)) {:fetch fetch
+  (evaluate (set-of-all-cache N) {:fetch fetch
                                           :fetch-indexed (partial fetch-indexed fields)
                                           :indexed? (partial has-index? fields)} exp)))
 

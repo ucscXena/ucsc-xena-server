@@ -14,7 +14,7 @@
   :profiles {:dev {:dependencies
                    [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
-  :dependencies [[org.clojure/clojure "1.5.1"]
+  :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.clojure/tools.cli "0.3.1"]
                  [net.mikera/core.matrix "0.8.0"]
                  [net.mikera/vectorz-clj "0.11.0"]
@@ -49,6 +49,7 @@
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.1"]
                  [com.taoensso/timbre "3.2.0"]
+                 [org.clojure/data.int-map  "0.2.3"]
                  [com.google.api-client/google-api-client "1.20.0"]
                  [com.google.api-client/google-api-client-gson "1.20.0"]
                  [com.google.http-client/google-http-client "1.20.0"]

@@ -1,10 +1,11 @@
 (ns cavm.sqleval
+  (:require [clojure.data.int-map :as i])
   (:require [clojure.core.match :refer [match]]))
 
 (declare restrict)
 
 (defn op-or [all rows store subexps]
-  (reduce clojure.set/union
+  (reduce i/union
           (map #(restrict all rows store %) subexps)))
 
 (defn exp-indexed? [indexed? exp]
@@ -27,7 +28,7 @@
                   (sort-exps indexed? subexps)
                   subexps)]
     (reduce (fn [acc subexp]
-              (clojure.set/intersection
+              (i/intersection
                 acc
                 (restrict all acc store subexp)))
             rows subexps)))
@@ -38,7 +39,7 @@
     (fetch-indexed field values)
     (let [col (fetch rows field) ; scan
           s (set values)]
-      (into (sorted-set) (filter #(cmp s (col %)) rows)))))
+      (into (i/int-set) (filter #(cmp s (col %)) rows)))))
 
 ; Scalar compare.
 (defn in-set [a-set value] (a-set value))
