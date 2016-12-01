@@ -1241,7 +1241,7 @@
         (let [ret (f n)]
           (reset! mem ret)
           ret)
-        (i/range @mem 0 n)))))
+        (i/range @mem 0 (- n 1))))))
 
 (def set-of-all-cache (mem-min set-of-all))
 
