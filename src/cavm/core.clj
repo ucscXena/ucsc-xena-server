@@ -52,6 +52,8 @@
   (doto (java.util.Properties.)
     (.load (io/reader (io/resource "META-INF/maven/cavm/cavm/pom.properties")))))
 
+(def version (get pom-props "version"))
+
 ;
 ; web services
 
@@ -112,6 +114,10 @@
             (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To"))
         response))))
 
+(defn- add-version-header [handler]
+  (fn [request]
+    (assoc-in (handler request) [:headers "Xena-API"] version)))
+
 (defn- attr-middleware [app k v]
   (fn [req]
     (app (assoc req k v))))
@@ -169,7 +175,8 @@
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
       (wrap-access-control)
-      (wrap-reload)))
+      (wrap-reload)
+      (add-version-header)))
 
 (defn- serv [app host port {:keys [keystore password]}]
   (ring.adapter.jetty/run-jetty app {:host host
