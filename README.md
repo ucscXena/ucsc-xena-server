@@ -38,6 +38,17 @@ example files linked in the help file (click "Help" in the UCSC Xena
 Client interface and scroll down to "Installing a local Xena Hub to view
 your data from your laptop").
 
+## Acknowledgements
+
+UCSC Xena uses the YourKit profiler.
+
+<a href="https://www.yourkit.com/java/profiler/"><img src="https://www.yourkit.com/images/yklogo.png"></a>
+
+YourKit supports open source projects with its full-featured Java Profiler.
+YourKit, LLC is the creator of <a href="https://www.yourkit.com/java/profiler/">YourKit Java Profiler</a>
+and <a href="https://www.yourkit.com/.net/profiler/">YourKit .NET Profiler</a>,
+innovative and intelligent tools for profiling Java and .NET applications.
+
 ## License
 
 Copyright © 2015 The Regents of the University of California
