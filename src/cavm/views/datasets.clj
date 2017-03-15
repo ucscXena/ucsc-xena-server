@@ -140,6 +140,10 @@
           (upload-files ip loader docroot file)))
   (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
        (response/file-response dataset {:root docroot :index-files? false}))
+  (GET "/" [:as req] (response/redirect
+                       (str "https://xenabrowser.net/datapages/?hub="
+                            (name (:scheme req)) "://"
+                            (:server-name req) ":" (:server-port req))))
   (GET "/data/:exp" [exp] (expression exp))
   (POST "/data/" r (expression (body-string r)))
   (POST "/update/" [file always delete :as {ip :remote-addr loader :loader}]
