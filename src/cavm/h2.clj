@@ -189,7 +189,7 @@
   ["CREATE TABLE IF NOT EXISTS `field_gene` (
    `field_id` INT NOT NULL,
    `row` INT NOT NULL,
-   `gene` VARCHAR(255) NOT NULL,
+   `gene` VARCHAR_IGNORECASE(255) NOT NULL,
     FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"
    "CREATE INDEX IF NOT EXISTS field_gene ON `field_gene` (`field_id`, `gene`)"
    "CREATE INDEX IF NOT EXISTS gene_row ON `field_gene` (`field_id`, `row`)"])
