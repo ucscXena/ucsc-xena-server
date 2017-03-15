@@ -683,7 +683,7 @@
    :value :float})
 
 (def genomic-segment-columns
-  {#"(?i)sampleID" :sampleID
+  {#"(?i)sample[ _]*(name|id)?" :sampleID
    #"(?i)chr(om)?" :chrom
    #"(?i)start" :chromStart
    #"(?i)end" :chromEnd
