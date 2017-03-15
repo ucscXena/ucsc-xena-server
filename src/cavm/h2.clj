@@ -18,7 +18,6 @@
   (:require [clojure.tools.logging :refer [spy trace info warn]])
   (:require [taoensso.timbre.profiling :refer [profile p]])
   (:require [clojure.core.cache :as cache])
-  (:require [cavm.h2-unpack-rows :as unpack])
   (:require [cavm.statement :refer [sql-stmt sql-stmt-result cached-statement]])
   (:require [cavm.conn-pool :refer [pool]])
   (:require [cavm.lazy-utils :refer [consume-vec lazy-mapcat]])
@@ -209,15 +208,6 @@
    `valueType` VARCHAR(255) NOT NULL,
    `visibility` VARCHAR(255),
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
-
-;
-; blob unpacking
-;
-
-(def^:private  unpack-aliases
-  ["CREATE ALIAS IF NOT EXISTS unpack FOR \"unpack_rows.unpack\""
-   "CREATE ALIAS IF NOT EXISTS unpackCode FOR \"unpack_rows.unpackCode\""
-   "CREATE ALIAS IF NOT EXISTS unpackValue FOR \"unpack_rows.unpackValue\""])
 
 (def ^:private feature-columns
   #{:shortTitle
@@ -1352,59 +1342,3 @@
     (jdbcd/with-connection @db (create))
     (H2Db. db)))
 
-;
-; The following is deprecated, due to poor performance.  Will be dropped after the next
-; client code release.
-;
-
-;
-; Support for pulling a row from a blob column. Implements
-; an LRU cache of retrieved blobs.
-;
-
-(def ^:private field-bin-query
-  (cached-statement
-    "SELECT `scores` FROM `field_score`
-     WHERE `field_id` = ? AND `i` = ?"
-    true))
-
-(def ^:private feature-value-query
-  (cached-statement
-    "SELECT `value` FROM `code`
-     WHERE `field_id` = ? AND `ordering` = ?"
-    true))
-
-(defn- fetch-bin [field-id bin]
-  (when-let [scores (-> (field-bin-query field-id bin)
-                        first
-                        :scores)]
-    (bytes-to-floats scores)))
-
-(def ^:private cache-size (int (/ (* 128 1024) bin-size))) ; 128k bin cache
-
-(def ^:private bin-cache-state
-  (atom (cache/lru-cache-factory {} :threshold cache-size)))
-
-(defn- update-bin-cache [c args]
-  (if (cache/has? c args)
-    (cache/hit c args)
-    (cache/miss c args (apply fetch-bin args))))
-
-(defn- bin-cache [& args]
-  (cache/lookup (swap! bin-cache-state update-bin-cache args) args))
-
-(defn- lookup-row [field-id row]
-  (p :lookup-row
-     (let [^floats bin (bin-cache field-id (quot row bin-size))
-           i (rem row bin-size)]
-       (when bin (aget bin i)))))
-
-(defn- lookup-value [field-id row]
-  (let [ordering (lookup-row field-id row)]
-    (p :lookup-value
-       (when ordering
-         (when-let [value (feature-value-query field-id (int ordering))]
-           (-> value first :value))))))
-
-(unpack/set-lookup-row! lookup-row)
-(unpack/set-lookup-value! lookup-value)
