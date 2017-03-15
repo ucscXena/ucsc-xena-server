@@ -825,11 +825,14 @@
    :rows rows})
 
 (defn category-field [name values]
-  {:rows (range (count values))
-   :field name
-   :valueType "category"
-   :feature {:state values
-             :order (zipmap values (range))}})
+  (let [not-nil (filter #(not= % "") values)
+        order (zipmap not-nil (range))
+        nil-order (assoc order "" Double/NaN)]
+    {:rows (map nil-order values)
+    :field name
+    :valueType "category"
+    :feature {:state values
+              :order order}}))
 
 (ct/deftest gene-test
   (let [field0 (gene-field "genes"
@@ -840,7 +843,7 @@
 
         field1 (category-field "name"
                                ["probe0"
-                                "probe1"
+                                ""
                                 "probe2"
                                 "probe3"])]
     (db-in-memory-test-run
@@ -860,7 +863,13 @@
                     {:select ["name"]
                      :from ["foo"]
                      :where [:in :any "genes" ["z"]]})
-                  {"name" []}))))))
+                  {"name" []}))
+        (ct/is (= (cdb/column-query db
+                    {:select ["name"]
+                     :from ["foo"]
+                     :where [:in :any "genes" ["a"]]})
+                  {"name" ["probe0" nil]}))
+        ))))
 
 ;
 ; Some experiments with generators for gene fields.

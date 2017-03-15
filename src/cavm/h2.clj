@@ -1077,7 +1077,10 @@
                       ; XXX cast to int here is pretty horrible.
                       ; Really calls for an int array bin in h2.
                       [[:yes vals->codes]] (fn [bin off]
-                                                (vals->codes (int (get (f bin) off))))
+                                             (let [v (aget ^floats (f bin) off)]
+                                               (if (. Float isNaN v)
+                                                 nil
+                                                 (vals->codes (int v)))))
                       [[:no]] (fn [bin off] (get (f bin) off)))]
     (fn [row]
       (apply getter (bin-offset row)))))
