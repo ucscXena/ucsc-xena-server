@@ -1287,8 +1287,7 @@
     (apply jdbcd/do-commands feature-table)
     (apply jdbcd/do-commands code-table)
     (apply jdbcd/do-commands field-position-table)
-    (apply jdbcd/do-commands field-gene-table)
-    (apply jdbcd/do-commands unpack-aliases)))
+    (apply jdbcd/do-commands field-gene-table)))
 
 ;
 ; add TABLE handling for honeysql
