@@ -548,8 +548,7 @@
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
           genes (cdb/run-query db {:select [:*] :from [:field_gene]})
           probe-field (:id (first (cdb/run-query db {:select [:id] :from [:field] :where [:= :name "name"]})))
-          data (map :pid (cdb/run-query db {:select [[(hsqltypes/read-sql-call [:unpackValue probe-field :row]) :pid]]
-                                            :from [:field_position]}))]
+          data ((cdb/column-query db {:select ["name"] :from ["probes"]}) "name")]
 
       (ct/is (= probemap [{:name "probes"}]))
       (ct/is (= (set probes)
