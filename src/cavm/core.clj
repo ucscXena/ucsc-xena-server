@@ -57,9 +57,13 @@
 ;
 ; web services
 
+; XXX might want to disable http from xenabrowser.net, but currently we don't have
+; certs on dev & beta.
 (def trusted-hosts
-  ;#"https://[-_A-Za-z0-9]+.kilokluster.ucsc.edu|https://genome-cancer.ucsc.edu"
-  #".*")
+  ["https?://([-_A-Za-z0-9]+.)?xenabrowser.net"
+   "https://genome-cancer.ucsc.edu"])
+
+(def local-trusted-host "http://localhost(:[0-9]+)?")
 
 (def public-url "https://genome-cancer.ucsc.edu/")
 ;(def public-xena (str public-url "proj/public/xena"))
@@ -69,6 +73,14 @@
 (def ucscPublic-xena "https://ucscpublic.xenahubs.net")
 (defn local-url [port] (str "https://local.xena.ucsc.edu:" (inc port)))
 (defn local-xena [port] (str "http://local.xena.ucsc.edu:" port))
+
+; clojure re-matches has polymorphic return type, which is broken.
+; Untangle it here.
+(defn re-match [pat string]
+  (let [m (re-matches pat string)]
+    (cond
+      (vector? m) (first m)
+      :else m))) ; string, or nil
 
 (def cohort-query
   '(map :cohort (query
@@ -100,13 +112,13 @@
     (async-post (str ucscPublic-xena "/data/") cohort-query update)
     (async-post (str (local-xena port) "/data/") cohort-query update)))
 
-(defn- wrap-access-control [handler]
+(defn- wrap-access-control [handler allow-hosts]
   (fn [{:keys [request-method] :as request}]
     (let [response (if (= request-method :options)
                      (response/response "")
                      (handler request))]
       (info "request" request)
-      (if-let [origin (re-matches trusted-hosts (get-in request [:headers "origin"] ""))]
+      (if-let [origin (re-match allow-hosts (get-in request [:headers "origin"] ""))]
         (-> response
             (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
             (assoc-in [:headers "Access-Control-Expose-Headers"] "Location")
@@ -158,7 +170,7 @@
     app))
 
 ; XXX add ring jsonp?
-(defn- get-app [docroot db loader port userauth]
+(defn- get-app [docroot db loader port userauth allow-hosts]
   (-> cavm.views.datasets/routes
       (wrap-authentication userauth port)
       (wrap-trace :header :ui)
@@ -174,7 +186,7 @@
       (wrap-params)
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
-      (wrap-access-control)
+      (wrap-access-control allow-hosts)
       (wrap-reload)
       (add-version-header)))
 
@@ -244,6 +256,8 @@
 
 (def ^:private argspec
   [[nil "--no-serve" "Don't start web server" :id :serve :parse-fn not :default true]
+   ["-a" "--allow PATTERN" "Allow CORS from hosts matching pattern" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))
+    :validate [re-pattern "Invalid pattern"]]
    ["-p" "--port PORT" "Server port to listen on" :default 7222 :parse-fn #(Integer/parseInt %)]
    ["-l" "--load" "Load files into running server"]
    ["-x" "--delete" "Delete file from running server"]
@@ -253,6 +267,7 @@
    ["-h" "--help" "Show help"]
    ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
+   ["-D" "--localdev" "Allow CORS from localhost" :default false]
    ["-d" "--database FILE" "Database to use" :default db-default]
    [nil "--logfile FILE" "Log file to use" :default logfile-default]
    [nil "--keyfile FILE" "Private key file to use (requires --certfile)"]
@@ -332,6 +347,9 @@
   (let [{:keys [options arguments summary errors]} (validate-certkey (parse-opts args argspec))
         docroot (:root options)
         port (:port options)
+        localdev (:localdev options)
+        allow (:allow options)
+        allow-hosts (re-pattern (s/join "|" (concat trusted-hosts allow (if localdev [local-trusted-host] []))))
         host (:host options)
         tmp (:tmp options)
         logfile (:logfile options)
@@ -386,7 +404,7 @@
                               (println "Failed to start gui. Logging error.")
                               (error "Failed to start gui." ex)))))
                       (when (:serve options)
-                        (serv (get-app docroot db loader port userauth) host port keystore))))))
+                        (serv (get-app docroot db loader port userauth allow-hosts) host port keystore))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]
