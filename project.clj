@@ -11,7 +11,8 @@
                   ;; Defaults to 30000 (30 seconds)
                   :timeout 12000000
                   }
-  :profiles {:dev {:dependencies
+  :profiles {:dev {:source-paths ["src-dev" "src"]
+                   :dependencies
                    [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
   :dependencies [[org.clojure/clojure "1.6.0"]

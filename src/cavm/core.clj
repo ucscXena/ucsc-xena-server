@@ -19,9 +19,7 @@
   (:require [ring.middleware.multipart-params.byte-array :refer [byte-array-store]])
   (:require [cavm.views.datasets])
   (:require [ring.middleware.gzip :refer [wrap-gzip]])
-  (:require [ring.middleware.stacktrace :refer [wrap-stacktrace-web]]) ; XXX only in dev
-  (:require [liberator.dev :refer [wrap-trace]])                   ; XXX only in dev
-  (:require [ring.middleware.reload :refer [wrap-reload]]) ; XXX only in dev
+  (:require [cavm.ring-instrument :refer [wrap-stacktrace-web wrap-trace wrap-reload]])
   (:require [filevents.core :refer [watch]])
   (:require [cavm.readers :as cr])
   (:require [cavm.loader :as cl])
