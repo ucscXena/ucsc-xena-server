@@ -14,6 +14,7 @@
   :profiles {:dev {:source-paths ["src-dev" "src"]
                    :dependencies
                    [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
+             :benchmark {:source-paths ["test/benchmark"]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.clojure/tools.cli "0.3.1"]
@@ -60,6 +61,7 @@
   :target-path "target/%s"
   :clean-targets [:target-path :compile-path "build"]
   :aliases {"uberdoc" ["do" ["alldocs"] ["clientsrc"] ["docinstall"] ["uberwrap"]]
+            "benchmark" ["run" "-m" "cavm.benchmark.core"]
             ; XXX this is a bit raw
             "docinstall" ["do"
                           ["shell" "rm" "-rf" "resources/public/docs"]
