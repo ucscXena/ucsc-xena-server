@@ -31,6 +31,10 @@
                 :remote-id "20170119_final_consensus_copynumber_donor"
                 :host "\017\021\000\007\033\133\133\126\037\026\017\022\002\112\037\000\032\026\000\024\026\012\101\033\013\021"}])
 
+(def matrix [{:id "AgilentG4502A_07_3"
+              :remote-id "TCGA.BRCA.sampleMap/AgilentG4502A_07_3"
+              :host "https://tcga.xenahubs.net"}])
+
 (defn tsv-lines [txt]
   (map #(s/split % #"\t") (s/split txt #"\n")))
 
@@ -43,4 +47,4 @@
 (def genes
   (map gene-line (tsv-lines (slurp (io/resource "benchmark/600genes")))))
 
-(def datasets (concat probemaps cnv))
+(def datasets (concat probemaps cnv matrix))
