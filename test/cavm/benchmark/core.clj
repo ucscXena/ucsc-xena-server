@@ -1,6 +1,7 @@
 (ns cavm.benchmark.core
   (:require [clojure.java.io :as io])
   (:require [cavm.benchmark.data :as benchmark-data])
+  (:require [cavm.benchmark.install :refer [install]])
   (:require [cavm.h2 :as h2])
   (:require [cavm.db :as cdb]))
 
@@ -44,18 +45,20 @@
   (println "benchmark" args)
 
   (try
-    (let [xena (h2/create-xenadb dbfile)
-          {:keys [id probes]} (first benchmark-data/probemaps)
-          {cnv-id :id} (first benchmark-data/cnv)]
-      (probemap-probe xena id (take 1 probes)) ; XXX initial query can be slow. Need to investigate.
-      (println (report "1 probe from probemap of 1.4M rows" (probemap-probe xena id (take 1 (drop 5 probes)))))
-      (println (report "2 probe from probemap of 1.4M rows" (probemap-probe xena id (take 2 (drop 10 probes)))))
-      (println (report "3 sorted gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (sort-genes (take 3 benchmark-data/genes)))))
-      (println (report "30 sorted gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (sort-genes (take 30 benchmark-data/genes)))))
-      (println (report "300 sorted gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (sort-genes (take 300 benchmark-data/genes)))))
-      (println (report "3 gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (take 3 benchmark-data/genes))))
-      (println (report "30 gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (take 30 benchmark-data/genes))))
-      (println (report "300 gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (take 300 benchmark-data/genes))))
-      )
+    (if (= args ["install"])
+      (install (io/file (System/getProperty "user.home") "xena-install"))
+      (let [xena (h2/create-xenadb dbfile)
+            {:keys [id probes]} (first benchmark-data/probemaps)
+            {cnv-id :id} (first benchmark-data/cnv)]
+        (probemap-probe xena id (take 1 probes)) ; XXX initial query can be slow. Need to investigate.
+        (println (report "1 probe from probemap of 1.4M rows" (probemap-probe xena id (take 1 (drop 5 probes)))))
+        (println (report "2 probe from probemap of 1.4M rows" (probemap-probe xena id (take 2 (drop 10 probes)))))
+        (println (report "3 sorted gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (sort-genes (take 3 benchmark-data/genes)))))
+        (println (report "30 sorted gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (sort-genes (take 30 benchmark-data/genes)))))
+        (println (report "300 sorted gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (sort-genes (take 300 benchmark-data/genes)))))
+        (println (report "3 gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (take 3 benchmark-data/genes))))
+        (println (report "30 gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (take 30 benchmark-data/genes))))
+        (println (report "300 gene positions from CNV of 970k rows" (cnv-gene xena cnv-id (take 300 benchmark-data/genes))))
+        ))
     (finally
       (shutdown-agents))))
