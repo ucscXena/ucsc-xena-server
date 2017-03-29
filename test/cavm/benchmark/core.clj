@@ -46,7 +46,7 @@
 
   (try
     (if (= args ["install"])
-      (install (io/file (System/getProperty "user.home") "xena-install"))
+      (install (io/file (System/getProperty "user.home") "xena-benchmark"))
       (let [xena (h2/create-xenadb dbfile)
             {:keys [id probes]} (first benchmark-data/probemaps)
             {cnv-id :id} (first benchmark-data/cnv)]
