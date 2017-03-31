@@ -146,7 +146,8 @@
           includes (map keyword (:include options))
           test-filter (if (empty? includes)
                         (fn [_] true)
-                        #(some (meta %) includes))]
+                        #(some (fn [pat] (or (= (:id %) pat) ((meta %) pat)))
+                               includes))]
       (cond
         errors (binding [*out* *err*]
                  (println (s/join "\n" errors)))
