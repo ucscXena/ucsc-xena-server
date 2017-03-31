@@ -1,6 +1,8 @@
 (ns cavm.benchmark.core
   (:require [clojure.java.io :as io])
   (:require [clojure.string :as s])
+  (:require [clojure.edn :as edn])
+  (:require [clojure.tools.cli :refer [parse-opts]])
   (:require [cavm.benchmark.data :as benchmark-data])
   (:require [cavm.benchmark.install :refer [install]])
   (:require [cavm.h2 :as h2])
@@ -125,19 +127,34 @@
     :body (fn [xena genes]
             (cnv-gene xena (dataset-map :cnv-large) genes))}])
 
-(defn -main [& args]
-  (println "benchmark" args)
+(def test-map
+  (into {} (map #(-> [(:id %) %]) tests)))
 
+(defn print-results [results]
+  (doseq [{:keys [id result]} results]
+    (println (report (:desc (test-map id)) result))) )
+
+(def ^:private argspec
+  [["-o" "--output FILE" "Output file" :default "bench.edn"]
+   ["-r" "--input FILE" "Read and print results from FILE"]])
+
+(defn -main [& args]
   (try
-    (if (= args ["install"])
-      (install (io/file (System/getProperty "user.home") "xena-benchmark"))
-      (let [xena (h2/create-xenadb dbfile)
-            {:keys [id probes]} (first benchmark-data/probemaps)
-            {cnv-id :id} (first benchmark-data/cnv)]
-        (doseq [{:keys [desc params body]} tests]
-          (let [params (params)
-                res (apply body xena params)]
-            (println (report desc res))))
-        ))
+    (let [{:keys [options arguments summary errors]} (parse-opts args argspec)]
+      (cond
+        errors (binding [*out* *err*]
+                 (println (s/join "\n" errors)))
+        (= arguments ["install"]) (install
+                                     (io/file (System/getProperty "user.home")
+                                              "xena-benchmark"))
+        (:input options) (print-results (edn/read-string (slurp (:input options))))
+        :else (let [xena (h2/create-xenadb dbfile)
+                    results (atom [])]
+                (doseq [{:keys [id desc params body]} tests]
+                  (let [params (params)
+                        result (apply body xena params)]
+                    (swap! results conj {:id id :result result})
+                    (println (report desc result))))
+                (spit (:output options) (pr-str @results)))))
     (finally
       (shutdown-agents))))
