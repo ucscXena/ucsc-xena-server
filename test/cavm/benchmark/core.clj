@@ -136,21 +136,28 @@
 
 (def ^:private argspec
   [["-o" "--output FILE" "Output file" :default "bench.edn"]
-   ["-r" "--input FILE" "Read and print results from FILE"]])
+   ["-h" "--help" "Show help"]
+   ["-r" "--input FILE" "Read and print results from FILE"]
+   ["-i" "--include TAG" "Run benchmarks with TAG (can be used multiple times)" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))]]) 
 
 (defn -main [& args]
   (try
-    (let [{:keys [options arguments summary errors]} (parse-opts args argspec)]
+    (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
+          includes (map keyword (:include options))
+          test-filter (if (empty? includes)
+                        (fn [_] true)
+                        #(some (meta %) includes))]
       (cond
         errors (binding [*out* *err*]
                  (println (s/join "\n" errors)))
+        (:help options) (println summary)
         (= arguments ["install"]) (install
-                                     (io/file (System/getProperty "user.home")
-                                              "xena-benchmark"))
+                                    (io/file (System/getProperty "user.home")
+                                             "xena-benchmark"))
         (:input options) (print-results (edn/read-string (slurp (:input options))))
         :else (let [xena (h2/create-xenadb dbfile)
                     results (atom [])]
-                (doseq [{:keys [id desc params body]} tests]
+                (doseq [{:keys [id desc params body]} (filter test-filter tests)]
                   (let [params (params)
                         result (apply body xena params)]
                     (swap! results conj {:id id :result result})
