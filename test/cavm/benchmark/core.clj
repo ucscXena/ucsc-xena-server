@@ -15,10 +15,6 @@
      ~expr
      (/ (double (- (. System (nanoTime)) start#)) 1000000.0)))
 
-(defn spy [msg x]
-  (println msg x)
-  x)
-
 (def dataset-map
   (into {} (map (fn [ds] [(:key ds) ds]) benchmark-data/datasets)))
 
@@ -134,9 +130,15 @@
   (doseq [{:keys [id result]} results]
     (println (report (:desc (test-map id)) result))) )
 
+(defn- mkdir [dir]
+  (.mkdirs (io/file dir))
+  (when (not (.exists (io/file dir)))
+    (str "Unable to create directory: " dir)))
+
 (def ^:private argspec
   [["-o" "--output FILE" "Output file" :default "bench.edn"]
    ["-h" "--help" "Show help"]
+   ["-l" "--load" "Load benchmark params from cache in ~/.benchmark"]
    ["-r" "--input FILE" "Read and print results from FILE"]
    ["-i" "--include TAG" "Run benchmarks with TAG (can be used multiple times)" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))]]) 
 
@@ -158,9 +160,18 @@
         (:input options) (print-results (edn/read-string (slurp (:input options))))
         :else (let [xena (h2/create-xenadb dbfile)
                     results (atom [])]
+                (when-let [error (mkdir (io/file "." ".benchmark"))]
+                  (binding [*out* *err*]
+                    (println error)
+                    (System/exit 1)))
                 (doseq [{:keys [id desc params body]} (filter test-filter tests)]
-                  (let [params (params)
+                  (let [params (if (:load options)
+                                 (edn/read-string
+                                   (slurp (io/file "." ".benchmark" (name id))))
+                                 (params))
                         result (apply body xena params)]
+                    (when (not (:load options))
+                      (spit (io/file "." ".benchmark" (name id)) (pr-str params)))
                     (swap! results conj {:id id :result result})
                     (println (report desc result))))
                 (spit (:output options) (pr-str @results)))))
