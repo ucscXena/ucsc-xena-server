@@ -142,38 +142,48 @@
    ["-r" "--input FILE" "Read and print results from FILE"]
    ["-i" "--include TAG" "Run benchmarks with TAG (can be used multiple times)" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))]]) 
 
+(defn run [& args]
+  (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
+        includes (map keyword (:include options))
+        test-filter (if (empty? includes)
+                      (fn [_] true)
+                      #(some (fn [pat] (or (= (:id %) pat) ((meta %) pat)))
+                             includes))]
+    (cond
+      errors (binding [*out* *err*]
+               (println (s/join "\n" errors)))
+      (:help options) (println summary)
+      (= arguments ["install"]) (install
+                                  (io/file (System/getProperty "user.home")
+                                           "xena-benchmark"))
+      (:input options) (print-results (edn/read-string (slurp (:input options))))
+      :else (let [xena (h2/create-xenadb dbfile)
+                  results (atom [])]
+              (when-let [error (mkdir (io/file "." ".benchmark"))]
+                (binding [*out* *err*]
+                  (println error)
+                  (System/exit 1)))
+              (doseq [{:keys [id desc params body]} (filter test-filter tests)]
+                (let [params (if (:load options)
+                               (edn/read-string
+                                 (slurp (io/file "." ".benchmark" (name id))))
+                               (params))
+                      result (apply body xena params)]
+                  (when (not (:load options))
+                    (spit (io/file "." ".benchmark" (name id)) (pr-str params)))
+                  (swap! results conj {:id id :result result})
+                  (println (report desc result))))
+              (spit (:output options) (pr-str @results))))))
+
+
+(comment
+  (run "benchmark" "-i" "cnv")
+  (run "benchmark")
+  (.printStackTrace *e)
+  )
+
 (defn -main [& args]
   (try
-    (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
-          includes (map keyword (:include options))
-          test-filter (if (empty? includes)
-                        (fn [_] true)
-                        #(some (fn [pat] (or (= (:id %) pat) ((meta %) pat)))
-                               includes))]
-      (cond
-        errors (binding [*out* *err*]
-                 (println (s/join "\n" errors)))
-        (:help options) (println summary)
-        (= arguments ["install"]) (install
-                                    (io/file (System/getProperty "user.home")
-                                             "xena-benchmark"))
-        (:input options) (print-results (edn/read-string (slurp (:input options))))
-        :else (let [xena (h2/create-xenadb dbfile)
-                    results (atom [])]
-                (when-let [error (mkdir (io/file "." ".benchmark"))]
-                  (binding [*out* *err*]
-                    (println error)
-                    (System/exit 1)))
-                (doseq [{:keys [id desc params body]} (filter test-filter tests)]
-                  (let [params (if (:load options)
-                                 (edn/read-string
-                                   (slurp (io/file "." ".benchmark" (name id))))
-                                 (params))
-                        result (apply body xena params)]
-                    (when (not (:load options))
-                      (spit (io/file "." ".benchmark" (name id)) (pr-str params)))
-                    (swap! results conj {:id id :result result})
-                    (println (report desc result))))
-                (spit (:output options) (pr-str @results)))))
+    (apply run args)
     (finally
       (shutdown-agents))))
