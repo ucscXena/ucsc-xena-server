@@ -32,6 +32,48 @@
                              :from [id]
                              :where [:in "position" (mapv (juxt :chr :start :end) genes)]})))
 
+(defn probe-fetch [xena {id :id} probes samples]
+  (timeit (cdb/fetch xena
+                     [{:table id
+                       :columns probes
+                       :samples samples}])))
+
+; Candidate rewrite of probe fetch. Note that it is much slower. Should
+; profile this & see if we can match the performance of the current query, above.
+(defn probe-fetch-xena [xena {id :id} probes samples]
+  (timeit (cdb/column-query xena
+                            {:select probes
+                             :from [id]
+                             :where [:in "sampleID" samples]})))
+
+(defn code-fetch [xena {id :id} field]
+  (timeit (cdb/run-query xena
+                         {:select [:P.name [#sql/call [:group_concat :value :order :ordering :separator #sql/call [:chr 9]] :code]]
+                          :from [[{:select [:field.id :field.name]
+                                   :from [:field]
+                                   :join [{:table [[[:name :varchar [field]]] :T]} [:= :T.name :field.name]]
+                                   :where [:= :dataset_id {:select [:id]
+                                                           :from [:dataset]
+                                                           :where [:= :name id]}]} :P]]
+                          :left-join [:code [:= :P.id :field_id]]
+                          :group-by [:P.id]})))
+
+; Candidate rewrite of code fetch. Note that for all-samples query we
+; don't really care about ordering, and we need to do a 'distinct' of the
+; union of all the sampleID fields. Something to keep in mind if we do
+; xena-query support for 'distinct'.
+(defn code-fetch2 [xena {id :id} field]
+  (timeit (cdb/run-query xena
+                         {:select [:value]
+                          :order-by [:ordering]
+                          :from [:code]
+                          :where [:= :field_id {:select [:field.id]
+                                                :from [:field]
+                                                :where [:and [:= :name field]
+                                                        [:= :dataset_id {:select [:id]
+                                                                         :from [:dataset]
+                                                                         :where [:= :name id]}]]}]})))
+
 (defn sort-genes [genes]
   (sort (fn [x y]
           (compare [(:chr x) (:start x)]
@@ -64,12 +106,20 @@
            (mapv #(cols %) fields)))
        lines))
 
-; get probes from probemap
+; get probes from probemap or matrix
 (defn get-probes [{id :id} c]
   (let [file (datafile id)
         N (line-count file)]
     (with-open [rdr (clojure.java.io/reader file)]
       (doall (flatten (cut [0] (rnd-lines (drop 1 (line-seq rdr)) (dec N) c)))))))
+
+; get samples from matrix
+(defn get-samples [{id :id} c]
+  (let [file (datafile id)]
+    (with-open [rdr (clojure.java.io/reader file)]
+      (let [samples (rest (s/split (first (line-seq rdr)) #"\t"))
+            N (count samples)]
+      (doall (rnd-lines samples N c))))))
 
 (defn gene-line [[chr start end gene]]
   {:chr chr
@@ -121,7 +171,47 @@
     :params (fn []
             [(get-genes (dataset-map :refgene-hg19) 300)])
     :body (fn [xena genes]
-            (cnv-gene xena (dataset-map :cnv-large) genes))}])
+            (cnv-gene xena (dataset-map :cnv-large) genes))}
+   ^:matrix
+   {:desc "30 probes * 500 samples from matrix of 17k rows"
+    :id :matrix-medium-thirty-probe
+    :params (fn []
+            [(get-probes (dataset-map :matrix-medium) 30)
+             (get-samples (dataset-map :matrix-medium) 500)])
+    :body (fn [xena probes samples]
+            (probe-fetch xena (dataset-map :matrix-medium) probes samples))}
+   ^:matrix
+   {:desc "300 probes * 500 samples from matrix of 17k rows"
+    :id :matrix-medium-three-hundred-probe
+    :params (fn []
+            [(get-probes (dataset-map :matrix-medium) 300)
+             (get-samples (dataset-map :matrix-medium) 500)])
+    :body (fn [xena probes samples]
+            (probe-fetch xena (dataset-map :matrix-medium) probes samples))}
+
+   ^:matrix
+   {:desc "300 probes * 500 samples from matrix of 17k rows"
+    :id :matrix-medium-three-hundred-probe-xena
+    :params (fn []
+            [(get-probes (dataset-map :matrix-medium) 300)
+             (get-samples (dataset-map :matrix-medium) 500)])
+    :body (fn [xena probes samples]
+            (probe-fetch-xena xena (dataset-map :matrix-medium) probes samples))}
+
+   ^:codes
+   {:desc "500 codes"
+    :id :codes-medium
+    :params (fn [] [])
+    :body (fn [xena]
+            (code-fetch xena (dataset-map :matrix-medium) "sampleID"))}
+
+   ^:codes
+   {:desc "500 codes, #2"
+    :id :codes-medium2
+    :params (fn [] [])
+    :body (fn [xena]
+            (code-fetch2 xena (dataset-map :matrix-medium) "sampleID"))}
+   ])
 
 (def test-map
   (into {} (map #(-> [(:id %) %]) tests)))
@@ -140,7 +230,7 @@
    ["-h" "--help" "Show help"]
    ["-l" "--load" "Load benchmark params from cache in ~/.benchmark"]
    ["-r" "--input FILE" "Read and print results from FILE"]
-   ["-i" "--include TAG" "Run benchmarks with TAG (can be used multiple times)" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))]]) 
+   ["-i" "--include TAG" "Run benchmarks with TAG (can be used multiple times)" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))]])
 
 (defn run [& args]
   (let [{:keys [options arguments summary errors]} (parse-opts args argspec)
@@ -178,6 +268,9 @@
 
 (comment
   (run "benchmark" "-i" "cnv")
+  (run "benchmark" "-i" "matrix")
+  (run "benchmark" "-i" "matrix-medium-three-hundred-probe-xena")
+  (run "benchmark" "-i" "codes")
   (run "benchmark")
   (.printStackTrace *e)
   )
