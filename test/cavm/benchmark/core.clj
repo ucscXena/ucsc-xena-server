@@ -190,7 +190,7 @@
             (probe-fetch xena (dataset-map :matrix-medium) probes samples))}
 
    ^:matrix
-   {:desc "300 probes * 500 samples from matrix of 17k rows"
+   {:desc "300 probes * 500 samples from matrix of 17k rows, xena-query"
     :id :matrix-medium-three-hundred-probe-xena
     :params (fn []
             [(get-probes (dataset-map :matrix-medium) 300)
