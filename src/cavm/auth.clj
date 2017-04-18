@@ -20,7 +20,7 @@
 (def client-secret)
 
 (def google-openid-discovery-url "https://accounts.google.com/.well-known/openid-configuration")
-(def google-openid-discovery-document (:body (client/get google-openid-discovery-url {:as :json})))
+(def google-openid-discovery-document (delay (:body (client/get google-openid-discovery-url {:as :json}))))
 
 (defn valid-user-email? [user-email-whitelist email]
   (contains? user-email-whitelist email))
@@ -30,7 +30,7 @@
 
 (defn google-authentication-request [{:keys [uri params session] :as request} endpoint-url]
   (let [state (or (:state session) (crypto.random/base64 60))
-        location (str (:authorization_endpoint google-openid-discovery-document)
+        location (str (:authorization_endpoint @google-openid-discovery-document)
                       "?"
                       (client/generate-query-string
                        {"client_id" client-id
@@ -95,7 +95,7 @@
                                      endpoint-url]
   (if (crypto.equality/eq? (:state session) (get params "state"))
     (let [response (client/post
-                    (:token_endpoint google-openid-discovery-document)
+                    (:token_endpoint @google-openid-discovery-document)
                     {:form-params {:code (get params "code")
                                    :client_id client-id
                                    :client_secret client-secret
