@@ -96,6 +96,9 @@
                                   (with-out-str
                                     (time (try
                                             (loader db detector docroot filename always)
-                                            (catch Exception e (log-error filename e))))))]
+                                            ; XXX Should re-throw Errors, but we need
+                                            ; to catch Throwable (instead of Exception)
+                                            ; in order to log it.
+                                            (catch Throwable e (log-error filename e))))))]
                           (info (str "Loaded " filename ", " t)))
                         nil)))))))
