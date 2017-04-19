@@ -188,10 +188,20 @@
       (wrap-reload)
       (add-version-header)))
 
+; jetty default thread use is availableProcessors/4 acceptor threads,
+; and selector threads equal to acceptor threads. For https + http, that
+; sums to exactly availableProcessors. Pick a max thread pool two that.
+;
+; We could also manipulate acceptor threads, or make it configurable, but
+; trying this for now.
+(def max-threads
+  (delay (max 80 (* 2 (.availableProcessors (Runtime/getRuntime))))))
+
 (defn- serv [app host port {:keys [keystore password]}]
   (ring.adapter.jetty/run-jetty app {:host host
                                      :port port
                                      :ssl? true
+                                     :max-threads @max-threads
                                      :ssl-port (+ port 1)
                                      :keystore keystore
                                      :key-password password
