@@ -429,17 +429,21 @@
                        (flush))))
    x))
 
-; set logging to terminal:
-; (logback-config "log" "logback_repl.xml")
 
-; (def testdb (h2/create-xenadb "test;TRACE_LEVEL_FILE=3"))
+(comment
 
-; (def testdb (h2/create-xenadb "/inside/home/craft/xena/database;TRACE_LEVEL_FILE=3"))
-; (def testdetector (apply cr/detector "/inside/home/craft/xena/files" detectors))
-; (def testloader (cl/loader-agent testdb testdetector "/inside/home/craft/xena/files"))
+(logback-config "log" "logback_repl.xml") ; set logging to terminal
+
+(def testdb (h2/create-xenadb (str (io/file (System/getProperty "user.home") "xena/database") ";TRACE_LEVEL_FILE=3")))
+(def docroot (str (io/file (System/getProperty "user.home") "xena")))
+
+(def testdetector (apply cr/detector docroot detectors))
+(def testloader (cl/loader-agent testdb testdetector docroot))
 ;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
-; (def app (get-app testdb testloader))
-; (defonce server (ring.adapter.jetty/run-jetty #'app {:port 7321 :join? false}))
-; (.start server)
+(def app (get-app docroot testdb testloader 7222 nil
+                  (re-pattern (s/join "|" (conj trusted-hosts local-trusted-host)))))
+(defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
+(.start server)
 
-; (.stop server)
+(.stop server)
+(cavm.db/close testdb))
