@@ -322,7 +322,7 @@
         ncols (count header)]
     (with-meta
       (cons (data-line features (drop-rows header) "category") ; coerce sampleID type
-            (chunked-pmap #(data-line features (drop-rows (fix-vec (parse %) ncols)))
+            (pmap #(data-line features (drop-rows (fix-vec (parse %) ncols)))
                           (rest lines)))
       (when dup-samples {:duplicate-keys {:sampleID dup-samples}}))))
 
