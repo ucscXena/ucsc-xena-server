@@ -242,7 +242,7 @@
 (def ^:private argspec
   [["-o" "--output FILE" "Output file" :default "bench.edn"]
    ["-h" "--help" "Show help"]
-   ["-l" "--load" "Load benchmark params from cache in ~/.benchmark"]
+   ["-l" "--load" "Load benchmark params from cache in .benchmark"]
    ["-r" "--input FILE" "Read and print results from FILE"]
    ["-i" "--include TAG" "Run benchmarks with TAG (can be used multiple times)" :default [] :assoc-fn (fn [m k v] (update-in m [k] conj v))]])
 
