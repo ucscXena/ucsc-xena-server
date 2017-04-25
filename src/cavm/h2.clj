@@ -238,6 +238,22 @@
    UNIQUE (`field_id`, `ordering`),
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
+; XXX If we don't index field_id, delete is potentially slow. Do we care?
+(def ^:private key-table
+  ["CREATE TABLE IF NOT EXISTS `key` (
+   `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+   `field_id` INT(11) NOT NULL,
+   `row` INT(10) unsigned NOT NULL,
+   `value` VARCHAR(16384) NOT NULL,
+   FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
+
+(def ^:private key-index-table
+  ["CREATE TABLE IF NOT EXISTS `key_index` (
+   `field_id` INT(11) NOT NULL PRIMARY KEY,
+   `first` INT(11) NOT NULL,
+   `last` INT(11) NOT NULL,
+   FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
+
 (defn- normalize-meta [m-ent metadata]
   (-> metadata
       (clojure.walk/keywordize-keys)
@@ -247,16 +263,36 @@
 (defn- json-text [md]
   (assoc md :text (json/write-str md :escape-slash false)))
 
+(defmulti load-codes
+  (fn [_ {valueType "valueType"}]
+    valueType))
+
+(defmethod load-codes :default
+  [_ _]
+  [])
+
+(defmethod load-codes "category"
+  [field-id {:keys [order]}]
+  (for [[value ordering] order]
+    [:insert-code {:field_id field-id
+                   :ordering ordering
+                   :value value}]))
+
+(defmethod load-codes "category-unique"
+  [field-id {:keys [codes index]}]
+  (map #(-> [:insert-key {:field_id field-id
+                          :row %2
+                          :value %1}]) codes index))
+
+
 (defn- load-probe-meta
-  [feature-seq field-id {:keys [order] :as feat}]
+  [feature-seq field-id {:keys [order] :as feature}]
   (let [feature-id (feature-seq)
-        fmeta (merge (normalize-meta feature-meta feat)
+        fmeta (merge (normalize-meta feature-meta feature)
                      {:field_id field-id :id feature-id})]
     (cons [:insert-feature (assoc fmeta :id feature-id)]
-          (for [[value ordering] order]
-            [:insert-code {:field_id field-id
-                           :ordering ordering
-                           :value value}]))))
+          (load-codes field-id feature))))
+
 ;
 ;
 ;
@@ -543,8 +579,23 @@
 (defn- numbered-suffix [n]
   (if (== 1 n) "" (str " (" n ")")))
 
+
+; Update the key_index table with the first and last ids from the key table,
+; per-field. We could try to do this while writing the key table, by tracking
+; the ids that are generated. Since that would be more code & complexity, we
+; do it afterward. This is slower, because the db has to scan the key table, but
+; it's during the data load, and the additional time isn't noticeable.
+(defn insert-key-indicies []
+  (sql-stmt (jdbcd/find-connection) "INSERT INTO `key_index`
+   SELECT `field_id`, MIN(`key`.`id`), MAX(`key`.`id`)
+   FROM `key`
+   JOIN `field` ON `field`.`id` = `field_id`
+   JOIN `dataset` ON `dataset`.`id` = `dataset_id`
+   WHERE `dataset`.`id` = ? GROUP BY `field_id`" [:dataset-id]))
+
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
+              key-stmt (insert-stmt :key [:value :id :row :field_id])
               position-stmt (insert-stmt :field_position
                                          [:field_id :row :bin :chrom :chromStart
                                           :chromEnd :strand])
@@ -554,6 +605,7 @@
                                                   :valueType :visibility])
               field-stmt (insert-stmt :field [:id :dataset_id :name])
               field-score-stmt (insert-stmt :field_score [:field_id :scores :i])
+              insert-key-indices-stmt (insert-key-indicies)
               field-seq-stmt (sequence-stmt "FIELD_IDS")
               feature-seq-stmt (sequence-stmt "FEATURE_IDS")]
     ; XXX change these -seq functions to do queries returning vectors &
@@ -570,6 +622,7 @@
                   :insert-position position-stmt
                   :insert-feature feature-stmt
                   :insert-code code-stmt
+                  :insert-key key-stmt
                   :insert-gene gene-stmt}
           row-count (atom 0)
           data (matrix-fn)
@@ -617,6 +670,7 @@
                                     (write (inc i)))
                                   :else (throw ex))))))]
               (write 1)))))
+      (insert-key-indices-stmt {:dataset-id dataset-id})
       {:rows @row-count
        :warnings @warnings})))
 ;
@@ -988,6 +1042,41 @@
   (when-let [codes (codes-for-values-query values field-id)]
     (map (juxt :ordering :value) codes)))
 
+(def ^:private keys-for-values-query
+  (cached-statement
+    "SELECT `id`, `value`
+    FROM `key`
+    JOIN TABLE(x INT = (?)) V on `x` = `id`"
+    true))
+
+(def key-index-query
+  (cached-statement
+    "SELECT `first`, `last` FROM `key_index`
+    WHERE `field_id` = ?"
+    true))
+
+(def key-value-query
+  (cached-statement
+    "SELECT `value` FROM `key` WHERE `id` = ?"
+    true))
+
+(def key-row-query
+  (cached-statement
+    "SELECT `row` FROM `key` WHERE `id` = ?"
+    true))
+
+
+; XXX We shift the values by the first row, do the lookup by
+; row id, then subtract the first row off again so we can match
+; the values. Seems pretty wonky. Can we avoid the +/-? Perhaps
+; we should be storing ids in the bins, instead of offsets from
+; 1st row.
+(defn- keys-for-values [field-id values]
+  (let [[{first-row :first}] (key-index-query field-id)]
+    (when-let [keys (keys-for-values-query (map #(+ first-row %) values))]
+      (map (juxt #(- (:id %) first-row) :value) keys))))
+
+
 ;
 
 (def ^:private field-bins-query
@@ -1032,6 +1121,17 @@
 
 ;
 
+(def ^:private has-key-query
+  (cached-statement
+    "SELECT EXISTS(SELECT `id` FROM `key` WHERE `field_id` = ?) haskey"
+    true))
+
+(defn has-key? [field-id]
+  (-> (has-key-query field-id) first :haskey))
+
+;
+
+; Update cache of 'codes' for a binned field.
 (defn update-codes-cache [codes field-id new-bins cache]
   (match [codes]
          [nil] (update-codes-cache (if (has-codes? field-id)
@@ -1045,7 +1145,13 @@
                 missing (filterv #(not (contains? code-cache %)) values)]
             (into code-cache (codes-for-values field-id missing)))]))
 
-(defn update-cache [cache field-id rows]
+; Update cache of 'codes' for a binned field with sorted key.
+(defn update-key-cache [code-cache field-id new-bins cache]
+  (let [values (distinct (mapcat cache new-bins))
+        missing (filterv #(not (contains? code-cache %)) values)]
+    (into (or code-cache {}) (keys-for-values field-id missing))))
+
+(defn update-cache [cache codes-updater field-id rows]
   (let [bins (distinct (map #(quot % bin-size) rows))
         missing (filterv #(not (contains? cache %)) bins)]
     (if (seq missing)
@@ -1053,7 +1159,7 @@
                            (fetch-bins field-id)
                            (map (juxt :i :scores))
                            (into (or cache {})))]
-        (update-in new-cache [:codes] update-codes-cache field-id missing new-cache))
+        (update-in new-cache [:codes] codes-updater field-id missing new-cache))
        cache)))
 
 ;
@@ -1066,12 +1172,13 @@
     (cond
       (has-genes? field-id) :gene
       (has-position? field-id) :position
+      (has-key? field-id) :key
       :else :binned)))
 
 ; binned fields
 
 (defmethod fetch-rows :binned [cache rows field-id]
-  (swap! cache update-in [field-id] update-cache field-id rows)
+  (swap! cache update-in [field-id] update-cache update-codes-cache field-id rows)
   (let [f (@cache field-id)
         getter (match [(:codes f)]
                       ; XXX cast to int here is pretty horrible.
@@ -1082,6 +1189,18 @@
                                                  nil
                                                  (vals->codes (int v)))))
                       [[:no]] (fn [bin off] (get (f bin) off)))]
+    (fn [row]
+      (apply getter (bin-offset row)))))
+
+(defmethod fetch-rows :key [cache rows field-id]
+  (swap! cache update-in [field-id] update-cache update-key-cache field-id rows)
+  (let [f (@cache field-id)
+        vals->codes (:codes f)
+        getter (fn [bin off]
+                 (let [v (aget ^floats (f bin) off)]
+                   (if (. Float isNaN v)
+                     nil
+                     (vals->codes (int v)))))]
     (fn [row]
       (apply getter (bin-offset row)))))
 
@@ -1124,7 +1243,7 @@
 
 (defn has-index? [fields field]
   (let [field-id (fields field)]
-    (or (has-genes? field-id) (has-position? field-id))))
+    (or (has-genes? field-id) (has-position? field-id) (has-key? field-id))))
 
 ; gene
 
@@ -1167,6 +1286,29 @@
 (defn fetch-position [field-id values]
   (into (i/int-set) (field-position field-id values)))
 
+; binary search for a value in a unique, sorted column. Returns the row id.
+; The values in the column should be unique, but do not need to be declared
+; 'unique' in the db. Also, the table can't be updated w/o rewriting the ids.
+;
+; The point of this is that h2 doesn't support clustered indexes, so any index
+; on a string-valued column will double the storage requirements, even if it's
+; already sorted. We avoid it by inserting the data sorted, and doing the search
+; ourselves.
+(defn key-search [field-id value]
+  (let [[{first-id :first j :last}] (key-index-query field-id)]
+    (loop [i first-id j j]
+      (when (<= i j)
+        (let [r (quot (+ i j) 2)
+              [{v :value}] (key-value-query r)
+              c (compare value v)]
+          (cond
+            (= c 0) (-> (key-row-query r) first :row)
+            (< c 0) (recur i (dec r))
+            :else (recur (inc r) j)))))))
+
+(defn fetch-key [field-id values]
+  (into (i/int-set) (map #(key-search field-id %) values)))
+
 ; fetch-indexed doesn't cache, and it's unclear
 ; if we should cache the indexed fields during 'restrict'.
 ; h2 also has caches, so it might be better to rely on them,
@@ -1180,7 +1322,8 @@
   (let [field-id (fields field)]
     (cond
       (has-position? field-id) (fetch-position field-id values)
-      (has-genes? field-id) (fetch-genes field-id values))))
+      (has-genes? field-id) (fetch-genes field-id values)
+      (has-key? field-id) (fetch-key field-id values))))
 
 ;
 ; sql eval methods
@@ -1251,9 +1394,9 @@
                 (if (not-empty rows)
                   (fetch-rows cache rows (fields field))
                   {}))]
-  (evaluate (set-of-all-cache N) {:fetch fetch
-                                          :fetch-indexed (partial fetch-indexed fields)
-                                          :indexed? (partial has-index? fields)} exp)))
+    (evaluate (set-of-all-cache N) {:fetch fetch
+                                    :fetch-indexed (partial fetch-indexed fields)
+                                    :indexed? (partial has-index? fields)} exp)))
 
 ;(jdbcd/with-connection @(:db cavm.core/testdb)
 ;   (eval-sql {:select ["sampleID"] :from ["BRCA1"] :where [:in "sampleID"
@@ -1289,6 +1432,8 @@
     (apply jdbcd/do-commands field-score-table)
     (apply jdbcd/do-commands feature-table)
     (apply jdbcd/do-commands code-table)
+    (apply jdbcd/do-commands key-table)
+    (apply jdbcd/do-commands key-index-table)
     (apply jdbcd/do-commands field-position-table)
     (apply jdbcd/do-commands field-gene-table)))
 

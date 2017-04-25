@@ -159,6 +159,13 @@
             [(get-probes (dataset-map :probemap-large) 2)])
     :body (fn [xena probes]
             (probemap-probe xena (dataset-map :probemap-large) probes))}
+   ^:probemap
+   {:desc "100 probe from probemap of 1.4M rows"
+    :id :probemap-large-two
+    :params (fn []
+            [(get-probes (dataset-map :probemap-large) 100)])
+    :body (fn [xena probes]
+            (probemap-probe xena (dataset-map :probemap-large) probes))}
    ^:cnv
    {:desc "3 gene positions from CNV of 970k rows"
     :id :cnv-large-three-gene
@@ -282,8 +289,8 @@
                 (finally
                   (cdb/close xena)))))))
 
-
 (comment
+  (time (run "benchmark" "-i" "probemap"))
   (run "benchmark" "-i" "cnv")
   (run "benchmark" "-i" "matrix")
   (run "benchmark" "-i" "matrix-medium-three-hundred-probe-xena")

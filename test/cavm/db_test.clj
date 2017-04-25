@@ -544,11 +544,14 @@
     (loader db detector docroot "test/cavm/test_inputs/probes")
     (let [probemap (cdb/run-query db {:select [:name] :from [:dataset]})
           fields (cdb/run-query db {:select [:*] :from [:field]})
-          probes (cdb/run-query db {:select [:value] :from [:code]})
+          probes (cdb/run-query db {:select [:value] :from [:key]})
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
           genes (cdb/run-query db {:select [:*] :from [:field_gene]})
           probe-field (:id (first (cdb/run-query db {:select [:id] :from [:field] :where [:= :name "name"]})))
-          data ((cdb/column-query db {:select ["name"] :from ["probes"]}) "name")]
+          data ((cdb/column-query db {:select ["name"] :from ["probes"]}) "name")
+          data-one (cdb/column-query db {:select ["name" "genes"]
+                                         :from ["probes"]
+                                         :where [:in "name" ["probe3"]]})]
 
       (ct/is (= probemap [{:name "probes"}]))
       (ct/is (= (set probes)
@@ -570,7 +573,8 @@
                    {:field_id 3 :row 6 :gene "GENEC"}
                    {:field_id 3 :row 7 :gene "GENED"}
                    {:field_id 3 :row 8 :gene "GENEE"}])))
-      (ct/is (= data ["probe1" "probe5" "probe2" "probe6" "probe3" "probe7" "probe4" "probe8" "probe9"])))))
+      (ct/is (= data ["probe1" "probe5" "probe2" "probe6" "probe3" "probe7" "probe4" "probe8" "probe9"]))
+      (ct/is (= data-one {"name" ["probe3"] "genes" [["GENEB"]]})))))
 
 (defn detect-cgdata-clinical [db]
   (ct/testing "detect cgdata clinical"

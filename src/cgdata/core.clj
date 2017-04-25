@@ -418,6 +418,32 @@
   [col in]
   (category-field #(s/trim (strcpy %)) col in))
 
+(defn intern-unique-coll
+  [s]
+  (let [sorted (sort s)
+        order-map (into {} (map #(-> [%1 %2]) sorted (range)))
+        row-values (mapv order-map s)
+        row-map (into {} (map #(-> [%1 %2]) s (range)))
+        index (mapv row-map sorted)]
+    {:codes (vec sorted) :values row-values :index index}))
+
+; XXX
+; XXX use with-meta to return dup keys, as in matrix data.
+(defmethod field-spec :category-unique
+  [col in]
+  (let [parse #(s/trim (strcpy %)) {:keys [name i]} col
+        row-vals (delay
+                     (intern-unique-coll (map #(parse (get % i "")) (tsv-rows in))))]
+      {:field name
+       :valueType "category-unique"
+       :feature (delay (select-keys @row-vals [:codes :index]))
+       :rows (delay (:values @row-vals))}))
+
+(defn resort-feature [feature order]
+  (if-let [{index :index :as feature} (force feature)]
+    (assoc feature :index (into (empty index) (map (zipmap order (range)) index)))
+    feature))
+
 (defmethod field-spec :float
   [{:keys [name i]} in]
   {:field name
@@ -595,7 +621,10 @@
             order (do
                     (sort-by #(chr-order (pos-rows %)) (into (vector-of :int)
                                                              (range (count pos-rows)))))
-            sorted-fields (map #(update-in % [:rows] resort order) (consume-vec fields))]
+            sorted-fields (->> (consume-vec fields)
+                              (map #(update-in % [:rows] resort order))
+                              (map #(update-in % [:feature] resort-feature order))
+                               )]
         sorted-fields)
       (consume-vec fields))))
 ;
@@ -709,7 +738,7 @@
 ; probemap
 ;
 (def ^:private probemap-column-types
-  {:name :category
+  {:name :category-unique
    :chrom :category
    :chromStart :float
    :chromEnd :float
