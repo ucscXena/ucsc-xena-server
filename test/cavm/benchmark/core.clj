@@ -73,6 +73,14 @@
                                                         [:= :dataset_id {:select [:id]
                                                                          :from [:dataset]
                                                                          :where [:= :name id]}]]}]})))
+; This is fastest.
+(defn code-fetch3 [xena {id :id} field]
+  (timeit (cdb/run-query xena
+                         {:select [:value]
+                          :order-by [:ordering]
+                          :from [:code]
+                          :join [:field [:= :field_id :field.id] :dataset [:= :dataset_id :dataset.id]]
+                          :where [:and [:= :field.name field] [:= :dataset.name id]]})))
 
 (defn sort-genes [genes]
   (sort (fn [x y]
@@ -211,6 +219,12 @@
     :params (fn [] [])
     :body (fn [xena]
             (code-fetch2 xena (dataset-map :matrix-medium) "sampleID"))}
+   ^:codes
+   {:desc "500 codes, #3"
+    :id :codes-medium3
+    :params (fn [] [])
+    :body (fn [xena]
+            (code-fetch3 xena (dataset-map :matrix-medium) "sampleID"))}
    ])
 
 (def test-map
