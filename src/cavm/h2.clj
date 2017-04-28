@@ -1020,12 +1020,13 @@
 
 (def ^:private field-ids-query
   (cached-statement
-    "SELECT `id`, `name` FROM `field`
-     WHERE `dataset_id` = ? AND `name` IN (SELECT * FROM TABLE(x VARCHAR = (?)))"
+    "SELECT `id`, `field`.`name` FROM `field`
+    INNER JOIN TABLE(`name` VARCHAR = ?) T ON T.`name`=`field`.`name`
+    WHERE `dataset_id` = ?"
     true))
 
 (defn- fetch-field-ids [dataset-id names]
-  (when-let [ids (field-ids-query dataset-id names)]
+  (when-let [ids (field-ids-query names dataset-id)]
     (map (juxt :name :id) ids)))
 
 ;
@@ -1082,11 +1083,12 @@
 (def ^:private field-bins-query
   (cached-statement
     "SELECT `scores`, `i` FROM `field_score`
-     WHERE `field_id` = ? AND `i` IN (SELECT * FROM TABLE(x INT = (?)))"
+     JOIN TABLE(`x` INT = ?) ON `x` = `i`
+     WHERE `field_id` = ?"
     true))
 
 (defn- fetch-bins [field-id bins]
-  (when-let [scores (field-bins-query field-id bins)]
+  (when-let [scores (field-bins-query bins field-id)]
     (map #(update-in % [:scores] bytes-to-floats) scores)))
 
 ;
