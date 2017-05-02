@@ -11,7 +11,7 @@
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [parse-opts]])
   (:require [cgdata.core :as cgdata])
-  (:require [ring.middleware.resource :refer [wrap-resource]])
+  (:require [ring.middleware.resource :refer [wrap-resource resource-request]])
   (:require [ring.middleware.content-type :refer [wrap-content-type]])
   (:require [ring.middleware.not-modified :refer [wrap-not-modified]])
   (:require [ring.middleware.params :refer [wrap-params]])
@@ -167,6 +167,15 @@
       (load-edn-from "auth.config"))
     app))
 
+; XXX Bug in clojure ring. May not be needed after upgrade.
+; The bug is that :head requests from other handlers are clobbered.
+(defn wrap-resource-workaround [handler root-path]
+  (let [resource-handler (wrap-resource handler root-path)]
+    (fn [request]
+      (if (resource-request request root-path)
+        (resource-handler request)
+        (handler request)))))
+
 ; XXX add ring jsonp?
 (defn- get-app [docroot db loader port userauth allow-hosts]
   (-> cavm.views.datasets/routes
@@ -175,7 +184,7 @@
       (attr-middleware :docroot docroot)
       (attr-middleware :db db)
       (attr-middleware :loader loader)
-      (wrap-resource "public")
+      (wrap-resource-workaround "public")
       (wrap-content-type)
       (wrap-not-modified)
       (wrap-gzip)
