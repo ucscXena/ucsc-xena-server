@@ -213,6 +213,15 @@
     :body (fn [xena probes samples]
             (probe-fetch-xena xena (dataset-map :matrix-medium) probes samples))}
 
+   ^:matrix
+   {:desc "10000 probes * 5 samples from matrix of 17k rows"
+    :id :matrix-medium-ten-thousand-probe
+    :params (fn []
+            [(get-probes (dataset-map :matrix-medium) 17000)
+             (get-samples (dataset-map :matrix-medium) 5)])
+    :body (fn [xena probes samples]
+            (probe-fetch xena (dataset-map :matrix-medium) probes samples))}
+
    ^:codes
    {:desc "500 codes"
     :id :codes-medium
