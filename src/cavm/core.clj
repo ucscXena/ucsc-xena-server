@@ -444,7 +444,7 @@
 (logback-config "log" "logback_repl.xml") ; set logging to terminal
 
 (def testdb (h2/create-xenadb (str (io/file (System/getProperty "user.home") "xena/database") ";TRACE_LEVEL_FILE=3")))
-(def docroot (str (io/file (System/getProperty "user.home") "xena")))
+(def docroot (str (io/file (System/getProperty "user.home") "xena" "files")))
 
 (def testdetector (apply cr/detector docroot detectors))
 (def testloader (cl/loader-agent testdb testdetector docroot))
