@@ -139,7 +139,12 @@
         (let [{loader :loader docroot :docroot ip :remote-addr} req]
           (upload-files ip loader docroot file)))
   (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
-       (response/file-response dataset {:root docroot :index-files? false}))
+       (let [resp (response/file-response dataset {:root docroot :index-files? false})]
+         (if (re-find #"\.gz$" dataset)
+           ; set Content-Encoding to coerce wrap-gzip to pass this w/o further compression.
+           ; Otherwise .gz files are gzipped twice.
+           (assoc-in resp [:headers "Content-Encoding"] "identity")
+           resp)))
   (GET "/" [:as req] (response/redirect
                        (str "https://xenabrowser.net/datapages/?hub="
                             (name (:scheme req)) "://"
