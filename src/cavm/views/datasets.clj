@@ -44,16 +44,32 @@
   [arr out]
   (json/-write (seq arr) out)) ; XXX is the seq here expensive? Using vec fails.
 
+(def ^:dynamic *formatter* nil)
 
 (defn- write-floating-point [x ^PrintWriter out]
   (.print out
           (if (Double/isNaN x)
             "\"NaN\""
-            (format "%.6g" x))))
+            (.format ^java.text.NumberFormat *formatter* x))))
 
 (extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
 (extend java.lang.Float json/JSONWriter {:-write write-floating-point})
 (extend java.lang.Double json/JSONWriter {:-write write-floating-point})
+
+(defn- write-str [data]
+  (let [formatter (java.text.NumberFormat/getInstance java.util.Locale/US)] ; json must be US locale, regardless of system setting
+    (.setMaximumFractionDigits formatter 6)
+    (binding [*formatter* formatter]
+      (json/write-str data))))
+
+; Override the liberator json methods. We want to customize the floating-point
+; format, which requires a NumberFormat, which is not thread-safe. So, we have
+; to allocate one before encoding the response.
+(defmethod liberator.representation/render-map-generic "application/json" [data context]
+  (write-str data))
+
+(defmethod liberator.representation/render-seq-generic "application/json" [data context]
+  (write-str data))
 
 ; (json/json-str (float-array [1 2 3]))
 ; (json/json-str (double-array [1 2 3]))

@@ -610,7 +610,10 @@
                               (catch JdbcBatchUpdateException ex
                                 (cond
                                   (and (= :insert-field insert-type)
-                                       (.startsWith (.getMessage ex) "Unique index"))
+                                       ; h2 concats the english message after
+                                       ; the localized message, so using
+                                       ; .contains.
+                                       (.contains (.getMessage ex) "Unique index"))
                                   (do
                                     (swap! warnings update-in ["duplicate-probes"] conj (:name values))
                                     (warn "Duplicate probe" (:name values))
