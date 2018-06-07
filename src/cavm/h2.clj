@@ -601,10 +601,12 @@
                              (update-in values [:name] trunc max-probe-length))
                            values)
                   write (fn write [i] ; on field inserts we retry on certain failures, with sanitized probe ids.
-                          {:pre [(< i max-insert-retry)]} ; XXX change this to drop field & write remainer of dataset instead.
                           (let [values (if (= :insert-field insert-type)
                                          (update-in values [:name] str (numbered-suffix i))
                                          values)]
+                            ; On primary key violations, try to rename probes. If we can't find a usable
+                            ; name after max-insert-retry attempts, let the dataset error out. It's probably
+                            ; a severe error, like wrong column being used as probe id.
                             (try
                               ((writer insert-type) values)
                               (catch JdbcBatchUpdateException ex
@@ -613,7 +615,8 @@
                                        ; h2 concats the english message after
                                        ; the localized message, so using
                                        ; .contains.
-                                       (.contains (.getMessage ex) "Unique index"))
+                                       (.contains (.getMessage ex) "Unique index")
+                                       (< i max-insert-retry))
                                   (do
                                     (swap! warnings update-in ["duplicate-probes"] conj (:name values))
                                     (warn "Duplicate probe" (:name values))
