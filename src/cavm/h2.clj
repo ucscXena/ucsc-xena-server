@@ -734,12 +734,11 @@
        (with-load-status dataset-id
          (when (or force
                    (not (= (set files) (set (related-sources dataset-id)))))
-           (jdbcd/transaction
-             (p :dataset-clear
-                (clear-by-exp dataset-id))
-             (p :dataset-sources
-                (load-related-sources
-                  :dataset_source :dataset_id dataset-id files)))
+           (p :dataset-clear
+              (clear-by-exp dataset-id))
+           (p :dataset-sources
+              (load-related-sources
+                :dataset_source :dataset_id dataset-id files))
            (p :dataset-table
               (let [{:keys [rows warnings]} (table-writer *tmp-dir* dataset-id matrix-fn)]
                 (jdbcd/transaction
