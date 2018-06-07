@@ -710,6 +710,12 @@
 (defmacro with-delete-status [dataset-id & body]
   `(with-delete-status* ~dataset-id (fn [] ~@body))) ; XXX need :^once?
 
+(def max-warnings 10)
+(defn- truncate-warnings [warnings]
+  (-> warnings
+      (update-in ["duplicate-keys" "sampleID"] #(take max-warnings %))
+      (update-in ["duplicate-probes"] #(take max-warnings %))))
+
 ; jdbcd/transaction will create a closure of our parameters,
 ; so we can't pass in the matrix seq w/o blowing the heap. We
 ; pass in a function to return the seq, instead.
@@ -744,7 +750,7 @@
                 (jdbcd/transaction
                   (jdbcd/update-values :dataset ["`id` = ?" dataset-id] {:rows rows})
                   (when warnings
-                    (merge-m-ent mname (assoc metadata :loader warnings))))))))))))
+                    (merge-m-ent mname (assoc metadata :loader (truncate-warnings warnings)))))))))))))
 
 (defn- dataset-by-name [dname & kprops]
   (let [props (clojure.string/join "," (map name kprops))]
