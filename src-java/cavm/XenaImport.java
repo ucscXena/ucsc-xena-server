@@ -225,6 +225,19 @@ public class XenaImport implements ActionListener, CohortCallback {
 	JButton submitButton;
 	JButton cancelButton;
 
+	public void raise() {
+	    java.awt.EventQueue.invokeLater(new Runnable() {
+			@Override
+			public void run() {
+				jfrm.setAlwaysOnTop(true);
+				jfrm.toFront();
+//				jfrm.repaint();
+				jfrm.setAlwaysOnTop(false);
+				jfrm.requestFocus();
+			}
+		});
+	}
+
 	private void setUp() {
 		// $HOME/files directory set up
 		File f = new File(dest);
@@ -909,13 +922,14 @@ public class XenaImport implements ActionListener, CohortCallback {
 	/**
 	 * @param args
 	 */
-	public static void start(final XenaServer server) throws IOException {
+	public static XenaImport start(final XenaServer server) throws IOException {
+		final XenaImport obj = new XenaImport(server);
 		EventQueue.invokeLater(new Runnable() {
 		    public void run() {
-			XenaImport obj = new XenaImport(server);
 			obj.displayGUI();
 			obj.setUp();
 		    }
 		});
+		return obj;
 	}
 }

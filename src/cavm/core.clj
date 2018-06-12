@@ -176,13 +176,21 @@
         (resource-handler request)
         (handler request)))))
 
+(defn wrap-db-loading [handler db]
+  (fn [request]
+    (if @db
+      (handler request)
+      {:status 503
+       :headers {}
+       :body "Database booting"})))
+
 ; XXX add ring jsonp?
-(defn- get-app [docroot db loader port userauth allow-hosts]
+(defn- get-app [xena-import docroot db loader port userauth allow-hosts]
   (-> cavm.views.datasets/routes
       (wrap-authentication userauth port)
       (wrap-trace :header :ui)
+      (attr-middleware :raise-gui #(when-let [xi @xena-import] (.raise xi) true))
       (attr-middleware :docroot docroot)
-      (attr-middleware :db db)
       (attr-middleware :loader loader)
       (wrap-resource-workaround "public")
       (wrap-content-type)
@@ -194,7 +202,9 @@
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
       (wrap-access-control allow-hosts)
-      (wrap-reload)
+      (wrap-db-loading db)
+      (attr-middleware :db db)
+      (wrap-reload) ; XXX only in dev? Does this slow things down?
       (add-version-header)))
 
 ; jetty default thread use is availableProcessors/4 acceptor threads,
@@ -214,7 +224,7 @@
                                      :ssl-port (+ port 1)
                                      :keystore keystore
                                      :key-password password
-                                     :join? true}))
+                                     :join? false}))
 
 ; XXX call clean-sources somewhere?? Should be automated.
 (comment (defn- loadfiles [load-fn root args]
@@ -244,6 +254,9 @@
 (defn- delete-files [port files]
   (client/post (str "http://localhost:" port "/update/")
                {:form-params {:file (map normalized-path files) :delete "true"}}))
+
+(defn- request-raise [port]
+  (client/get (str "http://localhost:" port "/raise/")))
 
 (def ^:private detectors
   [cgdata/detect-cgdata
@@ -402,26 +415,46 @@
                           (s/trim
                             (get pom-props "revision")))
                     (h2/set-tmp-dir! tmp)
-                    (let [db (h2/create-xenadb database)
+                    (let [db (atom nil)
+                          xena-import (atom nil)
                           detector (apply cr/detector docroot detectors)
                           loader (cl/loader-agent db detector docroot)]
                       (when (:auto options)
                         (watch (partial file-changed loader docroot) docroot))
-                      (Splash/close)
-                      (when gui
-                        (try
-                          (XenaImport/start
-                            (proxy [XenaServer] []
-                              (load [file] (loader (str file)) true)
-                              (retrieveCohorts [cb] (retrieve-cohorts port #(notify-ui-cohorts cb %)))
-                              (publicUrl [] public-url)
-                              (localUrl [] (local-url port))))
-                          (catch Exception ex
-                            (binding [*out* *err*]
-                              (println "Failed to start gui. Logging error.")
-                              (error "Failed to start gui." ex)))))
-                      (when (:serve options)
-                        (serv (get-app docroot db loader port userauth allow-hosts) host port keystore))))))
+                      ; Startup sequence is a bit complicated. We want to
+                      ; bring up the server w/o waiting on the db, then bring
+                      ; up the gui, but the server needs the db an gui hooks.
+                      ; So we use a couple atoms, and fill them in. Also, we
+                      ; can't block the main thread until after starting the gui
+                      ; and db, so we defer the .join on jetty until the end.
+                      (let [server
+                            (try
+                              (serv (get-app xena-import docroot db loader port userauth allow-hosts) host port keystore)
+                              (catch org.eclipse.jetty.util.MultiException ex
+                                (let [ex0 (.getThrowable ex 0)]
+                                  (if (instance? java.net.BindException ex0)
+                                    (do
+                                      (binding [*out* *err*]
+                                        (println "Port already bound. Notifying other process."))
+                                      (request-raise port)
+                                      (System/exit 1))
+                                    (throw ex)))))]
+                        (when gui (try
+                                    (reset! xena-import
+                                            (XenaImport/start
+                                              (proxy [XenaServer] []
+                                                (load [file] (loader (str file)) true)
+                                                (retrieveCohorts [cb] (retrieve-cohorts port #(notify-ui-cohorts cb %)))
+                                                (publicUrl [] public-url)
+                                                (localUrl [] (local-url port)))))
+                                    (catch Exception ex
+                                      (binding [*out* *err*]
+                                        (println "Failed to start gui. Logging error.")
+                                        (error "Failed to start gui." ex)
+                                        nil))))
+                        (Splash/close)
+                        (reset! db (h2/create-xenadb database))
+                        (.join server))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]

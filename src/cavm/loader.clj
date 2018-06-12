@@ -86,7 +86,7 @@
                         (let [t (read-string
                                   (with-out-str
                                     (time (try
-                                            (delete-matrix db docroot filename)
+                                            (delete-matrix @db docroot filename)
                                             (catch Exception e (log-error filename e))))))]
                           (info (str "Removed " filename ", " t)))
                         nil))
@@ -95,7 +95,7 @@
                         (let [t (read-string
                                   (with-out-str
                                     (time (try
-                                            (loader db detector docroot filename always)
+                                            (loader @db detector docroot filename always)
                                             ; XXX Should re-throw Errors, but we need
                                             ; to catch Throwable (instead of Exception)
                                             ; in order to log it.
