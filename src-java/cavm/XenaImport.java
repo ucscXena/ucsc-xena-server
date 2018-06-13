@@ -288,7 +288,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 		selectPanel.add(openXena);
 
 		// creates the button for uploading a file and aligns it
-		buttonSelect = new JButton("Import Data");
+		buttonSelect = new JButton("Select file");
 		buttonSelect.setActionCommand(buttonSelect.getText());
 		buttonSelect.addActionListener(this);
 		selectPanel.add(buttonSelect);
@@ -604,7 +604,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 
 	private void resetImport() {
 		textArea(notifications,"",0);
-		buttonSelect.setText("Import Data");
+		buttonSelect.setText("Select file");
 		disableImportSubPanels();
 		return;
 	}
@@ -747,7 +747,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 			catch (URISyntaxException ex) { /* TODO: error handling */ }
 		}
 
-		else if ("Import Data".equals(e.getActionCommand())) {
+		else if ("Select file".equals(e.getActionCommand())) {
 			openXena.setVisible(false);
 			sourceFile= selectFile();
 			if (sourceFile== null) {
