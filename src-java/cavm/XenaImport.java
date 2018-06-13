@@ -67,7 +67,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import cavm.CohortCallback;
 
-
+@SuppressWarnings("serial")
 public class XenaImport implements ActionListener, CohortCallback {
 	private class DatafileFilter implements FilenameFilter {
 	    public boolean accept(File dir, String name) {
@@ -567,7 +567,7 @@ public class XenaImport implements ActionListener, CohortCallback {
 		}
 	}
 
-	private int writeJsonTofile (String filepath, Map jsonData) {
+	private int writeJsonTofile (String filepath, Map<String, Object> jsonData) {
 		Gson gson = new GsonBuilder().setPrettyPrinting().create();
 		String stringVersion = gson.toJson(jsonData);
 
