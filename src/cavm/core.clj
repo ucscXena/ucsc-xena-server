@@ -201,9 +201,9 @@
       (wrap-params)
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
-      (wrap-access-control allow-hosts)
       (wrap-db-loading db)
       (attr-middleware :db db)
+      (wrap-access-control allow-hosts)
       (wrap-reload) ; XXX only in dev? Does this slow things down?
       (add-version-header)))
 
