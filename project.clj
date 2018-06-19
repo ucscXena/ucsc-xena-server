@@ -5,6 +5,7 @@
   :url "https://genome-cancer.ucsc.edu"
   :license {:name "Apache License Version 2.0"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
+;  :auto-clean false ; Faster re-builds in dev
   :repl-options  {
                   ;; If nREPL takes too long to load it may timeout,
                   ;; increase this to wait longer before timing out.
