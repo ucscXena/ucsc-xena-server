@@ -63,7 +63,7 @@
 
 (def local-trusted-host "http://localhost(:[0-9]+)?")
 
-(def public-url "https://genome-cancer.ucsc.edu/")
+(def public-url "https://xenabrowser.net")
 ;(def public-xena (str public-url "proj/public/xena"))
 (def tcga-xena "https://tcga.xenahubs.net")
 (def toil-xena "https://toil.xenahubs.net")
