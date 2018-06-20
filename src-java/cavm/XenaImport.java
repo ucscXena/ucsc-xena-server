@@ -687,7 +687,8 @@ public class XenaImport implements ActionListener, CohortCallback {
 				loadData(destFile);
 			}
 
-			String url = server.publicUrl() + "proj/site/xena/datapages/?dataset="+sourceFile.getName() +
+			String url = server.publicUrl() + "/datapages/?dataset=" +
+			    URLEncoder.encode(sourceFile.getName(), "UTF-8").replaceAll("[+]", "%20") +
 				"&host="+ server.localUrl();
 
 			String text = "View data at: " + url + "\n";
