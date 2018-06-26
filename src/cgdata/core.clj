@@ -212,7 +212,7 @@
        csv/parse-csv
        first
        (filter #(not (s/blank? %)))
-       (mapv #(+ (Integer/parseInt (s/trim %)) i))
+       (mapv #(+ (long (Double/parseDouble (s/trim %))) i))
        (s/join ",")))
 
 (defn- parseChromCSV [str]
