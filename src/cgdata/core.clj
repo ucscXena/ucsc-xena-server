@@ -451,9 +451,9 @@
 
 (let [parsers
       {:chrom normalize-chrom
-       :chromStart #(. Long parseLong (s/trim %))
-       :chromStart0 #(+ (. Long parseLong (s/trim %)) 1)
-       :chromEnd #(. Long parseLong (s/trim %))
+       :chromStart #(long (Double/parseDouble (s/trim %)))
+       :chromStart0 #(+ (long (Double/parseDouble (s/trim %))) 1)
+       :chromEnd #(long (Double/parseDouble (s/trim %)))
        :strand #(first (s/trim %))}
 
       ; This is awkward. Override chromStart if start-index is 0.

@@ -755,6 +755,38 @@
       (ct/is (= reference ["C" "A" "A" "G" "T" "C" "T" "C" "G"]))
       (ct/is (= alt ["T" "T" "G" "A" "C" "A" "C" "T" "A"])))))
 
+(defn segmented [db]
+  (ct/testing "tsv segmented from file"
+    (loader db detector docroot "test/cavm/test_inputs/segmented") ; odd that loader & detector both require docroot
+    (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
+          samples (cdb/run-query db
+                                 {:select [[:value :name]]
+                                  :from [:field]
+                                  :where [:= :name "sampleID"]
+                                  :left-join [:code [:= :field.id :field_id]]
+                                  :order-by [:ordering]})
+          probes (cdb/run-query db {:select [:*] :from [:field]})
+          data (cdb/column-query db {:select ["position" "sampleID"] :from ["segmented"]})]
+
+      (ct/is (= exp [{:name "segmented"}]))
+      (ct/is (= samples
+                [{:name "sample1"}
+                 {:name "sample2"}
+                 {:name "sample3"}
+                 {:name "sample4"}]))
+      (ct/is (= probes
+                [{:name "position" :id 1 :dataset_id 1}
+                 {:name "sampleID" :id 2 :dataset_id 1}
+                 {:name "value" :id 3 :dataset_id 1}]))
+      (ct/is (= data
+                {"sampleID" ["sample1" "sample1" "sample2" "sample3" "sample4"]
+                 "position" [
+                             {:strand  ".", :chromend 654, :chromstart 321, :chrom  "chr3"}
+                             {:strand  ".", :chromend 456, :chromstart 123, :chrom  "chr5"}
+                             {:strand  ".", :chromend 21000000, :chromstart 10000000, :chrom  "chr7"}
+                             {:strand  ".", :chromend 22222, :chromstart 11111, :chrom  "chrX"}
+                             {:strand  ".", :chromend 13000000, :chromstart 12000000, :chrom  "chrX"}]})))))
+
 (defn gene-pred1 [db]
   (ct/testing "gene predition file"
     (loader db detector docroot "test/cavm/test_inputs/refGene")
@@ -791,7 +823,7 @@
              detect-cgdata-clinical clinical1
              detect-cgdata-mutation mutation1 mutation2
              gene-pred1 matrix-dup matrix-bad-probe
-             clinical2 clinical3]]
+             clinical2 clinical3 segmented]]
     (fixture t)))
 
 (ct/deftest test-h2

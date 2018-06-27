@@ -1,0 +1,6 @@
+sample	chrom	start	end	value
+sample1	chr5	123	456	1.2
+sample1	chr3	321	654	2.3
+sample2	chr7	1e7	2.1e7	3.4
+sample3	x	11111	22222	2.3
+sample4	X	012e6	13e6	3.4
