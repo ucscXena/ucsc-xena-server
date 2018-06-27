@@ -35,7 +35,7 @@
                  '()))
   (cons [self {:keys [chrom chromStart chromEnd strand]}]
     (->ChromPosVec (conj chroms (chrom-cache chrom)) (conj starts chromStart)
-                   (conj ends chromEnd) (conj strands (or strand \0)) chrom-cache))
+                   (conj ends chromEnd) (conj strands (or strand \.)) chrom-cache))
   (count [self] (count starts))
   clojure.lang.IFn
   (invoke [self i] (.nth self i))

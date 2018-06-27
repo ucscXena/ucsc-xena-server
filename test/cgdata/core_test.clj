@@ -111,8 +111,9 @@
         spec (cgdata/field-spec field rows)]
     (ct/is (= {:field "position"
                :valueType "position"
-               :rows [{:chrom "chr1" :chromStart 100 :chromEnd 200 :strand \0}
-                      {:chrom "chr1" :chromStart 200 :chromEnd 300 :strand \0}
-                      {:chrom "chr2" :chromStart 100 :chromEnd 200 :strand \0}
-                      {:chrom "chr3" :chromStart 500 :chromEnd 600 :strand \0}]}
+               :rows [{:chrom "chr1" :chromStart 100 :chromEnd 200 :strand \.}
+                      {:chrom "chr1" :chromStart 200 :chromEnd 300 :strand \.}
+                      {:chrom "chr2" :chromStart 100 :chromEnd 200 :strand \.}
+                      {:chrom "chrX" :chromStart 100 :chromEnd 200 :strand \.}
+                      {:chrom "chr3" :chromStart 500 :chromEnd 600 :strand \.}]}
               (update-in spec [:rows] #(map (fn [pos] (into {} pos)) (deref %)))))))
