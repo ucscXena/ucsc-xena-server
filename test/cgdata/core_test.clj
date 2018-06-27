@@ -107,6 +107,7 @@
                          [["chr1" "100" "200"]
                           [" chr1" "200 " "300"]
                           ["chr2 " "100" " 200"]
+                          ["X " "100" " 200"]
                           ["chr3" "500" "600"]]))))}
         spec (cgdata/field-spec field rows)]
     (ct/is (= {:field "position"
