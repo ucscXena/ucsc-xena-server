@@ -1,4 +1,5 @@
 {
 	"type": "genomicMatrix",
-	"cohort": "a cohort"
+	"cohort": "a cohort",
+	"foo": 1.234
 }

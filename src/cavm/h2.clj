@@ -10,7 +10,7 @@
   (:require [honeysql.core :as hsql])
   (:require [honeysql.format :as hsqlfmt])
   (:require [honeysql.types :as hsqltypes])
-  (:require [clojure.data.json :as json])
+  (:require [cavm.json :as json])
   (:require [cavm.binner :refer [calc-bin overlapping-bins]])
   (:use [clj-time.format :only (formatter unparse)])
   (:use [cavm.hashable :only (ahashable)])
