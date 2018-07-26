@@ -26,8 +26,8 @@
 (extend java.lang.Float json/JSONWriter {:-write write-floating-point})
 (extend java.lang.Double json/JSONWriter {:-write write-floating-point})
 
-(defn write-str [s]
-  (json/write-str s))
+(defn write-str [s & args]
+  (apply json/write-str s args))
 
 (defn read-str [s]
   (json/read-str s))
