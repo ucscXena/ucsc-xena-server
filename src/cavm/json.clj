@@ -17,14 +17,14 @@
   [arr out]
   (json/-write (seq arr) out)) ; XXX is the seq here expensive? Using vec fails.
 
-(extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
-(extend java.lang.Float json/JSONWriter {:-write write-floating-point})
-(extend java.lang.Double json/JSONWriter {:-write write-floating-point})
-
 (defn- write-floating-point [x ^PrintWriter out]
    (if (Double/isNaN x)
      (.print out "\"NaN\"")
      (.format out java.util.Locale/US "%.4g" (to-array [x]))))
+
+(extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
+(extend java.lang.Float json/JSONWriter {:-write write-floating-point})
+(extend java.lang.Double json/JSONWriter {:-write write-floating-point})
 
 (defn write-str [s]
   (json/write-str s))
