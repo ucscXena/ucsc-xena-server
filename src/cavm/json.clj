@@ -17,28 +17,17 @@
   [arr out]
   (json/-write (seq arr) out)) ; XXX is the seq here expensive? Using vec fails.
 
-(defn- write-floating-point [x ^PrintWriter out]
-  (.print out
-          (if (Double/isNaN x)
-            "\"NaN\""
-            (.format ^java.text.NumberFormat *formatter* x))))
-
 (extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
 (extend java.lang.Float json/JSONWriter {:-write write-floating-point})
 (extend java.lang.Double json/JSONWriter {:-write write-floating-point})
 
 (defn- write-floating-point [x ^PrintWriter out]
-  (.print out
-          (if (Double/isNaN x)
-            "\"NaN\""
-            (.format ^java.text.NumberFormat *formatter* x))))
+   (if (Double/isNaN x)
+     (.print out "\"NaN\"")
+     (.format out java.util.Locale/US "%.4g" (to-array [x]))))
 
-(defn write-str [data & args]
-  (let [formatter (java.text.NumberFormat/getInstance java.util.Locale/US)] ; json must be US locale, regardless of system setting
-    (.setMaximumFractionDigits formatter 6)
-    (.setGroupingUsed formatter false)
-    (binding [*formatter* formatter]
-      (apply json/write-str data args))))
+(defn write-str [s]
+  (json/write-str s))
 
 (defn read-str [s]
   (json/read-str s))
