@@ -36,6 +36,7 @@
 (defn write-str [data & args]
   (let [formatter (java.text.NumberFormat/getInstance java.util.Locale/US)] ; json must be US locale, regardless of system setting
     (.setMaximumFractionDigits formatter 6)
+    (.setGroupingUsed formatter false)
     (binding [*formatter* formatter]
       (apply json/write-str data args))))
 
