@@ -67,16 +67,16 @@ public final class RyuFloat {
         POW5[i] = pow;
       }
       if (i < POW5_SPLIT.length) {
-        POW5_SPLIT[i][0] = pow.shiftRight(pow5len - POW5_BITCOUNT + POW5_HALF_BITCOUNT).intValueExact();
-        POW5_SPLIT[i][1] = pow.shiftRight(pow5len - POW5_BITCOUNT).and(mask).intValueExact();
+        POW5_SPLIT[i][0] = pow.shiftRight(pow5len - POW5_BITCOUNT + POW5_HALF_BITCOUNT).intValue();
+        POW5_SPLIT[i][1] = pow.shiftRight(pow5len - POW5_BITCOUNT).and(mask).intValue();
       }
 
       if (i < POW5_INV.length) {
         int j = pow5len - 1 + POW5_INV_BITCOUNT;
         BigInteger inv = BigInteger.ONE.shiftLeft(j).divide(pow).add(BigInteger.ONE);
         POW5_INV[i] = inv;
-        POW5_INV_SPLIT[i][0] = inv.shiftRight(POW5_INV_HALF_BITCOUNT).intValueExact();
-        POW5_INV_SPLIT[i][1] = inv.and(maskInv).intValueExact();
+        POW5_INV_SPLIT[i][0] = inv.shiftRight(POW5_INV_HALF_BITCOUNT).intValue();
+        POW5_INV_SPLIT[i][1] = inv.and(maskInv).intValue();
       }
     }
   }
