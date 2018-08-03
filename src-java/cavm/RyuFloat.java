@@ -93,14 +93,18 @@ public final class RyuFloat {
   }
 
   public static String floatToString(float value, RoundingMode roundingMode) {
+    return floatToString(value, roundingMode, 0);
+  }
+
+  public static String floatToString(float value, RoundingMode roundingMode, int max) {
     // Step 1: Decode the floating point number, and unify normalized and subnormal cases.
     // First, handle all the trivial cases.
     if (Float.isNaN(value)) return "NaN";
     if (value == Float.POSITIVE_INFINITY) return "Infinity";
     if (value == Float.NEGATIVE_INFINITY) return "-Infinity";
     int bits = Float.floatToIntBits(value);
-    if (bits == 0) return "0.0";
-    if (bits == 0x80000000) return "-0.0";
+    if (bits == 0) return "0";
+    if (bits == 0x80000000) return "-0";
 
     // Otherwise extract the mantissa and exponent bits and run the full algorithm.
     int ieeeExponent = (bits >> FLOAT_MANTISSA_BITS) & FLOAT_EXPONENT_MASK;
@@ -230,33 +234,25 @@ public final class RyuFloat {
     int dplength = decimalLength(dp);
     int exp = e10 + dplength - 1;
 
-    // Float.toString semantics requires using scientific notation if and only if outside this range.
-    boolean scientificNotation = !((exp >= -3) && (exp < 7));
-
     int removed = 0;
     if (dpIsTrailingZeros && !roundingMode.acceptUpperBound(even)) {
       dp--;
     }
 
     while (dp / 10 > dm / 10) {
-      if ((dp < 100) && scientificNotation) {
-        // We print at least two digits, so we might as well stop now.
-        break;
-      }
       dmIsTrailingZeros &= dm % 10 == 0;
       dp /= 10;
+      dvIsTrailingZeros &= lastRemovedDigit == 0;
       lastRemovedDigit = dv % 10;
       dv /= 10;
       dm /= 10;
       removed++;
     }
+
     if (dmIsTrailingZeros && roundingMode.acceptLowerBound(even)) {
       while (dm % 10 == 0) {
-        if ((dp < 100) && scientificNotation) {
-          // We print at least two digits, so we might as well stop now.
-          break;
-        }
         dp /= 10;
+        dvIsTrailingZeros &= lastRemovedDigit == 0;
         lastRemovedDigit = dv % 10;
         dv /= 10;
         dm /= 10;
@@ -264,13 +260,61 @@ public final class RyuFloat {
       }
     }
 
-    if (dvIsTrailingZeros && (lastRemovedDigit == 5) && (dv % 2 == 0)) {
-      // Round down not up if the number ends in X50000 and the number is even.
-      lastRemovedDigit = 4;
-    }
-    int output = dv +
+    int cut = (dplength - removed) - max;
+    int output;
+    if (cut > 0) {
+      while (cut > 0) {
+        dvIsTrailingZeros &= lastRemovedDigit == 0;
+        lastRemovedDigit = dv % 10;
+        dv /= 10;
+        removed++;
+        cut--;
+      }
+      // I don't really understand the RoundingMode API. The point here is
+      // that when last digit is 5 we should round up if dv is not trailing zeros,
+      // or it is trailing zeros but we need to round up to reach an even
+      // result, or for "conservative" mode (5 goes up) rounding.
+      if (lastRemovedDigit > 5 || lastRemovedDigit == 5 &&
+          (!dvIsTrailingZeros || !roundingMode.acceptLowerBound(dv % 2 == 0))) {
+        // This can change the decimal length and exponent, so we
+        // recompute them. Not sure if there's a way to tell when
+        // this happens w/o recomputing.
+        dv++;
+        dplength = decimalLength(dv) + removed;
+        exp = e10 + dplength - 1;
+      }
+      output = dv;
+    } else {
+      output = dv +
         ((dv == dm && !(dmIsTrailingZeros && roundingMode.acceptLowerBound(even))) || (lastRemovedDigit >= 5) ? 1 : 0);
+    }
+
+    // might need to handle rounding to zero? Can that ever happen?
+    // If we're on the smallest float number & ask for fewer decimal
+    // digits, discarding digits will result in a number that we parse
+    // as zero, but we will never have 'output' equal to zero?
+    while (output != 0 && output % 10 == 0) {
+      output /= 10;
+      removed++;
+    }
+
     int olength = dplength - removed;
+    // plain length is
+    //     if entirely fractional, digits + digits for exp + '.'
+    //     if entirely integer, exp + 1
+    //     if integer and fraction, digits + '.'
+    int plainLength = exp < 0 ? olength - exp + 1 : (exp + 1 >= olength ? exp + 1 : olength + 1);
+    // scientific notation length is
+    //   initial digit, + '.' if there's more than one digit, + 'e', + length of exp digits
+    int snLength = (olength > 1 ? 2 : 1) + olength + (
+        exp < -99 ? 4 :
+        exp < -9 ? 3 :
+        exp < 0 ? 2 :
+        exp < 10 ? 1 :
+        exp < 100 ? 2 :
+        3);
+
+    boolean scientificNotation = snLength < plainLength;
 
     if (DEBUG) {
       System.out.println("Actual values after loop");
@@ -301,14 +345,15 @@ public final class RyuFloat {
         result[index + olength - i] = (char) ('0' + c);
       }
       result[index] = (char) ('0' + output % 10);
-      result[index + 1] = '.';
-      index += olength + 1;
-      if (olength == 1) {
-        result[index++] = '0';
+      if (olength != 1) {
+        result[index + 1] = '.';
+        index += olength + 1;
+      } else {
+        index += olength;
       }
 
       // Print 'E', the exponent sign, and the exponent, which has at most two digits.
-      result[index++] = 'E';
+      result[index++] = 'e';
       if (exp < 0) {
         result[index++] = '-';
         exp = -exp;
@@ -342,8 +387,6 @@ public final class RyuFloat {
         for (int i = olength; i < exp + 1; i++) {
           result[index++] = '0';
         }
-        result[index++] = '.';
-        result[index++] = '0';
       } else {
         // Decimal dot is somewhere between the digits.
         int current = index + 1;
@@ -358,6 +401,18 @@ public final class RyuFloat {
         index += olength + 1;
       }
     }
+
+    if (DEBUG && scientificNotation && snLength != index - (sign ? 1 : 0)) {
+      System.out.println("scientificNotation");
+      System.out.println("  computed len " + snLength + " not = output len " + index);
+      System.out.println("  value= " + value + " max = " + max + " output " + new String(result, 0, index));
+    }
+    if (DEBUG && !scientificNotation && plainLength != index - (sign ? 1 : 0)) {
+      System.out.println("plain");
+      System.out.println("  computed len " + plainLength + " not = output len " + index);
+      System.out.println("  value= " + value + " max = " + max + " output " + new String(result, 0, index));
+    }
+
     return new String(result, 0, index);
   }
 
