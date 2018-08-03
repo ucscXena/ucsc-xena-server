@@ -110,6 +110,21 @@
                        (<= (count ryu) (count libc)))))
               digits))))
 
+(deftest bounds
+  (testing "bounds"
+    (let [values [(str Float/MAX_VALUE) (str \- Float/MAX_VALUE) (str Float/MIN_VALUE) (str \- Float/MIN_VALUE)]
+          digits (range 1 20)
+          combos (for [v values
+                       d digits] [v d])]
+      (doseq [[v-str d] combos]
+        (let [vf (Float. ^String v-str)
+              v (format "%.12e" vf)
+              libc (libc-float d v)
+              ryu (ryu-float d v)]
+;          (println libc ryu v d) ; dumps the libc vs. ryu output
+          (is (= (Float. ^String libc) (Float. ^String ryu)) {:value v-str :digits d})
+          (is (<= (count ryu) (count libc)) {:value v-str :digits d}))))))
+
 (deftest regressions
   (testing "regressions"
     (let [values ["9.032756200e-23" "4.200000251e6" "1.035024980e-7" "7.085204700e-21"]
