@@ -1,3 +1,7 @@
+// Portions copyright 2015 The Regents of the University of California 
+// Apache License, Version 2.0, as per "NOTICE" in project root.
+// Original license follows.
+
 // Copyright 2018 Ulf Adams
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
