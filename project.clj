@@ -13,8 +13,8 @@
                   :timeout 12000000
                   }
   :profiles {:dev {:source-paths ["src-dev" "src"]
-                   :dependencies
-                   [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]}
+                   :dependencies [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]
+                   :plugins  [[test2junit  "1.4.2"]]}
              :benchmark {:jvm-opts ["-server"]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
   :dependencies [[org.clojure/clojure "1.6.0"]
@@ -102,4 +102,5 @@
           :vertical? false
 ;          :show-external? true
           :path "doc/_build/dependencies.png"}
+  :test2junit-output-dir "test-results"
   :main cavm.core)

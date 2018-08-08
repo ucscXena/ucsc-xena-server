@@ -16,7 +16,9 @@ jobs:
           paths:
             - ~/.m2
           key: ucsc-xena-server-{{ checksum "project.clj" }}
-      - run: lein test
+      - run: lein test2junit
+      - store_test_results:
+          path: "test-results"
 #      - store_artifacts: # upload test results for display in Test Summary
 #          path: target/uberjar/cci-demo-clojure.jar
 #          destination: uberjar
