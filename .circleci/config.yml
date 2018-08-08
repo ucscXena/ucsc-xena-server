@@ -1,0 +1,22 @@
+version: 2
+jobs:
+  build: # runs not using Workflows must have a `build` job as entry point
+    working_directory: ~/ucsc-xena-server
+    docker:
+      - image: circleci/clojure:lein-2.7.1
+    environment: # environment variables for primary container
+      LEIN_ROOT: nbd
+      JVM_OPTS: -Xmx3200m # limit the maximum heap size to prevent out of memory errors
+    steps:
+      - checkout
+      - restore_cache: # restores saved cache if checksum hasn't changed since the last run
+          key: ucsc-xena-server-{{ checksum "project.clj" }}
+      - run: lein deps
+      - save_cache: # generate and store cache in the .m2 directory using a key template
+          paths:
+            - ~/.m2
+          key: ucsc-xena-server-{{ checksum "project.clj" }}
+      - run: lein test
+#      - store_artifacts: # upload test results for display in Test Summary
+#          path: target/uberjar/cci-demo-clojure.jar
+#          destination: uberjar
