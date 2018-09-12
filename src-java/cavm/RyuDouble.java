@@ -71,7 +71,7 @@ public final class RyuDouble {
           POW5_SPLIT[i][j] = pow
               .shiftRight(pow5len - POW5_BITCOUNT + (3 - j) * POW5_QUARTER_BITCOUNT)
               .and(mask)
-              .intValueExact();
+              .intValue();
         }
       }
 
@@ -82,9 +82,9 @@ public final class RyuDouble {
         POW5_INV[i] = inv;
         for (int k = 0; k < 4; k++) {
           if (k == 0) {
-            POW5_INV_SPLIT[i][k] = inv.shiftRight((3 - k) * POW5_INV_QUARTER_BITCOUNT).intValueExact();
+            POW5_INV_SPLIT[i][k] = inv.shiftRight((3 - k) * POW5_INV_QUARTER_BITCOUNT).intValue();
           } else {
-            POW5_INV_SPLIT[i][k] = inv.shiftRight((3 - k) * POW5_INV_QUARTER_BITCOUNT).and(invMask).intValueExact();
+            POW5_INV_SPLIT[i][k] = inv.shiftRight((3 - k) * POW5_INV_QUARTER_BITCOUNT).and(invMask).intValue();
           }
         }
       }
@@ -188,7 +188,7 @@ public final class RyuDouble {
       if (DEBUG) {
         long exact = POW5_INV[q]
             .multiply(BigInteger.valueOf(mv))
-            .shiftRight(-e2 + q + k).longValueExact();
+            .shiftRight(-e2 + q + k).longValue();
         System.out.println(exact + " " + POW5_INV[q].bitCount());
         if (dv != exact) {
           throw new IllegalStateException();
