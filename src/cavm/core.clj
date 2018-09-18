@@ -30,6 +30,7 @@
   (:require [taoensso.timbre :as timbre])
   (:require [less.awful.ssl :as ssl])
   (:require [ring.util.response :as response])
+  (:require [ring.util.request :refer [path-info]])
   (:require hiccup.page)
   (:import cavm.XenaImport cavm.Splash)
   (:import org.slf4j.LoggerFactory
@@ -183,6 +184,14 @@
        :headers {}
        :body "Database booting"})))
 
+(defn wrap-ping [handler]
+  (fn [request]
+    (if (= (path-info request) "/ping/")
+      {:status 200
+       :headers {}
+       :body "pong"}
+      (handler request))))
+
 ; XXX add ring jsonp?
 (defn- get-app [docroot db loader port userauth allow-hosts]
   (-> cavm.views.datasets/routes
@@ -199,6 +208,7 @@
       (wrap-params)
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
+      (wrap-ping)
       (wrap-db-loading db)
       (attr-middleware :db db)
       (wrap-access-control allow-hosts)
