@@ -31,7 +31,7 @@
   (:require [less.awful.ssl :as ssl])
   (:require [ring.util.response :as response])
   (:require hiccup.page)
-  (:import cavm.XenaImport cavm.XenaServer cavm.Splash cavm.CohortCallback)
+  (:import cavm.XenaImport cavm.XenaServer cavm.Splash)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
@@ -368,10 +368,6 @@
     (update-in p-opts [:errors] conj "--certfile and --keyfile must be used together")
     p-opts))
 
-(defn notify-ui-cohorts [^CohortCallback cb cohorts]
-  (.callback cb (into-array String
-                            (sort-by #(.toLowerCase ^String %) cohorts))))
-
 ; XXX create dir for database as well?
 (defn -main [& args]
   (let [{:keys [options arguments summary errors]} (validate-certkey (parse-opts args argspec))
@@ -444,7 +440,6 @@
                                             (XenaImport/start
                                               (proxy [XenaServer] []
                                                 (load [file] (loader (str file)) true)
-                                                (retrieveCohorts [cb] (retrieve-cohorts port #(notify-ui-cohorts cb %)))
                                                 (publicUrl [] public-url)
                                                 (localUrl [] (local-url port)))))
                                     (catch Exception ex
