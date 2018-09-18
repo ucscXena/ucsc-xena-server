@@ -115,7 +115,6 @@
     (let [response (if (= request-method :options)
                      (response/response "")
                      (handler request))]
-      (info "request" request)
       (if-let [origin (re-match allow-hosts (get-in request [:headers "origin"] ""))]
         (-> response
             (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
