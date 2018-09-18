@@ -28,7 +28,6 @@ import com.google.gson.stream.JsonWriter;
 import cavm.XenaServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import cavm.CohortCallback;
 
 @SuppressWarnings("serial")
 public class XenaImport implements ActionListener {
