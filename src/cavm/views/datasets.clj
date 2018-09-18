@@ -141,10 +141,4 @@
   (POST "/data/" r (expression (body-string r)))
   (POST "/update/" [file always delete :as {ip :remote-addr loader :loader}]
         (loader-request ip loader file always delete))
-  (GET "/raise/" request (let [{ip :remote-addr raise-gui :raise-gui} request]
-                          (if (and (is-local? ip) (raise-gui))
-                            "ok"
-                            {:status  400
-                             :headers {}
-                             :body "No gui"})))
   (not-found "not found"))

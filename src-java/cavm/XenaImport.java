@@ -25,7 +25,6 @@ import java.lang.reflect.Type;
 import com.google.gson.GsonBuilder;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import cavm.XenaServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,24 +32,10 @@ import org.slf4j.LoggerFactory;
 public class XenaImport implements ActionListener {
 	
 	static final Logger LOG = LoggerFactory.getLogger(XenaImport.class);
-	XenaServer server;
 	JFrame jfrm;
 	JTextArea introduction;
 	JButton openXena;
 	String xenaTarget = "https://xenabrowser.net/datapages/?host=https%3A%2F%2Flocal.xena.ucsc.edu%3A7223&removeHub=https%3A%2F%2Fxena.treehouse.gi.ucsc.edu%3A443";
-
-	public void raise() {
-	    java.awt.EventQueue.invokeLater(new Runnable() {
-			@Override
-			public void run() {
-				jfrm.setAlwaysOnTop(true);
-				jfrm.toFront();
-//				jfrm.repaint();
-				jfrm.setAlwaysOnTop(false);
-				jfrm.requestFocus();
-			}
-		});
-	}
 
 	private void onExit() {
 		System.exit(0);
@@ -139,15 +124,14 @@ public class XenaImport implements ActionListener {
 	    return null;
 	}
 
-	public XenaImport(XenaServer server_in) {
-		server = server_in;
+	public XenaImport() {
 	}
 
 	/**
 	 * @param args
 	 */
-	public static XenaImport start(final XenaServer server) throws IOException {
-		final XenaImport obj = new XenaImport(server);
+	public static XenaImport start() throws IOException {
+		final XenaImport obj = new XenaImport();
 		EventQueue.invokeLater(new Runnable() {
 		    public void run() {
 			obj.displayGUI();

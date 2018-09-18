@@ -31,7 +31,7 @@
   (:require [less.awful.ssl :as ssl])
   (:require [ring.util.response :as response])
   (:require hiccup.page)
-  (:import cavm.XenaImport cavm.XenaServer cavm.Splash)
+  (:import cavm.XenaImport cavm.Splash)
   (:import org.slf4j.LoggerFactory
            ch.qos.logback.classic.joran.JoranConfigurator
            ch.qos.logback.core.util.StatusPrinter)
@@ -185,11 +185,10 @@
        :body "Database booting"})))
 
 ; XXX add ring jsonp?
-(defn- get-app [xena-import docroot db loader port userauth allow-hosts]
+(defn- get-app [docroot db loader port userauth allow-hosts]
   (-> cavm.views.datasets/routes
       (wrap-authentication userauth port)
       (wrap-trace :header :ui)
-      (attr-middleware :raise-gui #(when-let [xi @xena-import] (.raise xi) true))
       (attr-middleware :docroot docroot)
       (attr-middleware :loader loader)
       (wrap-resource-workaround "public")
@@ -254,9 +253,6 @@
 (defn- delete-files [port files]
   (client/post (str "http://localhost:" port "/update/")
                {:form-params {:file (map normalized-path files) :delete "true"}}))
-
-(defn- request-raise [port]
-  (client/get (str "http://localhost:" port "/raise/")))
 
 (def ^:private detectors
   [cgdata/detect-cgdata
@@ -425,23 +421,17 @@
                       ; and db, so we defer the .join on jetty until the end.
                       (let [server
                             (try
-                              (serv (get-app xena-import docroot db loader port userauth allow-hosts) host port keystore)
+                              (serv (get-app docroot db loader port userauth allow-hosts) host port keystore)
                               (catch org.eclipse.jetty.util.MultiException ex
                                 (let [ex0 (.getThrowable ex 0)]
                                   (if (instance? java.net.BindException ex0)
                                     (do
                                       (binding [*out* *err*]
                                         (println "Port already bound. Notifying other process."))
-                                      (request-raise port)
                                       (System/exit 1))
                                     (throw ex)))))]
                         (when gui (try
-                                    (reset! xena-import
-                                            (XenaImport/start
-                                              (proxy [XenaServer] []
-                                                (load [file] (loader (str file)) true)
-                                                (publicUrl [] public-url)
-                                                (localUrl [] (local-url port)))))
+                                    (reset! xena-import (XenaImport/start))
                                     (catch Exception ex
                                       (binding [*out* *err*]
                                         (println "Failed to start gui. Logging error.")
