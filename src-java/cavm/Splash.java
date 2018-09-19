@@ -107,7 +107,7 @@ public class Splash {
 		System.exit(0);
 	    }
 	} catch (Exception ex) {
-	    show();
+//	    show();
 	    runMain(args);
 	}
     }
