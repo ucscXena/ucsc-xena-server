@@ -104,12 +104,12 @@
       (= ip "::1")
       (= ip "127.0.0.1")))
 
-; Return immediately, queuing a loader job.
+; Return immediately, queuing a loader job. Returns the
+; state of the queue after adding the last file in the request.
 (defn loader-request [ip loader files always delete]
   (when (is-local? ip)
-    (future (doseq [f (if (coll? files) files [files])]
-              (loader f {:always (boolean always) :delete (boolean delete)})))
-    "ok"))
+    (last (map #(loader % {:always (boolean always) :delete (boolean delete)})
+                (if (coll? files) files [files])))))
 
 (defn upload-files [ip loader docroot file]
   (when (is-local? ip)
@@ -140,5 +140,6 @@
   (GET "/data/:exp" [exp] (expression exp))
   (POST "/data/" r (expression (body-string r)))
   (POST "/update/" [file always delete :as {ip :remote-addr loader :loader}]
-        (loader-request ip loader file always delete))
+        (json/write-str (loader-request ip loader file always delete)))
+  (GET "/load-queue/" [:as {load-queue :load-queue}] (json/write-str (deref load-queue)))
   (not-found "not found"))

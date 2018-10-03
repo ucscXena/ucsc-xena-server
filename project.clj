@@ -18,6 +18,7 @@
              :benchmark {:jvm-opts ["-server"]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
   :dependencies [[org.clojure/clojure "1.6.0"]
+                 [org.clojure/core.async  "0.4.474"]
                  [org.clojure/tools.cli "0.3.1"]
                  [net.mikera/core.matrix "0.8.0"]
                  [net.mikera/vectorz-clj "0.11.0"]
@@ -31,6 +32,7 @@
                  [ring/ring-core "1.2.2"]
                  [ring/ring-devel "1.2.2"] ; XXX only in dev
                  [ring/ring-jetty-adapter "1.2.2"]
+                 [com.keminglabs/jetty7-websockets-async  "0.1.0"]
                  [amalloy/ring-gzip-middleware "0.1.3"]
                  [me.raynes/fs "1.4.2"]
                  [digest "1.4.3"]

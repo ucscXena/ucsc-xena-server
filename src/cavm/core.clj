@@ -25,6 +25,7 @@
   (:require [cavm.loader :as cl])
   (:require [cavm.fs-utils :refer [normalized-path]])
   (:require [cavm.cgdata])
+  (:require [cavm.events :as events])
   (:require [clj-http.client :as client])
   (:require [clojure.tools.logging :as log :refer [info trace warn error]])
   (:require [taoensso.timbre :as timbre])
@@ -193,12 +194,13 @@
       (handler request))))
 
 ; XXX add ring jsonp?
-(defn- get-app [docroot db loader port userauth allow-hosts]
+(defn- get-app [docroot db loader load-queue port userauth allow-hosts]
   (-> cavm.views.datasets/routes
       (wrap-authentication userauth port)
       (wrap-trace :header :ui)
       (attr-middleware :docroot docroot)
       (attr-middleware :loader loader)
+      (attr-middleware :load-queue load-queue)
       (wrap-resource-workaround "public")
       (wrap-content-type)
       (wrap-not-modified)
@@ -224,8 +226,9 @@
 (def max-threads
   (delay (max 80 (* 2 (.availableProcessors (Runtime/getRuntime))))))
 
-(defn- serv [app host port {:keys [keystore password]}]
-  (ring.adapter.jetty/run-jetty app {:host host
+(defn- serv [app host port {:keys [keystore password]} ws-config]
+  (ring.adapter.jetty/run-jetty app {:configurator ws-config
+                                     :host host
                                      :port port
                                      :ssl? true
                                      :max-threads @max-threads
@@ -419,7 +422,7 @@
                     (let [db (atom nil)
                           xena-import (atom nil)
                           detector (apply cr/detector docroot detectors)
-                          loader (cl/loader-agent db detector docroot)]
+                          [loader load-queue] (cl/loader-agent db detector docroot)]
                       (when (:auto options)
                         (watch (partial file-changed loader docroot) docroot))
                       ; Startup sequence is a bit complicated. We want to
@@ -428,9 +431,10 @@
                       ; So we use a couple atoms, and fill them in. Also, we
                       ; can't block the main thread until after starting the gui
                       ; and db, so we defer the .join on jetty until the end.
-                      (let [server
+                      (let [ws-config (events/jetty-config load-queue)
+                            server
                             (try
-                              (serv (get-app docroot db loader port userauth allow-hosts) host port keystore)
+                              (serv (get-app docroot db loader load-queue port userauth allow-hosts) host port keystore ws-config)
                               (catch org.eclipse.jetty.util.MultiException ex
                                 (let [ex0 (.getThrowable ex 0)]
                                   (if (instance? java.net.BindException ex0)
@@ -468,18 +472,22 @@
 
 (comment
 
-(logback-config "log" "logback_repl.xml") ; set logging to terminal
+  (do
+    (logback-config "log" "logback_repl.xml") ; set logging to terminal
 
-(def testdb (h2/create-xenadb (str (io/file (System/getProperty "user.home") "xena/database") ";TRACE_LEVEL_FILE=3")))
-(def docroot (str (io/file (System/getProperty "user.home") "xena" "files")))
+    (def testdb (atom (h2/create-xenadb (str (io/file (System/getProperty "user.home") "xena/database") ";TRACE_LEVEL_FILE=3"))))
+    (def docroot (str (io/file (System/getProperty "user.home") "xena" "files")))
 
-(def testdetector (apply cr/detector docroot detectors))
-(def testloader (cl/loader-agent testdb testdetector docroot))
-;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
-(def app (get-app docroot testdb testloader 7222 nil
-                  (re-pattern (s/join "|" (conj trusted-hosts local-trusted-host)))))
-(defonce server (ring.adapter.jetty/run-jetty #'app {:port 7222 :join? false}))
-(.start server)
+    (def testdetector (apply cr/detector docroot detectors))
+    (def testloader (cl/loader-agent testdb testdetector docroot))
+    ;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
+    (let [[loader load-queue] testloader]
+      (def ws-config (events/jetty-config load-queue))
+      (def app (get-app docroot testdb loader load-queue 7222 nil
+                        (re-pattern (s/join "|" (conj trusted-hosts local-trusted-host))))))
+    (defonce server (ring.adapter.jetty/run-jetty #'app {:configurator ws-config :port 7222 :join? false}))
+    (.start server)
+    )
 
-(.stop server)
-(cavm.db/close testdb))
+  (.stop server)
+  (cavm.db/close testdb))
