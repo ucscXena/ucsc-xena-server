@@ -1181,7 +1181,7 @@
 ; fetch-indexed doesn't cache, and it's unclear
 ; if we should cache the indexed fields during 'restrict'.
 ; h2 also has caches, so it might be better to rely on them,
-; simply doing the query again if we need it. 
+; simply doing the query again if we need it.
 
 ; Otherwise, we might want to inform the cache of what columns are
 ; required later during 'restrict', or in 'project', so
