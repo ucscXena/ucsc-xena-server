@@ -1290,6 +1290,50 @@
 (defn- genomic-source [reqs]
   (map #(update-in % [:data] merge (genomic-read-req %)) reqs))
 
+;
+; hand-spun migrations.
+;
+
+(def column-len-query
+  "SELECT character_maximum_length as len
+   FROM  information_schema.columns as c
+   WHERE c.table_name = ? AND c.column_name = ?")
+
+(def bad-probemap-query
+  "SELECT `dataset`.`name`
+   FROM `dataset`
+   LEFT JOIN `dataset` as d ON d.`name` = `dataset`.`probemap`
+   WHERE `dataset`.`probeMap` IS NOT NULL AND d.`name` IS NULL")
+
+(defn delete-if-probemap-invalid []
+  (jdbcd/with-query-results
+    bad-datasets
+    [bad-probemap-query]
+    (doseq [{dataset :name} bad-datasets]
+      (delete-dataset dataset))))
+
+; dataset.probemap refers to a dataset.name, but previously
+; had different data size, and was not enforced as a foreign
+; key. Check for old data size, and run migration if it's old
+;
+; The migration will delete datasets that have invalid probemap,
+; and update the field.
+(defn migrate-probemap []
+  (jdbcd/with-query-results
+    pm-key
+    [column-len-query "DATASET" "PROBEMAP"]
+    (when (and (seq pm-key) (= (:len (first pm-key)) 255))
+      (info "Migrating probeMap field")
+      (delete-if-probemap-invalid)
+      (jdbcd/do-commands
+        "AlTER TABLE `dataset` ALTER COLUMN `probeMap` VARCHAR(1000)"
+        "ALTER TABLE `dataset` ADD FOREIGN KEY (`probeMap`) REFERENCES `dataset` (`name`)"))))
+
+(defn- migrate []
+  (migrate-probemap)
+  ; ...add more here
+  )
+
 (defn- create[]
   (jdbcd/transaction
     (apply jdbcd/do-commands cohorts-table)
@@ -1301,7 +1345,8 @@
     (apply jdbcd/do-commands feature-table)
     (apply jdbcd/do-commands code-table)
     (apply jdbcd/do-commands field-position-table)
-    (apply jdbcd/do-commands field-gene-table)))
+    (apply jdbcd/do-commands field-gene-table))
+  (migrate))
 
 ;
 ; add TABLE handling for honeysql
