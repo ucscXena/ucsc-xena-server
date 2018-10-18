@@ -47,7 +47,7 @@ public class XenaImport implements ActionListener {
 		JMenu fileMenu = new JMenu("File");
 		fileMenu.setMnemonic(KeyEvent.VK_F);
 
-		JMenuItem menuItem =new JMenuItem("Close");
+		JMenuItem menuItem =new JMenuItem("Quit");
 		menuItem.setAccelerator(KeyStroke.getKeyStroke( KeyEvent.VK_W, ActionEvent.META_MASK));
 		menuItem.addActionListener(this);
 		fileMenu.add(menuItem);
@@ -67,12 +67,12 @@ public class XenaImport implements ActionListener {
 		introduction.setEditable(false);
 		introduction.setLineWrap(true);
 		introduction.setWrapStyleWord(true);
-		introduction.setText("This is your local Xena hub, which holds your imported data files. You may view your data by visiting https://xenabrowser.net.");
+		introduction.setText("This is your local Xena hub.");
 		introduction.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(introduction);
 		panel.add(Box.createRigidArea(new Dimension(0,15)));
 
-		openXena = new JButton("Go to xenabrowser.net");
+		openXena = new JButton("Load and view data");
 		openXena.setActionCommand("openXena");
 		openXena.addActionListener(this);
 		openXena.setVisible(true);
@@ -84,11 +84,11 @@ public class XenaImport implements ActionListener {
 
 		// close Application
 		jfrm.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-		jfrm.addWindowListener(new WindowAdapter () {
-			public void windowClosing(WindowEvent evt) {
-		  		onExit();
-		  	}
-		});
+//		jfrm.addWindowListener(new WindowAdapter () {
+//			public void windowClosing(WindowEvent evt) {
+//		  		onExit();
+//		  	}
+//		});
 
 		// sets the layout of the application
 		jfrm.setLayout(new FlowLayout(FlowLayout.CENTER));
@@ -103,7 +103,7 @@ public class XenaImport implements ActionListener {
 	}
 
 	public void actionPerformed (ActionEvent e) {
-		if ("Close".equals(e.getActionCommand())) {
+		if ("Quit".equals(e.getActionCommand())) {
 			onExit();
 		}
 
