@@ -35,7 +35,7 @@ public class XenaImport implements ActionListener {
 	JFrame jfrm;
 	JTextArea introduction;
 	JButton openXena;
-	String xenaTarget = "https://xenabrowser.net/datapages/?host=https%3A%2F%2Flocal.xena.ucsc.edu%3A7223&removeHub=https%3A%2F%2Fxena.treehouse.gi.ucsc.edu%3A443";
+	String xenaTarget = "https://xenabrowser.net/datapages/?host=https%3A%2F%2Flocal.xena.ucsc.edu%3A7223";
 
 	private void onExit() {
 		System.exit(0);
