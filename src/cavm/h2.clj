@@ -766,11 +766,9 @@
   (let [dataset-id (dataset-id-by-name dataset)]
     (if dataset-id
       (with-delete-status dataset-id
-        (jdbcd/transaction
-          (do
-            (clear-by-exp dataset-id)
-            (jdbcd/do-commands
-              (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))))
+        (clear-by-exp dataset-id)
+        (jdbcd/do-commands
+          (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))
       (info "Did not delete unknown dataset" dataset))))
 
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
