@@ -481,11 +481,15 @@
     (def testdetector (apply cr/detector docroot detectors))
     (def testloader (cl/loader-agent testdb testdetector docroot))
     ;            (watch (partial file-changed #'testloader docroot-default) docroot-default)
+    (def keystore {:keystore (.toString (io/resource "localhost.keystore"))
+                  :password  "localxena"})
+
     (let [[loader load-queue] testloader]
       (def ws-config (events/jetty-config load-queue))
       (def app (get-app docroot testdb loader load-queue 7222 nil
                         (re-pattern (s/join "|" (conj trusted-hosts local-trusted-host))))))
-    (defonce server (ring.adapter.jetty/run-jetty #'app {:configurator ws-config :port 7222 :join? false}))
+    (defonce server (serv #'app "localhost" 7222 keystore ws-config))
+
     (.start server)
     )
 
