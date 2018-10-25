@@ -20,9 +20,11 @@
   (json/-write (seq arr) out)) ; XXX is the seq here expensive? Using vec fails.
 
 (defn- write-floating-point [x ^PrintWriter out]
-  (if (Double/isNaN x)
-    (.print out "\"NaN\"")
-    (.print out (RyuFloat/floatToString x RoundingMode/ROUND_EVEN 4))))
+  (let [lx (long x)]
+    (cond
+      (Double/isNaN x) (.print out "\"NaN\"")
+      (== x lx) (json/-write lx out)
+      :else (.print out (RyuFloat/floatToString x RoundingMode/ROUND_EVEN 4)))))
 
 (extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
 (extend java.lang.Float json/JSONWriter {:-write write-floating-point})
