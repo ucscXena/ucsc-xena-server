@@ -111,21 +111,21 @@
     (last (map #(loader % {:always (boolean always) :delete (boolean delete)})
                 (if (coll? files) files [files])))))
 
-(defn upload-files [ip loader docroot file]
+(defn upload-files [ip loader docroot file append]
   (when (is-local? ip)
     (let [files (if (vector? file) file [file])]
       (doseq [{:keys [bytes filename]} files]
         ; XXX catch errors & return http code
         (let [dest (docroot-path docroot filename)]
-          (with-open [w (clojure.java.io/output-stream dest)]
+          (with-open [w (clojure.java.io/output-stream dest :append append)]
             (.write w ^bytes bytes)))))
     "ok"))
 
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
-  (POST ["/upload/"] [file :as req]
+  (POST ["/upload/"] [file append :as req]
         (let [{loader :loader docroot :docroot ip :remote-addr} req]
-          (upload-files ip loader docroot file)))
+          (upload-files ip loader docroot file append)))
   (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
        (let [resp (response/file-response dataset {:root docroot :index-files? false})]
          (if (re-find #"\.gz$" dataset)
