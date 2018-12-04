@@ -48,7 +48,9 @@ public class XenaImport implements ActionListener {
 		fileMenu.setMnemonic(KeyEvent.VK_F);
 
 		JMenuItem menuItem =new JMenuItem("Quit");
-		menuItem.setAccelerator(KeyStroke.getKeyStroke( KeyEvent.VK_W, ActionEvent.META_MASK));
+		String os = System.getProperty("os.name");
+		int mod = os.equals("Linux") ? InputEvent.ALT_DOWN_MASK : InputEvent.META_DOWN_MASK;
+		menuItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_W, mod));
 		menuItem.addActionListener(this);
 		fileMenu.add(menuItem);
 
