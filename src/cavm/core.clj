@@ -389,6 +389,7 @@
         logfile (:logfile options)
         always (:force options)
         gui (:gui options)
+        serve (:serve options)
         certfile (:certfile options)
         keyfile (:keyfile options)
         userauth (:userauth options)
@@ -433,17 +434,18 @@
                       ; and db, so we defer the .join on jetty until the end.
                       (let [ws-config (events/jetty-config load-queue)
                             server
-                            (try
-                              (serv (get-app docroot db loader load-queue port userauth allow-hosts) host port keystore ws-config)
-                              (catch org.eclipse.jetty.util.MultiException ex
-                                (let [ex0 (.getThrowable ex 0)]
-                                  (if (instance? java.net.BindException ex0)
-                                    (do
-                                      (binding [*out* *err*]
-                                        (println "Port already bound. Notifying other process."))
-                                      (System/exit 1))
-                                    (throw ex)))))]
-                        (when gui (try
+                            (when serve
+                              (try
+                                (serv (get-app docroot db loader load-queue port userauth allow-hosts) host port keystore ws-config)
+                                (catch org.eclipse.jetty.util.MultiException ex
+                                  (let [ex0 (.getThrowable ex 0)]
+                                    (if (instance? java.net.BindException ex0)
+                                      (do
+                                        (binding [*out* *err*]
+                                          (println "Port already bound. Notifying other process."))
+                                        (System/exit 1))
+                                      (throw ex))))))]
+                        (when (and gui serve) (try
                                     (reset! xena-import (XenaImport/start))
                                     (catch Exception ex
                                       (binding [*out* *err*]
@@ -452,7 +454,8 @@
                                         nil))))
                         (Splash/close)
                         (reset! db (h2/create-xenadb database))
-                        (.join server))))))
+                        (when server
+                          (.join server)))))))
         (catch Exception ex
           ; XXX maybe should enable ERROR logging to console, instead of this.
           (binding [*out* *err*]
