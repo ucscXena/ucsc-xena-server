@@ -73,8 +73,11 @@
        (pmap (fn [chunk] (doall (map f chunk))))
        (apply concat)))
 
+(defn- drop-quotes [s]
+  (.replace ^String s "\"" ""))
+
 (defn- tabbed [line]
-  (mapv s/trim (s/split line #"\t")))
+  (mapv #(drop-quotes (s/trim %)) (s/split line #"\t")))
 
 (defn- not-blank? [line]
   (not (re-matches #"\s*" line)))
