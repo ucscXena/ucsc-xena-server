@@ -91,8 +91,10 @@
     (fn [size]
       (gen/resize (min size max-size) generator))))
 
+(def ascii-quote (int \"))
+
 (defn gen-name [name-max]
-  (gen-max (gen/such-that #(not-empty (s/trim %)) gen/string-ascii)
+  (gen-max (gen/such-that #(and (not-empty (s/trim %)) (= -1 (.indexOf ^String % ascii-quote))) gen/string-ascii)
            name-max))
 
 (def ^:dynamic *name-max* 30)
