@@ -13,11 +13,14 @@
                   :timeout 12000000
                   }
   :profiles {:dev {:source-paths ["src-dev" "src"]
-                   :dependencies [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]]
-                   :plugins  [[test2junit  "1.4.2"]]}
-             :benchmark {:jvm-opts ["-server"]}
+                   :dependencies [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]
+                                  [com.clojure-goes-fast/clj-java-decompiler  "0.1.0"]
+                                  [criterium  "0.4.4"]]
+                   :plugins [[test2junit  "1.4.2"]]}
+             :benchmark {:jvm-opts ["-server"]
+                         :plugins [[lein-nodisassemble  "0.1.3"]]}
              :uberjar {:omit-source true :aot [mikera.vectorz.core]}}
-  :dependencies [[org.clojure/clojure "1.6.0"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
                  [org.clojure/core.async  "0.4.474"]
                  [org.clojure/tools.cli "0.3.1"]
                  [net.mikera/core.matrix "0.8.0"]
@@ -89,7 +92,7 @@
                        ["schemaspy"]]}
   :jar-exclusions     [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
   :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs" #"\.(clj|java)$"]
-  :javac-options ["-target" "1.6" "-source" "1.6"]
+  :javac-options ["-target" "1.7" "-source" "1.7"]
   :aot [cavm.core cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
   :plugins [[lein-sphinx "1.0.1"]
