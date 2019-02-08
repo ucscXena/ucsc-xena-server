@@ -595,9 +595,8 @@
         fields (mapv #(field-spec % in) header)] ; vector of field-specs, each holding vector of rows in :rows
     (if (= "position" (get-in fields [0 :valueType]))
       (let [pos-rows (force (get-in fields [0 :rows]))
-            order (do
-                    (sort-by #(chr-order (pos-rows %)) (into (vector-of :int)
-                                                             (range (count pos-rows)))))
+            order (sort-by #(chr-order (pos-rows %)) (into (vector-of :int)
+                                                           (range (count pos-rows))))
             sorted-fields (map #(update-in % [:rows] resort order) (consume-vec fields))]
         sorted-fields)
       (consume-vec fields))))
