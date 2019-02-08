@@ -130,9 +130,8 @@
 ;(partition-all-v 3 [1 2 3 4 5 6 7 8 9 10 11 12 13])
 
 (require '[clojure.core.reducers :as r])
-(defn compress-htfc [strings bin-size]
+(defn compress-htfc-sorted [ordered bin-size]
   (let [out (java.io.ByteArrayOutputStream. 1000)
-        ordered (sort strings)
         bins (partition-all-v bin-size (into [] ordered))
         ; we reduce this multiple times, so compute it as foldable.
         front-coded (r/foldcat (r/map compress-bin bins))
@@ -153,6 +152,9 @@
      :offsets offsets
      :headers compressed-headers
      :inners compressed}))
+
+(defn compress-htfc [strings bin-size]
+  (compress-htfc-sorted (sort strings) bin-size))
 
 (defn serialize-htfc [htfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
