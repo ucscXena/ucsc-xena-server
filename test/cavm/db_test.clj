@@ -194,12 +194,12 @@
         {} (fn [] fields) nil false)
       (check-matrix db id tsv))))
 
-(defspec genomic-matrix-memory
-  *test-runs*
-  (prop/for-all
-    [tsv gen-tsv-distinct
-     id (gen/such-that not-empty gen/string-ascii)]
-    (genomic-matrix-memory-run tsv id)))
+(comment (defspec genomic-matrix-memory
+   *test-runs*
+   (prop/for-all
+     [tsv gen-tsv-distinct
+      id (gen/such-that not-empty gen/string-ascii)]
+     (genomic-matrix-memory-run tsv id))))
 
 (defn matrix1 [db]
   (ct/testing "tsv matrix from memory"
@@ -369,13 +369,18 @@
       (loader db detector docroot file)
       (check-matrix db (str (io/file "generated" id)) (drop-dup-samples (trim-tsv tsv))))))
 
-(defspec genomic-matrix-loader
-  *test-runs*
-  (prop/for-all
-    [tsv gen-tsv
-     id (gen/such-that not-empty gen/string-alpha-numeric)
-     clinical gen/boolean]
-    (genomic-matrix-loader-run tsv id clinical)))
+(ct/deftest not-master
+  (let [branch (clojure.string/trim
+                 (:out (apply clojure.java.shell/sh (clojure.string/split "git rev-parse --abbrev-ref HEAD" #" "))))]
+    (ct/is (not= branch "master") "FIXME: enable tests commented out during development")))
+
+(comment (defspec genomic-matrix-loader
+   *test-runs*
+   (prop/for-all
+     [tsv gen-tsv
+      id (gen/such-that not-empty gen/string-alpha-numeric)
+      clinical gen/boolean]
+     (genomic-matrix-loader-run tsv id clinical))))
 
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
@@ -828,12 +833,13 @@
              clinical2 clinical3 segmented]]
     (fixture t)))
 
+(comment
 (ct/deftest test-h2
   (run-tests
     (fn [f]
       (let [db (h2/create-xenadb "test" {:subprotocol "h2:mem"})]
         (try (f db) ; 'finally' ensures our teardown always runs
-          (finally (cdb/close db)))))))
+          (finally (cdb/close db))))))))
 
 ;
 ;
