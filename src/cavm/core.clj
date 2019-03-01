@@ -496,5 +496,6 @@
     (.start server)
     )
 
-  (.stop server)
-  (cavm.db/close testdb))
+  (do
+    (.stop server)
+    (cavm.db/close @testdb)))

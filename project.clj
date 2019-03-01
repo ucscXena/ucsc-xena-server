@@ -44,6 +44,9 @@
                  [clojure-csv/clojure-csv "2.0.1"]
                  [honeysql "0.4.2"]
                  [com.h2database/h2 "1.3.175"]
+; for json support in java.
+;                 [javax.json/javax.json-api "1.0"]
+;                 [org.glassfish/javax.json "1.0.4"]
                  [filevents "0.1.0"]
                  [clj-http "0.9.1"]
                  [crypto-equality "1.0.0"]

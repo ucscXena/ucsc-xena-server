@@ -2,6 +2,8 @@
   ^{:author "Brian Craft"
     :doc "huffman coding"}
   cavm.huffman
+  (:require clojure.core.reducers)
+  (:require clojure.pprint)
   (:import [java.nio ByteBufferAsIntBufferL ByteBuffer])
   (:import [java.io ByteArrayOutputStream])
   (:import [java.util.concurrent ArrayBlockingQueue]))
@@ -269,8 +271,6 @@
   (let [codes (->> items byte-freqs build-ht-tree make-ht-codes)]
     (->hu-tucker codes (ht-dictionary codes))))
 
-; Really want a decode for the output buff.
-
 (defn- ^String toBinaryStr [n]
     (.replace (format "%8s" (Integer/toBinaryString n)) " " "0"))
 
@@ -280,6 +280,7 @@
                  :code (.substring (toBinaryStr (:code %)) (- 8 (:length %)) 8)})
            (sort-by :symbol (vals dict)))))
 
+; Decode until byte matching 'stop'
 (defn decode-to [tree ^ByteBuffer buff8 initialP ^ByteArrayOutputStream out stop]
   (loop [^long inP initialP n tree]
     (if (= (:symbol n) stop) ; This is kinda nasty. Weird recursion rule when we match. See below.
@@ -298,6 +299,7 @@
                        (recur (bit-shift-right j 1) n)))
                    n)))))))
 
+; Decode bytes initialP through maxP (half-open)
 (defn decode-range [tree ^ByteBuffer buff8 initialP ^ByteArrayOutputStream out maxP]
   (loop [^long inP initialP n tree]
     (when (< inP maxP)

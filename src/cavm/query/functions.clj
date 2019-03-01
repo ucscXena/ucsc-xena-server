@@ -5,9 +5,12 @@
   (:use clojure.core.matrix)
   (:use clojure.core.matrix.operators)
   (:refer-clojure :exclude  [* - + == /])
-  (:gen-class))
+  (:require [cavm.pfc :as pfc]))
 
 (set-current-implementation :vectorz)
+
+(defn distinct-htfc [ & blobs ]
+  (apply pfc/merge-dicts blobs))
 
 (defn- meannan1d [m]
   (let [NaN Double/NaN
@@ -53,5 +56,6 @@
    'group-by group-by
    'mean meannan
    'count count
+   'distinct-htfc distinct-htfc
    'distinct distinct
    'apply apply})

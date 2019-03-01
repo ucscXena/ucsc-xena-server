@@ -24,6 +24,7 @@
   (:require [clojure.core.match :refer [match]])
   (:require [cavm.sqleval :refer [evaluate]])
   (:require [clojure.data.int-map :as i])
+  (:require [cavm.pfc :as pfc])
   (:import [org.h2.jdbc JdbcBatchUpdateException])
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
 
@@ -142,6 +143,12 @@
    `text` VARCHAR (65535),
    `type` VARCHAR (255),
    `dataSubType` VARCHAR (255))"])
+
+(def ^:private sample-table
+  ["CREATE TABLE IF NOT EXISTS `sample` (
+   `dataset_id` INT NOT NULL,
+   `samples` BLOB,
+   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`) ON DELETE CASCADE)"])
 
 (def ^:private dataset-columns
   #{:name
@@ -287,6 +294,7 @@
 ; XXX Might want to add a "deleting" status to the dataset table?
 (defn- clear-by-exp [exp]
   (clear-fields exp)
+  (jdbcd/delete-rows :sample ["`dataset_id` = ?" exp])
   (jdbcd/delete-rows :field ["`dataset_id` = ?" exp]))
 
 ; Update meta entity record.
@@ -469,9 +477,15 @@
 ; [:insert-score {:id 1 :scores #<byte[] [B@12345>}]
 ;
 
+; XXX add a sampleID dispatch, to build blob.
+; Need to sort somewhere.
+; position sort happens in cgdata/core, which is weird.
+; I guess add it there, using the same pattern.
 (defmulti ^:private load-field
   (fn [dataset-id field-id column]
-    (-> column :valueType)))
+    (info (:field column))
+    (if (= (:field column) "sampleID") :sample-id
+      (:valueType column))))
 
 (defmethod load-field :default [dataset-id field-id {:keys [field rows]}]
   (let [data (encode-row score-encode (force rows))]
@@ -481,6 +495,12 @@
                                            :scores block}]])
                   (map vector (consume-vec data) (range)))
           [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
+
+(defmethod load-field :sample-id [dataset-id field-id {:keys [field feature]}]
+  (let [samples (keys (:order feature)) ; XXX use non-sorting version, after sorting in cgdata
+        blob (pfc/serialize-htfc (pfc/compress-htfc samples 256))]
+    [[:insert-field {:id field-id :dataset_id dataset-id :name field}]
+     [:insert-sample-id {:dataset_id dataset-id :samples blob}]]))
 
 ; This should be lazy to avoid simultaneously instantiating all the rows as
 ; individual objects.
@@ -545,6 +565,7 @@
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
+              sample-id-stmt (insert-stmt :sample [:dataset_id :samples])
               position-stmt (insert-stmt :field_position
                                          [:field_id :row :bin :chrom :chromStart
                                           :chromEnd :strand])
@@ -566,6 +587,7 @@
           ;        score-id-fn (memoize-key (comp ahashable first) scores-seq)
 
           writer {:insert-field field-stmt
+                  :insert-sample-id sample-id-stmt
                   :insert-field-score field-score-stmt
                   :insert-position position-stmt
                   :insert-feature feature-stmt
@@ -1337,6 +1359,7 @@
     (apply jdbcd/do-commands cohorts-table)
     (apply jdbcd/do-commands source-table)
     (apply jdbcd/do-commands dataset-table)
+    (apply jdbcd/do-commands sample-table)
     (apply jdbcd/do-commands dataset-source-table)
     (apply jdbcd/do-commands field-table)
     (apply jdbcd/do-commands field-score-table)

@@ -5,6 +5,7 @@
   (:import [java.util.concurrent ArrayBlockingQueue])
   (:import [java.nio ByteBufferAsIntBufferL ByteBuffer])
   (:import [java.io ByteArrayOutputStream])
+  (:import [org.h2.jdbc JdbcBlob])
   (:require [cavm.huffman :as huffman]))
 
 ;
@@ -222,7 +223,8 @@
   (apply concat (for [i (range 0 (:bin-count dict))] (uncompress-bin dict i))))
 
 (defn htfc-offsets [^ByteBuffer buff8]
-  (let [buff32 (.asIntBuffer buff8)
+  (let [buff8 (doto buff8 (.order java.nio.ByteOrder/LITTLE_ENDIAN))
+        buff32 (.asIntBuffer buff8)
         length (.get buff32 0)
         bin-size (.get buff32 1)
         bin-dict-offset (+ 2 (huffman/ht-dict-len buff32 2))
@@ -241,6 +243,25 @@
      :header-dict (huffman/ht-tree buff32 buff8 8)
      :inner-dict (huffman/huff-tree buff32 buff8 bin-dict-offset)}))
 
+(defrecord htfc [buff])
+
+
+(defn unwrap-blob [^JdbcBlob blob]
+  (let [len (.length blob)]
+    (.getBytes blob 0 len)))
+
+(defn to-htfc [d]
+  (cond
+    (.isArray (class d)) (htfc-offsets (ByteBuffer/wrap d))
+    (instance? JdbcBlob d) (htfc-offsets (ByteBuffer/wrap (unwrap-blob d)))
+    :else d))
+
+;(:buff (->htfc (byte-array [1 2 3])))
+
+
+(defn dict-seq [dict]
+  (mapcat #(uncompress-bin dict %)
+          (range (:bin-count dict))))
 
 ;
 ; sketching some routines for computing the union
@@ -321,6 +342,17 @@
 ;(merge-sorted-v [] ["boo" "bff" "foo" "goo" "hoo"])
 ;(merge-sorted-v ["boo" "foo"] [])
 ;(merge-sorted-v ["boo" "foo" "zoo"] ["boo" "foo" "goo" "hoo"])
+
+; XXX put bin size somewhere
+(defn merge-dicts [dict & dicts]
+  (if (seq dicts)
+    (serialize-htfc (compress-htfc
+                      (reduce #(merge-sorted %1 (dict-seq (to-htfc %) 2))
+                              (dict-seq (to-htfc dict))
+                              dicts)
+                      256))
+    dict))
+
 (defn lookup-htfc [htfc i]
   )
 
@@ -346,13 +378,73 @@
     x)
 
   ;let [file "toil.json"]
-  (let [file "singlecell.json"]
-    (def strings
-      (json/read-str (slurp file))))
+  (time (do (let [file "singlecell.json"]
+              (def strings
+                (json/read-str (slurp file))))
+            (count strings))
+        )
+
+  (import '[javax.json Json])
+  (time (let [rdr (Json/createReader (clojure.java.io/reader "singlecell.json"))
+         rslt (.readArray rdr)]
+          (.size rslt)))
+
+  (defn front-coding [lst]
+    (let [ordered (sort lst)
+          bins (partition-all 256 ordered)]
+      (map compress-bin bins)))
+
+  (time (do (front-coding strings) nil))
+
 
   (time
     (def buff2
       (serialize-htfc (compress-htfc strings 256))))
+
+  (defn subset-strings []
+    (let [to-drop (into #{} (repeatedly 100 #(rand-int (count strings))))]
+      (filter identity (map-indexed (fn [i s] (if (to-drop i) nil s)) strings))))
+
+  (def strings-a (subset-strings))
+  (def strings-b (subset-strings))
+  (count strings-a)
+  (count strings-b)
+  (count strings)
+
+  (defn dict-from-coll [coll]
+    (let [buff (serialize-htfc (compress-htfc coll 256))]
+      (htfc-offsets
+        (doto (ByteBuffer/wrap buff)
+          (.order java.nio.ByteOrder/LITTLE_ENDIAN)))))
+
+  (def strings-b-dict (dict-from-coll strings-b))
+  ;(take 100 (dict-seq strings-b-dict))
+  (def strings-a-b-dict
+    (let [sa (sort strings-a)]
+      (time
+        (let [merged (merge-sorted sa (dict-seq strings-b-dict))]
+          (serialize-htfc (compress-htfc merged 256))))))
+
+  (count strings-a-b-dict)
+  (count strings-a-b)
+  (= ordered strings-a-b)
+
+  (def dict (dict-from-coll strings))
+  (def ordered (sort strings))
+
+  (def dict (htfc-offsets
+              (doto (ByteBuffer/wrap buff2)
+                (.order java.nio.ByteOrder/LITTLE_ENDIAN))))
+
+  (= (take 3 (dict-seq dict))
+     (take 3 ordered))
+  (=
+   (take 257 (dict-seq dict))
+   (take 257 ordered))
+
+  (=
+   (take-last 5 (dict-seq dict))
+   (take-last 5 ordered))
 
   ; round trip
   (let [strings strings

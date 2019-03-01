@@ -2,6 +2,8 @@
   (:import (java.io PrintWriter))
   (:import info.adams.ryu.RyuFloat)
   (:import info.adams.ryu.RoundingMode)
+  (:import [java.nio ByteBuffer])
+  (:require [cavm.pfc :as pfc])
   (:require [clojure.data.json :as json]))
 
 ;
@@ -29,6 +31,21 @@
 (extend mikera.arrayz.INDArray json/JSONWriter {:-write write-array})
 (extend java.lang.Float json/JSONWriter {:-write write-floating-point})
 (extend java.lang.Double json/JSONWriter {:-write write-floating-point})
+
+;
+; Assume that jdbc blobs are htfc & allow printing.
+;
+; Normally we wouldn't extend a 3rd-party class like this, but
+; since we aren't delivering a library it doesn't really matter.
+; The alternative is to find a way to automatically wrap the blobs
+; as they come from h2, e.g. with a tree walk, or evaluating the
+; sql on the way in to determine which return values will be
+; htfc.
+(defn- write-pfc [x ^PrintWriter out]
+  (let [len (.length x)]
+    (json/-write (pfc/dict-seq (pfc/to-htfc x)) out)))
+
+(extend org.h2.jdbc.JdbcBlob json/JSONWriter {:-write write-pfc})
 
 (defn write-str [s & args]
   (apply json/write-str s args))

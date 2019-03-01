@@ -8,6 +8,7 @@
   (:require [ring.util.request :refer [body-string] ])
   (:require [clojure.edn :as edn])
   (:require [cavm.json :as json])
+  (:require cavm.edn)
   (:require [cavm.h2 :as h2])
   (:require [liberator.core :refer [defresource]])
   (:require [compojure.core :refer [defroutes ANY GET POST]])
@@ -15,6 +16,7 @@
   (:require [clojure.java.io :as io])
   (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
   (:require [cavm.fs-utils :refer [docroot-path]])
+  (:require [cavm.binpack-json :refer [write-buff]])
   (:gen-class))
 
 ;
@@ -43,6 +45,12 @@
 (defmethod liberator.representation/render-seq-generic "application/json" [data context]
   (json/write-str data))
 
+(defmethod liberator.representation/render-map-generic "application/binpack-json" [data context]
+  (write-buff data))
+
+(defmethod liberator.representation/render-seq-generic "application/binpack-json" [data context]
+  (write-buff data))
+
 ; (json/json-str (float-array [1 2 3]))
 ; (json/json-str (double-array [1 2 3]))
 ; (json/json-str (matrix (double-array [1 2 3])))
@@ -64,6 +72,12 @@
 
 (extend Number liberator.representation/Representation
   {:as-response simple-as-response})
+
+(defn- bytes-as-response [this ctx]
+  (liberator.representation/as-response (clojure.java.io/input-stream this) ctx))
+
+(extend (Class/forName "[B") liberator.representation/Representation
+  {:as-response bytes-as-response})
 
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/json"}})
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/edn"}})
@@ -92,7 +106,7 @@
 
 (defresource expression [exp]
   :allowed-methods [:post :get]
-  :available-media-types ["application/json" "application/edn"]
+  :available-media-types ["application/json" "application/edn" "application/binpack-json"]
   :new? (fn [req] false)
   :respond-with-entity? (fn [req] true)
   :multiple-representations? (fn [req] false)
