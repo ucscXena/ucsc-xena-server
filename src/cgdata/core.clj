@@ -274,9 +274,8 @@
   [feature cols]
   (if (:order feature)
     feature
-    (let [state (distinct cols) ; XXX drop ""? This adds "" as a state.
-          order (into {} (map vector state (range)))] ; XXX handle all values null?
-      (assoc feature :state state :order order))))
+    (let [order (sort (distinct cols))]
+      (assoc feature :order order))))
 
 (defn- throw-on-nil [x msg & args]
   (when-not x
@@ -289,9 +288,12 @@
   (let [name (first cols)
         feature (get features name)  ; use 'get' to handle nil
         feature (ad-hoc-order feature (rest cols))
-        order (nil-val (:order feature))
+        order (:order feature) ; what about ""?
+        mapping (nil-val (into {} (map vector order (range))))
         msg "Invalid state %s for feature %s"
-        vals (map #(throw-on-nil (order %) msg % name)
+        ; XXX try to unify the code generation with the sparse
+        ; formats, below.
+        vals (map #(throw-on-nil (mapping %) msg % name) ; here's where we need it
                   (rest cols))]
 
     {:field (String. ^String name) ; copy the string. string/split is evil.
