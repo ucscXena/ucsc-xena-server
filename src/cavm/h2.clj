@@ -260,10 +260,10 @@
         fmeta (merge (normalize-meta feature-meta feat)
                      {:field_id field-id :id feature-id})]
     (cons [:insert-feature (assoc fmeta :id feature-id)]
-          (for [[value ordering] order]
-            [:insert-code {:field_id field-id
-                           :ordering ordering
-                           :value value}]))))
+          (map #(-> [:insert-code {:field_id field-id
+                                   :ordering %2
+                                   :value %1}])
+               order (range)))))
 ;
 ;
 ;
@@ -482,12 +482,12 @@
 ; position sort happens in cgdata/core, which is weird.
 ; I guess add it there, using the same pattern.
 (defmulti ^:private load-field
-  (fn [dataset-id field-id column]
+  (fn [dataset-id field-id column feature-seq]
     (info (:field column))
     (if (= (:field column) "sampleID") :sample-id
       (:valueType column))))
 
-(defmethod load-field :default [dataset-id field-id {:keys [field rows]}]
+(defn load-probe-field [dataset-id field-id {:keys [field rows]}]
   (let [data (encode-row score-encode (force rows))]
     (conj (mapcat (fn [[block i]]
                     [[:insert-field-score {:field_id field-id
@@ -496,15 +496,28 @@
                   (map vector (consume-vec data) (range)))
           [:insert-field {:id field-id :dataset_id dataset-id :name field}])))
 
-(defmethod load-field :sample-id [dataset-id field-id {:keys [field feature]}]
-  (let [samples (keys (:order feature)) ; XXX use non-sorting version, after sorting in cgdata
-        blob (pfc/serialize-htfc (pfc/compress-htfc samples 256))]
-    [[:insert-field {:id field-id :dataset_id dataset-id :name field}]
-     [:insert-sample-id {:dataset_id dataset-id :samples blob}]]))
+(defn- inferred-type
+  "Replace the given type with the inferred type"
+  [fmeta row]
+  (assoc fmeta "valueType" (:valueType row)))
+
+(defmethod load-field :default [dataset-id field-id field feature-seq]
+ (concat (load-probe-field dataset-id field-id field)
+            (when-let [feature (force (:feature field))]
+              (load-probe-meta feature-seq field-id (inferred-type feature field)))) )
+
+; XXX put 256 bin size somewhere
+
+(defmethod load-field :sample-id [dataset-id field-id field feature-seq]
+  (let [samples (:order (:feature field))
+        blob (pfc/serialize-htfc (pfc/compress-htfc-sorted samples 256))]
+    (conj (load-probe-field dataset-id field-id field)
+          [:insert-sample-id {:dataset_id dataset-id :samples blob}])))
 
 ; This should be lazy to avoid simultaneously instantiating all the rows as
 ; individual objects.
-(defmethod load-field "position" [dataset-id field-id {:keys [field rows]}]
+
+(defmethod load-field "position" [dataset-id field-id {:keys [field rows]} feature-seq]
   (conj (for [[position row] (map vector (force rows) (range))]
           [:insert-position (assoc position
                                    :field_id field-id
@@ -514,23 +527,16 @@
                                           (:chromEnd position)))])
         [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
 
-(defmethod load-field "genes" [dataset-id field-id {:keys [field rows row-val]}]
+(defmethod load-field "genes" [dataset-id field-id {:keys [field rows row-val]} feature-seq]
   (conj (mapcat (fn [[genes row]]
                   (for [gene (row-val genes)]
                     [:insert-gene {:field_id field-id :row row :gene gene}]))
                 (map vector (consume-vec (force rows)) (range)))
         [:insert-field {:id field-id :dataset_id dataset-id :name field}]))
 
-(defn- inferred-type
-  "Replace the given type with the inferred type"
-  [fmeta row]
-  (assoc fmeta "valueType" (:valueType row)))
-
 (defn- load-field-feature [feature-seq field-seq dataset-id field]
   (let [field-id (field-seq)]
-    (concat (load-field dataset-id field-id field)
-            (when-let [feature (force (:feature field))]
-              (load-probe-meta feature-seq field-id (inferred-type feature field))))))
+    (load-field dataset-id field-id field feature-seq)))
 ;
 ;
 ;
@@ -793,6 +799,13 @@
           (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))
       (info "Did not delete unknown dataset" dataset))))
 
+(defn dataset-samples [ds-id]
+  (jdbcd/with-query-results rows
+      ["SELECT `samples`
+        FROM `sample`
+        WHERE `dataset_id` = ?" ds-id]
+      (-> rows first :samples)))
+
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
                           :or {classname "org.h2.Driver"
                                subprotocol "h2"
@@ -940,9 +953,11 @@
 ; Returns rows from (dataset-id column-name) matching
 ; values. Returns a hashmap for each matching  row.
 ; { :i     The implicit index in the column as stored on disk.
-;   ;order The order of the row the result set.
+;   :order The order of the row the result set.
 ;   :value The value of the row.
 ; }
+; XXX This seems *really* inefficient and complex. Surely there's a better
+; algorithm.
 (defn- rows-matching [dataset-id column-name values]
   (let [val-set (set values)]
     (->> column-name
@@ -969,11 +984,48 @@
 ; Run scores query
 ; Copy to output buffer
 
+; cheap polymorphism on the sampleID list, which can be
+; a vector or an htfc.
+(defn samples-to-seq [s]
+  (if (instance? clojure.lang.Seqable s)
+    (seq s)
+    (pfc/dict-seq (pfc/to-htfc s))))
+
+; Return the codes for requested sampleIDs, in the order
+; of the request, with nil for any unknown sampleIDs. And
+; try to be fast about it.
+; Would be nice to find a simpler algorithm.
+; Here we walk over the two lists in parallel, emitting
+; matching sampleIDs, or nil.
+; XXX The float thing is bothersome. Would be nice to have integer
+; bins for categorical.
+(defn sampleID-codes [h0 h1]
+  (let [a (samples-to-seq h0)
+        b (pfc/dict-seq (pfc/to-htfc h1)) ; db
+        acc (transient [])]
+    (loop [a a b b i 0]
+      (if-let [n (first a)]
+        (if-let [m (first b)]
+          (if (= n m)
+            (do
+              (conj! acc (float i))
+              (recur (rest a) (rest b) (inc i)))
+            (if (< (compare n m) 0)
+              (do
+                (conj! acc nil)
+                (recur (rest a) b i))
+              (do
+                (recur a (rest b) (inc i)))))
+          (persistent! acc))
+        (persistent! acc)))))
+
+; XXX for now, try storing the sampleID column, so it works for
+; sparse & dense data. If it's slow, or too big, drop it.
 (defn- genomic-read-req [req]
   (let [{:keys [samples table columns]} req
         dataset-id (dataset-id-by-name table)
-        samp->code (codes-for-field dataset-id "sampleID")
-        order (mapv (comp float-nil samp->code) samples)     ; codes in request order
+        ds-samples (dataset-samples dataset-id)
+        order (sampleID-codes samples ds-samples)
         rows (rows-matching dataset-id "sampleID" order)
         rows-to-copy (->> rows
                           (filter :value)
