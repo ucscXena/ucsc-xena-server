@@ -119,10 +119,10 @@
                      (handler request))]
       (if-let [origin (re-match allow-hosts (get-in request [:headers "origin"] ""))]
         (-> response
-            (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
-            (assoc-in [:headers "Access-Control-Expose-Headers"] "Location")
-            (assoc-in [:headers "Access-Control-Allow-Credentials"] "true")
-            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To"))
+             (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
+             (assoc-in [:headers "Access-Control-Expose-Headers"] "Location")
+             (assoc-in [:headers "Access-Control-Allow-Credentials"] "true")
+             (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To, Content-Type"))
         response))))
 
 (defn- add-version-header [handler]
