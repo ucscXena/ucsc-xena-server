@@ -40,12 +40,18 @@
   (.write out (bit-and 0xff (bit-shift-right i 16)))
   (.write out (bit-and 0xff (bit-shift-right i 24))))
 
+(defn read-int [i ^bytes in]
+  (bit-or (bit-and 0xff (aget in i))
+          (bit-shift-left (bit-and 0xff (aget in (+ i 1))) 8)
+          (bit-shift-left (bit-and 0xff (aget in (+ i 2))) 16)
+          (bit-shift-left (bit-and 0xff (aget in (+ i 3))) 24)))
+
 (def pad (byte-array [0 0 0]))
 
 (defn write-bin [^bytes bin ^ByteArrayOutputStream buff ^PrintWriter out i]
   (let [len (alength bin)
         padding (mod (- len) 4)]
-    (.write out (str "{\"$type\":\"ref\",\"value\":[\"$bin\":" @i "]}"))
+    (.write out (str "{\"$type\":\"ref\",\"value\":{\"$bin\":" @i "}}"))
     (swap! i inc)
     (write-int len buff)
     (.write buff bin 0 len)
