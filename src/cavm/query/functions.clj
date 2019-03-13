@@ -37,6 +37,10 @@
   clojure.lang.Seqable
   (meannan [m dim] (meannan-impl (matrix (map double-array m)) dim)))
 
+(defn seq-htfc [blob]
+  (info "blob" blob)
+  (pfc/dict-seq (pfc/to-htfc blob)))
+
 (def functions
   {'+ +
    '/ /
@@ -53,9 +57,12 @@
    'cons cons
    'car first
    'cdr rest
+   'take take
+   'drop drop
    'group-by group-by
    'mean meannan
    'count count
    'distinct-htfc distinct-htfc
+   'seq-htfc seq-htfc
    'distinct distinct
    'apply apply})
