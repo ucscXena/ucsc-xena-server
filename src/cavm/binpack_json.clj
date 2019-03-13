@@ -5,6 +5,8 @@
   (:import [java.io PrintWriter StringWriter ByteArrayOutputStream])
   (:import [cavm.pfc htfc])
   (:import [org.h2.jdbc JdbcBlob])
+  (:import [java.util Arrays])
+  (:require clojure.walk)
   (:require [clojure.data.json :as json]))
 
 
@@ -110,10 +112,32 @@
         buff (ByteArrayOutputStream.)
         i (atom 0)]
     (-write x buff (PrintWriter. sw) i)
-    (let [ba (.getBytes (.toString sw))]
+    (let [ba (.getBytes (.toString sw))
+          padding (mod (- (count ba)) 4)]
       (write-int (count ba) buff)
-      (.write buff ba 0 (count ba)))
+      (.write buff ba 0 (count ba))
+      (.write buff pad 0 padding))
     (.toByteArray buff)))
+
+(defn align [p]
+  (* 4 (quot (+ 3 p) 4)))
+
+(defn parse [parser ^bytes buff]
+  (let [len (alength buff)
+        bins (loop [out []
+                         in-p 0]
+                    (if (< in-p len)
+                      (let [bin-len (read-int in-p buff)]
+                        (recur (conj out
+                                     (Arrays/copyOfRange buff (+ in-p 4) (+ in-p 4 bin-len)))
+                               (+ in-p 4 (align bin-len))))
+                      out))
+        link (fn [x] (if (= (get x "$type") "ref")
+                       (bins (get-in x ["value" "$bin"]))
+                       x))]
+    (clojure.walk/postwalk link (parser (String. (last bins))))))
+
+(def parse-json (partial parse json/read-str))
 
 (comment
 (defn write [x buff writer]
