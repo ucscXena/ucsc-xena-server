@@ -16,8 +16,9 @@
   (:require [clojure.java.io :as io])
   (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
   (:require [cavm.fs-utils :refer [docroot-path]])
-  (:require [cavm.binpack-json :refer [write-buff]])
-  (:gen-class))
+  (:require [honeysql.types :as hsqltypes])
+  (:import [org.h2.jdbc JdbcBlob])
+  (:require [cavm.binpack-json :as bj]))
 
 ;
 ; Cheshire encoders. Not using them any more.
@@ -46,10 +47,10 @@
   (json/write-str data))
 
 (defmethod liberator.representation/render-map-generic "application/binpack-json" [data context]
-  (write-buff data))
+  (bj/write-buff data))
 
 (defmethod liberator.representation/render-seq-generic "application/binpack-json" [data context]
-  (write-buff data))
+  (bj/write-buff data))
 
 ; (json/json-str (float-array [1 2 3]))
 ; (json/json-str (double-array [1 2 3]))
@@ -79,6 +80,19 @@
 (extend (Class/forName "[B") liberator.representation/Representation
   {:as-response bytes-as-response})
 
+; XXX somehow liberator won't call the correct serialization method
+; on things that aren't map or vector. What is going on? Same problem
+; as simple types, but here we're assuming the return should be binpack.
+; See this:
+; https://groups.google.com/forum/#!searchin/clojure-liberator/from$3Ame%7Csort:date/clojure-liberator/TzhfJlml3Sw/GMbWEbRRxyEJ
+; There might be some way to dispatch to liberator serialization, instead of
+; repeating that here.
+(defn blob-as-response [this ctx]
+  (bytes-as-response (bj/write-buff this) ctx))
+
+(extend JdbcBlob liberator.representation/Representation
+  {:as-response blob-as-response})
+
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/json"}})
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/edn"}})
 ; (liberator.representation/as-response 1 {:representation {:media-type "application/edn"}})
@@ -104,14 +118,22 @@
 ; pulling from differen sources, or different datasets, and returning a single
 ; set of vectors. Not sure how it was supposed to work.
 
+(def edn-read-str
+  (partial edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}}))
+
+(defn parse-exp [headers exp]
+  (cond
+    (= (headers "content-type") "application/binpack-edn") (bj/parse edn-read-str exp)
+    :default (edn-read-str (String. exp))))
+
 (defresource expression [exp]
   :allowed-methods [:post :get]
   :available-media-types ["application/json" "application/edn" "application/binpack-json"]
   :new? (fn [req] false)
   :respond-with-entity? (fn [req] true)
   :multiple-representations? (fn [req] false)
-  :handle-ok (fn [{{db :db} :request}]
-               (profile :trace ::expression (expr/expression exp f/functions (functions @db)))))
+  :handle-ok (fn [{{db :db headers :headers} :request}]
+               (profile :trace ::expression (expr/expression (parse-exp headers exp) f/functions (functions @db)))))
 
 (defn- is-local? [ip]
   (or (= ip "0:0:0:0:0:0:0:1")
@@ -135,6 +157,11 @@
             (.write w ^bytes bytes)))))
     "ok"))
 
+(defn body-bytes [{body :body}]
+  (with-open [xout (java.io.ByteArrayOutputStream.)]
+    (clojure.java.io/copy body xout)
+    (.toByteArray xout)))
+
 ; XXX add the custom pattern #".+" to avoid nil, as above?
 (defroutes routes
   (POST ["/upload/"] [file append :as req]
@@ -152,7 +179,7 @@
                             (name (:scheme req)) "://"
                             (:server-name req) ":" (:server-port req))))
   (GET "/data/:exp" [exp] (expression exp))
-  (POST "/data/" r (expression (body-string r)))
+  (POST "/data/" r (expression (body-bytes r)))
   (POST "/update/" [file always delete :as {ip :remote-addr loader :loader}]
         (json/write-str (loader-request ip loader file always delete)))
   (GET "/load-queue/" [:as {load-queue :load-queue}] (json/write-str (deref load-queue)))

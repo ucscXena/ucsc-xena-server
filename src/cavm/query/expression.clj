@@ -64,4 +64,4 @@
 (defn expression
   "Evaluate an expression with (optional) global symbols."
   [exp & globals]
-  (eval (edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}} exp) (cons specials globals)))
+  (eval exp (cons specials globals)))
