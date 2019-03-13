@@ -874,6 +874,8 @@
     :feature {:state values
               :order order}}))
 
+; XXX haven't hooked up sparse queries, yet
+(comment 
 (ct/deftest gene-test
   (let [field0 (gene-field "genes"
                            [["a"]
@@ -909,7 +911,7 @@
                      :from ["foo"]
                      :where [:in :any "genes" ["a"]]})
                   {"name" ["probe0" nil]}))
-        ))))
+        )))))
 
 ;
 ; Some experiments with generators for gene fields.
