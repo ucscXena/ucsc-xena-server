@@ -6,8 +6,7 @@
          by the xena data loader, e.g. by normalizing key names."}
   cavm.cgdata
   (:require [cgdata.core :as cgdata])
-  (:require [cavm.readers :refer [reader]])
-  (:gen-class))
+  (:require [cavm.readers :refer [reader]]))
 
 ;
 ; cgdata file readers
