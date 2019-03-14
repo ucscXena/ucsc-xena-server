@@ -101,22 +101,15 @@
 
 ;
 ;
-; collect data in order of columns
-; copied from cavm.query.sources
-(defn- collect [{:keys [data columns]}]
-  (map data columns))
 
 ; XXX map vec is being used to convert the [F so core.matrix can work on them.
 ; double-array might be a faster solution. Would really like core.matrix to
 ; convert as necessary. Is there a protocol we can extend?
+; Have to drop this for binary support.
 (defn functions [db]
-  {'fetch #(p ::fetch (map vec (apply concat (map collect (cdb/fetch db %))))) ; XXX concat? see below
+  {'fetch #(p ::fetch (apply concat (cdb/fetch db %)))
    'xena-query #(p ::query (cdb/column-query db %))
    'query #(p ::query (cdb/run-query db %))})
-
-; XXX concat is copied from cavm.query.sources. This is something to do with
-; pulling from differen sources, or different datasets, and returning a single
-; set of vectors. Not sure how it was supposed to work.
 
 (def edn-read-str
   (partial edn/read-string {:readers {'sql/call hsqltypes/read-sql-call}}))

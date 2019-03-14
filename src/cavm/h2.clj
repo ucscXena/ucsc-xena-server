@@ -1037,7 +1037,8 @@
 
     (-> (select-scores-full dataset-id columns (distinct bins))
         (#(mapv cvt-scores %))
-        (build-score-arrays bfns (col-arrays columns (count rows))))))
+        (build-score-arrays bfns (col-arrays columns (count rows)))
+        (map columns))))
 
 
 ;
@@ -1353,15 +1354,6 @@
 ;
 ;
 
-; Each req is a map of
-;  :table "tablename"
-;  :columns '("column1" "column2")
-;  :samples '("sample1" "sample2")
-; We merge into 'data the columns that we can resolve, like
-;  :data { 'column1 [1.1 1.2] 'column2 [2.1 2.2] }
-(defn- genomic-source [reqs]
-  (map #(update-in % [:data] merge (genomic-read-req %)) reqs))
-
 ;
 ; hand-spun migrations.
 ;
@@ -1464,7 +1456,7 @@
       (eval-sql query)))
   (fetch [this reqs]
     (jdbcd/with-connection @(:db this)
-      (doall (genomic-source reqs))))
+      (mapv genomic-read-req reqs)))
   (close [this] ; XXX test for pool, or datasource before running?
     (.close ^ComboPooledDataSource (:datasource @(:db this)) false)))
 
