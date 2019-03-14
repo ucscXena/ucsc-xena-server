@@ -7,6 +7,7 @@
   (:require [cavm.pfc :refer [index-of]]) ; maybe move this method
   (:import [org.h2.jdbc JdbcBlob])
   (:import [java.util Arrays])
+  (:import [java.nio ByteBuffer ByteOrder])
   (:require clojure.walk)
   (:require [clojure.data.json :as json]))
 
@@ -101,11 +102,29 @@
 (defn- write-jdbc-blob [m buff ^PrintWriter out i]
   (write-bin (unwrap-blob m) buff out i))
 
+; ugh. java buffer support sucks. Two copies on the way out
+; due to weird buffer APIs.
+(defn- write-float-bin [^floats m buff ^PrintWriter out i]
+  (let [bb (doto (ByteBuffer/allocate (* (count m) 4))
+             (.order java.nio.ByteOrder/LITTLE_ENDIAN))]
+    (doseq [f m]
+      (.putFloat bb f))
+    (write-bin (.array bb) buff out i)))
+
+(defn- write-double-bin [^double m buff ^PrintWriter out i]
+  (let [bb (doto (ByteBuffer/allocate (* (count m) 4))
+             (.order java.nio.ByteOrder/LITTLE_ENDIAN))]
+    (doseq [f m]
+      (.putFloat bb (float f)))
+    (write-bin (.array bb) buff out i)))
+
 (extend Object BinpackWriter {:-write (fn [x buff out i] (json/write x out))})
 (extend nil BinpackWriter {:-write (fn [x buff out i] (json/write x out))})
 (extend java.util.Map BinpackWriter {:-write write-object})
 (extend java.util.Collection BinpackWriter {:-write write-array})
 (extend (Class/forName "[B") BinpackWriter {:-write write-bin})
+(extend (Class/forName "[F") BinpackWriter {:-write write-float-bin})
+(extend (Class/forName "[D") BinpackWriter {:-write write-double-bin})
 (extend JdbcBlob BinpackWriter {:-write write-jdbc-blob})
 
 (defn write-buff [x]
