@@ -4,6 +4,7 @@
   cavm.binpack-json
   (:import [java.io PrintWriter StringWriter ByteArrayOutputStream])
   (:import [cavm.pfc htfc])
+  (:require [cavm.pfc :refer [index-of]]) ; maybe move this method
   (:import [org.h2.jdbc JdbcBlob])
   (:import [java.util Arrays])
   (:require clojure.walk)
@@ -109,33 +110,36 @@
 
 (defn write-buff [x]
   (let [sw (StringWriter.)
-        buff (ByteArrayOutputStream.)
+        out (ByteArrayOutputStream.)
+        bins (ByteArrayOutputStream.)
         i (atom 0)]
-    (-write x buff (PrintWriter. sw) i)
+    (-write x bins (PrintWriter. sw) i)
     (let [ba (.getBytes (.toString sw))
-          padding (mod (- (count ba)) 4)]
-      (write-int (count ba) buff)
-      (.write buff ba 0 (count ba))
-      (.write buff pad 0 padding))
-    (.toByteArray buff)))
+          padding (mod (- (inc (count ba))) 4)]
+      (.write out ba 0 (count ba))
+      (.write out 0)
+      (.write out pad 0 padding))
+    (.writeTo bins out)
+    (.toByteArray out)))
 
 (defn align [p]
   (* 4 (quot (+ 3 p) 4)))
 
 (defn parse [parser ^bytes buff]
   (let [len (alength buff)
+        txt-len (index-of buff 0 0)
         bins (loop [out []
-                         in-p 0]
-                    (if (< in-p len)
-                      (let [bin-len (read-int in-p buff)]
-                        (recur (conj out
-                                     (Arrays/copyOfRange buff (+ in-p 4) (+ in-p 4 bin-len)))
-                               (+ in-p 4 (align bin-len))))
-                      out))
+                    in-p (align (inc txt-len))]
+               (if (< in-p len)
+                 (let [bin-len (read-int in-p buff)]
+                   (recur (conj out
+                                (Arrays/copyOfRange buff (+ in-p 4) (+ in-p 4 bin-len)))
+                          (+ in-p 4 (align bin-len))))
+                 out))
         link (fn [x] (if (= (get x "$type") "ref")
                        (bins (get-in x ["value" "$bin"]))
                        x))]
-    (clojure.walk/postwalk link (parser (String. (last bins))))))
+    (clojure.walk/postwalk link (parser (String. (Arrays/copyOfRange buff 0 txt-len))))))
 
 (def parse-json (partial parse json/read-str))
 
