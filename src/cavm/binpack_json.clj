@@ -16,13 +16,10 @@
 ; json binary solution.
 
 ; Encodes an object tree as a series of word-aligned binary buffers, where the
-; last buffer is json with json graph references to an implicit array, $bin,
-; holding the preceeding binary buffers.
-
-; XXX What about bson? Looks like it wouldn't be word-aligned, so would necessitate
-; a memcpy, instead of a view over the byte range. Other than this, it might work.
-; It does allow binary blobs. If it's important, we could manually inject padding elements
-; in order to enforce word alignment.
+; first buffer is json with json graph references to an implicit array, $bin,
+; holding the following binary buffers.
+; The first buffer is null-terminated. The following buffers start with a
+; 32-bit 'length' field.
 
 ; adapted from clojure.data.json
 
