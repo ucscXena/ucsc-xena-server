@@ -476,6 +476,11 @@
 (comment
 
   (do
+  (do
+    (.stop server)
+    (cavm.db/close @testdb))
+
+  (do
     (logback-config "log" "logback_repl.xml") ; set logging to terminal
 
     (def testdb (atom (h2/create-xenadb (str (io/file (System/getProperty "user.home") "xena/database") ";TRACE_LEVEL_FILE=3"))))
@@ -494,8 +499,4 @@
     (defonce server (serv #'app "localhost" 7222 keystore ws-config))
 
     (.start server)
-    )
-
-  (do
-    (.stop server)
-    (cavm.db/close @testdb)))
+    )))
