@@ -48,16 +48,18 @@
 
 ; compute huffman tree from char freqs
 (defn- build-tree [freqs]
-    (let [leaves (->> freqs
-                      (sort-by second)
-                      (map #(zipmap [:symbol :priority] %))
-                      (ArrayBlockingQueue. (count freqs) false))
-          nodes (ArrayBlockingQueue. (count freqs))]
+  (let [c (count freqs)]
+    (if (= c 1) (zipmap [:symbol :priority] (first freqs))
+      (let [leaves (->> freqs
+                        (sort-by second)
+                        (map #(zipmap [:symbol :priority] %))
+                        (ArrayBlockingQueue. (count freqs) false))
+            nodes (ArrayBlockingQueue. (count freqs))]
         (while (> (+ (.size leaves) (.size nodes)) 1)
-            (let [a (take-lowest leaves nodes) b (take-lowest leaves nodes)
-                  new-node {:priority (+ (:priority a) (:priority b)) :left a :right b}]
-                (.add nodes new-node)))
-        (.take nodes)))
+          (let [a (take-lowest leaves nodes) b (take-lowest leaves nodes)
+                new-node {:priority (+ (:priority a) (:priority b)) :left a :right b}]
+            (.add nodes new-node)))
+        (.take nodes)))))
 
 ;
 ; hu-tucker
@@ -125,15 +127,16 @@
 
 ; if we word-align the ints, I suspect we'll be in a better place.
 ; Should we sort by length, as with huffman?
-(defn- ht-coded-dictionary [codes ^java.io.ByteArrayOutputStream out]
-  (write-int (count codes) out)
-  (doseq [{:keys [code length]} codes]
-            (write-int code out)
-            (write-int length out))
-  (doseq [{:keys [symbol]} codes]
-            (.write out ^byte symbol))
-  (dotimes [i (rem (- 4 (rem (count codes) 4)) 4)] ; extend to word boundary
-    (.write out 0)))
+(defn ht-coded-dictionary [codes ^java.io.ByteArrayOutputStream out]
+  (let [n (count codes)]
+    (write-int n out)
+    (doseq [{:keys [code length]} codes]
+      (write-int code out)
+      (write-int length out))
+    (doseq [{:keys [symbol]} codes]
+      (.write out ^byte symbol))
+    (dotimes [i (- (* 4 (quot (+ n 3) 4)) n)] ; extend to word boundary
+      (.write out 0))))
 
 ; group huffman tree leaves by length from root
 (defn- find-depth
@@ -150,6 +153,8 @@
 ; Compute canonical codes for tree leaves. This isn't a simple 'map' call
 ; because we need the 'code' and 'depth' context for each successive leaf depth.
 (defn- make-codes
+  ; XXX Is (:length (first groups)) correct, here? Seems like it's not used? Or,
+  ; is used to shift zero, which does nothing.
     ([groups] (make-codes groups 0 (:length (first groups)) (transient [])))
     ([groups code depth0 acc]
      (if-let [group (first groups)]
@@ -185,16 +190,17 @@
 ; len count, lens, bytes
 (defn coded-dictionary [groups ^java.io.ByteArrayOutputStream out]
   (let [len-counts (into {} (map #(-> [(% :length) (count (% :symbols))]) groups))
-        m (apply max (keys len-counts))]
+        m (apply max 0 (keys len-counts))]
     (write-int m out)
     (doseq [c (map #(get len-counts % 0) (range 1 (inc m)))]
       (write-int c out))
-    (let [symbols (mapcat #(map :symbol (:symbols %)) groups)]
+    (let [symbols (mapcat #(map :symbol (:symbols %)) groups)
+          n (count symbols)]
       (doseq [^byte b symbols]
         (.write out b))
       ; XXX this is probably the wrong place for this, since the input
       ; buffer is passed in.
-      (dotimes [i (rem (- 4 (rem (count symbols) 4)) 4)] ; extend to word boundary
+      (dotimes [i (- (* 4 (quot (+ n 3) 4)) n)] ; extend to word boundary
         (.write out 0)))))
 
 (set! *unchecked-math* true)
@@ -300,9 +306,9 @@
                    n)))))))
 
 ; Decode bytes initialP through maxP (half-open)
-(defn decode-range [tree ^ByteBuffer buff8 initialP ^ByteArrayOutputStream out maxP]
+(defn decode-range [tree ^ByteBuffer buff8 initialP ^ByteArrayOutputStream out end]
   (loop [^long inP initialP n tree]
-    (when (< inP maxP)
+    (when (< inP end)
       (let [b (.get buff8 inP)]
         (recur (inc inP)
                (loop [j 0x80 n n]
@@ -360,7 +366,7 @@
 
 (defn ht-dict-len [^ByteBufferAsIntBufferL buff32 ^long offset32]
   (let [len (.get buff32 offset32)]
-    (+ 1 (* 2 len) (long (Math/ceil (/ len 4))))))
+    (+ 1 (* 2 len) (quot (+ len 3) 4))))
 
 (defn huff-dict-len [^ByteBufferAsIntBufferL buff32 ^long offset32]
   (let [bits (.get buff32 offset32)
@@ -368,7 +374,7 @@
               (if (< i bits)
                 (recur (inc i) (+ sum (.get buff32 (+ offset32 1 i))))
                 sum))]
-    (+ 1 bits (long (Math/ceil (/ sum 4))))))
+    (+ 1 bits (quot (+ sum 3) 4))))
 
 (comment
 
@@ -405,7 +411,7 @@
 
   ; bump the symbol count up to 88, by randomly selecting a range
   (defn moresyms [] (map #(if (= 0 (rand-int 2)) % (+ 44 %)) (fibselection)))
- ; (take 10 (moresyms))
+  ; (take 10 (moresyms))
 
   ; results look far from 57, which is the max we support in the encode-bytes routine, above.
   (map :length (:groups (make-huffman [(byte-array (take 1000000 (fibselection)))]))) ;1M: 22 bits
@@ -426,11 +432,50 @@
   (println disa)
   (= disa disb)
   (let [s (map #(.getBytes ^String %) ["foo" "bar" "baz" "one" "two" "three"])]
-        (display-dictionary (dictionary (build s))))
-  (let [s (map #(.getBytes ^String %) ["foo" "bar" "baz" "one" "two" "three" "zzzzzzz"])
-        huffman (build s)
-        dict (dictionary huffman)
-        encoded (encode-bytes dict (apply concat s))
+    (display-dictionary (dictionary (build s))))
+  (import '[java.nio ByteBuffer])
+
+  (require '[clojure.data.json :as json])
+  (let [file "singlecell.json"]
+    (def strings
+      (json/read-str (slurp file))))
+
+  (let [s (map #(.getBytes ^String %) (take 256 strings))
+        huffman (make-huffman s)
+        huff-bin (doto (ByteBuffer/wrap
+                         (let [out (ByteArrayOutputStream.)]
+                           (write-dictionary huffman out)
+                           (.toByteArray out)))
+                   (.order java.nio.ByteOrder/LITTLE_ENDIAN))
+        out (ByteArrayOutputStream.)
+        encoded (do (write huffman out [(byte-array (mapcat #(vec %) s))]) (.toByteArray out))
+        tree (huff-tree (.asIntBuffer huff-bin) huff-bin 0)
+        jhuff (Huffman.)
+        jtree (.tree jhuff (.asIntBuffer huff-bin) huff-bin 0)
+        decoded (let [out (ByteArrayOutputStream.)]
+                   (decode-range tree (ByteBuffer/wrap encoded) 0 out (count encoded))
+                   (.toByteArray out))
+        jdecoded (let [out (ByteArrayOutputStream.)]
+                    (.decodeRange2 jhuff (ByteBuffer/wrap encoded) 0 (count encoded) out)
+                    (.toByteArray out))
+        strdec (byte-array (mapcat #(into [] %) s))
+        N (count strdec)
         ]
-    (display-dictionary dict)
-    [(count encoded) (into [] encoded)]))
+    (let [out (ByteArrayOutputStream.)] ; for BAOS benchmarking
+       (.write out strdec 0 N)
+       (.toByteArray out))
+    (display-dictionary (:dictionary huffman))
+    [tree jtree (into [] encoded) (= (String. decoded) (String. jdecoded)) strdec])
+
+  (use 'criterium.core)
+  (bench (reduce + (range 100)))
+
+  (import 'cavm.Huffman)
+  (Huffman/foo)
+  (. Huffman foo)
+  (let [a (Huffman.)]
+    (.insert a 5 3 65)
+    (.-root a)
+    )
+  )
+

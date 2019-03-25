@@ -6,7 +6,10 @@
   (:import [java.nio ByteBufferAsIntBufferL ByteBuffer])
   (:import [java.io ByteArrayOutputStream])
   (:import [org.h2.jdbc JdbcBlob])
+  (:import [cavm Huffman])
   (:require [cavm.huffman :as huffman]))
+
+(set! *unchecked-math* true)
 
 ;
 ; vbyte
@@ -74,7 +77,7 @@
         (do
           (diff-rec acc (get sv i) (get sv (inc i)))
           (recur (inc i)))
-        [(.toByteArray acc)]))))
+        [(.toByteArray acc)])))) ; XXX why is this in a vector?
 
 (comment
 (defn decompress [[init diffs]]
@@ -204,7 +207,7 @@
 
 (defn uncompress-bin [dict i]
   (let [out (ByteArrayOutputStream.)
-        {:keys [length bin-size bin-count first-bin bin-offsets header-dict inner-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32]} dict
+        {:keys [length bin-size bin-count first-bin bin-offsets header-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff jinner-dict]} dict
         bin (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets i))))
         headerP (huffman/decode-to header-dict buff8 bin out 0)
         header (buff-to-string (.toByteArray out) 0)
@@ -216,7 +219,7 @@
                 (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets 1 i)))))]
 
     (.reset out)
-    (huffman/decode-range inner-dict buff8 headerP out upper)
+    (.decodeRange ^Huffman jhuff buff8 headerP upper out)
     (uncompress-inner header (.toByteArray out) (dec N)))) ; already have 1st string
 
 (defn uncompress-dict [dict]
@@ -229,8 +232,9 @@
         bin-size (.get buff32 1)
         bin-dict-offset (+ 2 (huffman/ht-dict-len buff32 2))
         bin-count-offset (+ bin-dict-offset (huffman/huff-dict-len buff32 bin-dict-offset))
-        bin-count (.get buff32 ^long bin-count-offset)
-        first-bin (+ bin-count-offset bin-count 1)]
+        bin-count (.get buff32 ^long bin-count-offset) ; why store this, vs. length / bin-size?
+        first-bin (+ bin-count-offset bin-count 1)
+        jhuff (Huffman.)]
     {:buff8 buff8
      :buff32 buff32
      :length length
@@ -241,7 +245,9 @@
      :bin-count bin-count
      :first-bin first-bin
      :header-dict (huffman/ht-tree buff32 buff8 8)
-     :inner-dict (huffman/huff-tree buff32 buff8 bin-dict-offset)}))
+     :inner-dict (huffman/huff-tree buff32 buff8 bin-dict-offset); XXX deprecated
+     :jhuff jhuff
+     :jinner-dict (.tree jhuff buff32 buff8 bin-dict-offset)}))
 
 (defrecord htfc [buff])
 
@@ -256,6 +262,7 @@
     (instance? JdbcBlob d) (htfc-offsets (ByteBuffer/wrap (unwrap-blob d)))
     :else d))
 
+; (to-htfc (ByteBuffer/wrap (byte-array [1 2 3 4])))
 ;(:buff (->htfc (byte-array [1 2 3])))
 
 
@@ -369,20 +376,18 @@
   (require '[clojure.data.json :as json])
   (use 'criterium.core)
 
-  ;(def buff
-  ;    (compress-pfc strings 32))
+  ;let [file "toil.json"]
+  (let [file "singlecell.json"]
+    (def strings
+      (json/read-str (slurp file))))
 
+  (time
+    (def buff2
+      (serialize-htfc (compress-htfc strings 256))))
 
   (defn spy [msg x]
     (println msg x)
     x)
-
-  ;let [file "toil.json"]
-  (time (do (let [file "singlecell.json"]
-              (def strings
-                (json/read-str (slurp file))))
-            (count strings))
-        )
 
   (import '[javax.json Json])
   (time (let [rdr (Json/createReader (clojure.java.io/reader "singlecell.json"))
@@ -397,9 +402,6 @@
   (time (do (front-coding strings) nil))
 
 
-  (time
-    (def buff2
-      (serialize-htfc (compress-htfc strings 256))))
 
   (defn subset-strings []
     (let [to-drop (into #{} (repeatedly 100 #(rand-int (count strings))))]
@@ -418,12 +420,72 @@
           (.order java.nio.ByteOrder/LITTLE_ENDIAN)))))
 
   (def strings-b-dict (dict-from-coll strings-b))
+  (def strings-a-dict (dict-from-coll strings-a))
   ;(take 100 (dict-seq strings-b-dict))
+  (print *e)
   (def strings-a-b-dict
     (let [sa (sort strings-a)]
       (time
         (let [merged (merge-sorted sa (dict-seq strings-b-dict))]
           (serialize-htfc (compress-htfc merged 256))))))
+
+  (def strings-a-b-dict
+    (time
+      (let [merged (merge-sorted (dict-seq strings-a-dict) (dict-seq strings-b-dict))]
+        (serialize-htfc (compress-htfc merged 256)))))
+
+  (def strings-a-b-dict
+    (time
+      (let [sa (into [] (dict-seq strings-a-dict))
+            merged (merge-sorted sa (dict-seq strings-b-dict))]
+        (serialize-htfc (compress-htfc merged 256)))))
+
+  (def strings-a-b-dict
+    (time
+      (let [sa (into [] (dict-seq strings-a-dict))
+            sb (into [] (dict-seq strings-b-dict))
+            merged (merge-sorted sa sb)]
+        (serialize-htfc (compress-htfc merged 256)))))
+
+  (def strings-a-b-dict
+    (time
+      (let [sa (into [] (dict-seq strings-a-dict))
+            sb (into [] (dict-seq strings-b-dict))
+            merged (merge-sorted-v sa sb)]
+        (serialize-htfc (compress-htfc merged 256)))))
+
+  (uncompress-bin strings-a-dict 1)
+  ;
+
+  (require '[cavm.h2 :refer [sampleID-codes]])
+  (require '[cavm.h2 :refer [sampleID-codes0]])
+  (def sample-codes
+    (let [a (dict-from-coll strings-a)
+          b (dict-from-coll strings-b)]
+      (time (sampleID-codes0 (uncompress-dict a) (uncompress-dict b)))))
+
+  ; 3.6-4s, at 256 bin size. size 16 through 8192: basically no change.
+  ; 1.3s, osx
+  (def sample-codes
+    (let [a (serialize-htfc (compress-htfc strings-a 256))
+            b (serialize-htfc (compress-htfc strings-b 256))]
+      (time (sampleID-codes a b))))
+
+  (import 'cavm.HTFC)
+  ; 300ms
+  (def sample-codes
+    (let [a (HTFC. (serialize-htfc (compress-htfc strings-a 256)))
+            b (HTFC. (serialize-htfc (compress-htfc strings-b 256)))]
+      (time (HTFC/join a b))))
+
+  (let [a (serialize-htfc (compress-htfc strings-a 256))
+        b (serialize-htfc (compress-htfc strings-b 256))
+        ha (HTFC. a)
+        hb (HTFC. b)
+        hj (HTFC/join ha hb)
+        sc (map #(if % (int %) nil) (sampleID-codes a b))]
+    (= hj sc))
+
 
   (count strings-a-b-dict)
   (count strings-a-b)
@@ -529,4 +591,13 @@
 
   (float (/ 207422 22000))    ; 9.42 bytes per string, toil
   (float (/ 8900000 1300000)) ; 6.8 bytes per string, singlecell
+
+(defn reload []
+  (virgil.compile/compile-all-java ["src-java/cavm"])
+  (import 'cavm.HTFC)
+  (import 'cavm.Huffman)
+  )
+
+(reload)
+
 )

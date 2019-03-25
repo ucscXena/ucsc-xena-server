@@ -25,6 +25,8 @@
   (:require [cavm.sqleval :refer [evaluate]])
   (:require [clojure.data.int-map :as i])
   (:require [cavm.pfc :as pfc])
+  (:import [org.h2.jdbc JdbcBlob])
+  (:import cavm.HTFC)
   (:import [org.h2.jdbc JdbcBatchUpdateException])
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
 
@@ -799,12 +801,16 @@
           (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))
       (info "Did not delete unknown dataset" dataset))))
 
+(defn unwrap-blob [^JdbcBlob blob]
+  (let [len (.length blob)]
+    (.getBytes blob 0 len)))
+
 (defn dataset-samples [ds-id]
   (jdbcd/with-query-results rows
       ["SELECT `samples`
         FROM `sample`
         WHERE `dataset_id` = ?" ds-id]
-      (-> rows first :samples)))
+      (-> rows first :samples unwrap-blob)))
 
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
                           :or {classname "org.h2.Driver"
@@ -944,7 +950,7 @@
 (defn- select-scores-full [dataset-id columns bins]
   (let [q (format dataset-fields-query
                   (clojure.string/join ","
-                                       (repeat (count bins) "?")))
+                                       (repeat (count bins) "?"))) ; XXX count here is very slow
         c (to-array (map str columns))
         i bins]
     (jdbcd/with-query-results rows (vec (concat [q c dataset-id] i))
@@ -967,9 +973,9 @@
          (first)
                                                ; calculate row index in the column
          (map #(-> {:i %1 :value %2}) (range)) ; [{:i 0 :value 1.2} ...]
-         (filter (comp val-set :value))        ; filter rows not matching the request.
+         (filter (comp val-set int :value))        ; filter rows not matching the request.
          (group-by :value)
-         (#(map (fn [g] (get % g [nil])) values)) ; arrange by output order.
+         (#(map (fn [g] (get % (float g) [nil])) values)) ; arrange by output order. XXX eliminate float stuff
          (apply concat)                           ; flatten groups.
          (mapv #(assoc %2 :order %1) (range)))))  ; assoc row output order.
 
@@ -994,11 +1000,7 @@
 ; Return the codes for requested sampleIDs, in the order
 ; of the request, with nil for any unknown sampleIDs. And
 ; try to be fast about it.
-; Would be nice to find a simpler algorithm.
-; Here we walk over the two lists in parallel, emitting
-; matching sampleIDs, or nil.
-; XXX The float thing is bothersome. Would be nice to have integer
-; bins for categorical.
+; Deprecated in favor of camv.HTFC/join
 (defn sampleID-codes [h0 h1]
   (let [a (samples-to-seq h0)
         b (pfc/dict-seq (pfc/to-htfc h1)) ; db
@@ -1019,16 +1021,20 @@
           (persistent! acc))
         (persistent! acc)))))
 
+; XXX The float thing is bothersome. Would be nice to have integer
+; bins for categorical.
+
 ; XXX for now, try storing the sampleID column, so it works for
 ; sparse & dense data. If it's slow, or too big, drop it.
 (defn- genomic-read-req [req]
   (let [{:keys [samples table columns]} req
         dataset-id (dataset-id-by-name table)
         ds-samples (dataset-samples dataset-id)
-        order (sampleID-codes samples ds-samples)
+        order (HTFC/join (HTFC. samples) (HTFC. ds-samples))
         rows (rows-matching dataset-id "sampleID" order)
         rows-to-copy (->> rows
-                          (filter :value)
+                          (filter :value) ; XXX can we drop this by not emitting nils earlier?
+                                          ; also, use reducers throughout here?
                           (mapv merge-bin-off))
 
         bins (mapv :bin rows-to-copy)        ; list of bins to pull.
