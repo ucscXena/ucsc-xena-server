@@ -15,6 +15,7 @@
   :profiles {:dev {:source-paths ["src-dev" "src"]
                    :dependencies [[org.jumpmind.symmetric.schemaspy/schemaspy "5.0.0"]
                                   [com.clojure-goes-fast/clj-java-decompiler  "0.1.0"]
+                                  [virgil "0.1.9"]
                                   [criterium  "0.4.4"]]
                    :plugins [[test2junit  "1.4.2"]]}
              :benchmark {:jvm-opts ["-server"]
