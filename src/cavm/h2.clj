@@ -27,6 +27,7 @@
   (:require [cavm.pfc :as pfc])
   (:import [org.h2.jdbc JdbcBlob])
   (:import cavm.HTFC)
+  (:import cavm.H2)
   (:import [org.h2.jdbc JdbcBatchUpdateException])
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
 
@@ -365,8 +366,11 @@
   (amap ia i ret (aget a i))))
 
 (defn- ashuffle-float [mappings ^floats out ^floats in]
-   (doseq [[i-in i-out] mappings]
-     (aset out i-out (aget in i-in)))
+   (doseq [m mappings]
+     ; maybe switch to a ArrayList<Integer>, like
+     ; [in out in out in out], so we don't need Pair.
+     (let [i-in (.-a ^cavm.H2$Pair m) i-out (.-b ^cavm.H2$Pair m)]
+       (aset out i-out (aget in i-in))))
    out)
 
 (defn- bytes-to-floats [^bytes barr]
@@ -890,40 +894,13 @@
 (defn bin-offset [i]
   [(quot i bin-size) (rem i bin-size)])
 
-; merge bin number and bin offset for a row
-(defn- merge-bin-off [{i :i :as row}]
-  (merge row
-         {:bin (quot i bin-size)
-          :off (rem i bin-size)}))
-
-; Returns mapping from input bin offset to output buffer for a
-; given row.
-(defn- bin-mapping [{off :off row :order}]
-  [off row])
-
-
-; Gets called once for each bin in the request.
-; order is row -> order in output buffer.
-; bin is the bin for the given set of rows
-; rows is ({:i 12 :bin 1 :off 1}, ... ), where all :bin are the same
-(defn- pick-rows-fn [[bin rows]]
-  [bin (partial ashuffle-float
-                (map bin-mapping rows))])
-
-; Take an ordered list of requested rows, and generate fns to copy
-; values from a score bin to an output array. Returns one function
-; for each score bin in the request.
-;
-; rows ({:i 12 :bin 1 :off 1}, ... )
-(defn- pick-rows-fns [rows]
-  (let [by-bin (group-by :bin rows)]
-    (apply hash-map (mapcat pick-rows-fn by-bin))))
 
 ; Take map of bin copy fns, list of scores rows, and a map of output arrays,
 ; copying the scores to the output arrays via the bin copy fns.
 (defn- build-score-arrays [rows bfns out]
   (doseq [{i :i scores :scores field :name} rows]
-    ((bfns i) (out field) scores))
+    ; does this int cast matter? Should we change H2/binMappings to return long?
+    (ashuffle-float (get bfns (int i)) (out field) scores))
   out)
 
 (defn- col-arrays [columns n]
@@ -956,28 +933,9 @@
     (jdbcd/with-query-results rows (vec (concat [q c dataset-id] i))
       (vec rows))))
 
-; Returns rows from (dataset-id column-name) matching
-; values. Returns a hashmap for each matching  row.
-; { :i     The implicit index in the column as stored on disk.
-;   :order The order of the row the result set.
-;   :value The value of the row.
-; }
-; XXX This seems *really* inefficient and complex. Surely there's a better
-; algorithm.
-(defn- rows-matching [dataset-id column-name values]
-  (let [val-set (set values)]
-    (->> column-name
-         (vector)
-         (all-rows dataset-id)                 ; Retrieve the full column
-         (vals)
-         (first)
-                                               ; calculate row index in the column
-         (map #(-> {:i %1 :value %2}) (range)) ; [{:i 0 :value 1.2} ...]
-         (filter (comp val-set int :value))        ; filter rows not matching the request.
-         (group-by :value)
-         (#(map (fn [g] (get % (float g) [nil])) values)) ; arrange by output order. XXX eliminate float stuff
-         (apply concat)                           ; flatten groups.
-         (mapv #(assoc %2 :order %1) (range)))))  ; assoc row output order.
+(defn bin-mappings [dataset-id column-name values]
+  (let [all (int-array ((all-rows dataset-id [column-name]) column-name))]
+    (H2/binMappings bin-size (int-array values) all)))
 
 (defn- float-nil [x]
   (when x (float x)))
@@ -1031,19 +989,15 @@
         dataset-id (dataset-id-by-name table)
         ds-samples (dataset-samples dataset-id)
         order (HTFC/join (HTFC. samples) (HTFC. ds-samples))
-        rows (rows-matching dataset-id "sampleID" order)
-        rows-to-copy (->> rows
-                          (filter :value) ; XXX can we drop this by not emitting nils earlier?
-                                          ; also, use reducers throughout here?
-                          (mapv merge-bin-off))
+        bin-map (bin-mappings dataset-id "sampleID" order)]
 
-        bins (mapv :bin rows-to-copy)        ; list of bins to pull.
-        bfns (pick-rows-fns rows-to-copy)]   ; make fns that map from input bin to
-                                             ; output buffer, one fn per input bin.
-
-    (-> (select-scores-full dataset-id columns (distinct bins))
+    (-> (select-scores-full dataset-id columns (keys bin-map))
         (#(mapv cvt-scores %))
-        (build-score-arrays bfns (col-arrays columns (count rows)))
+        ; build-score-arrays consumes output bins (i, scores, field)
+        ; with (bfns i). We don't really need to create functions, here.
+        ; A map would do.
+        ; Then we want to change the fn to consume a list of pairs
+        (build-score-arrays bin-map (col-arrays columns (count order)))
         (map columns))))
 
 
