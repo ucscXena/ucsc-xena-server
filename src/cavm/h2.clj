@@ -86,7 +86,7 @@
 
 (defn- cvt-scores [{scores :scores :as v}]
   (if scores
-    (assoc v :scores (float-array (score-decode scores)))
+    (assoc v :scores (score-decode scores))
     v))
 
 ;
