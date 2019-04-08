@@ -354,7 +354,7 @@
 (defn merge-dicts [dict & dicts]
   (if (seq dicts)
     (serialize-htfc (compress-htfc
-                      (reduce #(merge-sorted %1 (dict-seq (to-htfc %) 2))
+                      (reduce #(merge-sorted %1 (dict-seq (to-htfc %2)))
                               (dict-seq (to-htfc dict))
                               dicts)
                       256))

@@ -10,7 +10,7 @@
 (set-current-implementation :vectorz)
 
 (defn distinct-htfc [ & blobs ]
-  (apply pfc/merge-dicts blobs))
+  (pfc/->htfc (apply pfc/merge-dicts blobs)))
 
 (defn- meannan1d [m]
   (let [NaN Double/NaN

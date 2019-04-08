@@ -99,6 +99,9 @@
 (defn- write-jdbc-blob [m buff ^PrintWriter out i]
   (write-bin (unwrap-blob m) buff out i))
 
+(defn- write-htfc [m buff ^PrintWriter out i]
+  (write-bin (:buff m) buff out i))
+
 ; ugh. java buffer support sucks. Two copies on the way out
 ; due to weird buffer APIs.
 (defn- write-float-bin [^floats m buff ^PrintWriter out i]
@@ -123,6 +126,7 @@
 (extend (Class/forName "[F") BinpackWriter {:-write write-float-bin})
 (extend (Class/forName "[D") BinpackWriter {:-write write-double-bin})
 (extend JdbcBlob BinpackWriter {:-write write-jdbc-blob})
+(extend htfc BinpackWriter {:-write write-htfc})
 
 (defn write-buff [x]
   (let [sw (StringWriter.)
