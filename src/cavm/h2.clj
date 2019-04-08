@@ -489,7 +489,7 @@
 ; I guess add it there, using the same pattern.
 (defmulti ^:private load-field
   (fn [dataset-id field-id column feature-seq]
-    (info (:field column))
+    (:field column)
     (if (= (:field column) "sampleID") :sample-id
       (:valueType column))))
 
