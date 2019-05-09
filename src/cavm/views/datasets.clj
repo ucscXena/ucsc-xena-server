@@ -100,6 +100,12 @@
 (extend htfc liberator.representation/Representation
   {:as-response htfc-as-response})
 
+(extend (Class/forName "[F") liberator.representation/Representation
+  {:as-response blob-as-response})
+
+(extend (Class/forName "[D") liberator.representation/Representation
+  {:as-response blob-as-response})
+
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/json"}})
 ; (liberator.representation/as-response 1.0 {:representation {:media-type "application/edn"}})
 ; (liberator.representation/as-response 1 {:representation {:media-type "application/edn"}})

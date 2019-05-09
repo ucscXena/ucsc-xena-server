@@ -111,7 +111,7 @@
       (.putFloat bb f))
     (write-bin (.array bb) buff out i)))
 
-(defn- write-double-bin [^double m buff ^PrintWriter out i]
+(defn- write-double-bin [^doubles m buff ^PrintWriter out i]
   (let [bb (doto (ByteBuffer/allocate (* (count m) 4))
              (.order java.nio.ByteOrder/LITTLE_ENDIAN))]
     (doseq [f m]

@@ -40,16 +40,24 @@
 (defn seq-htfc [blob]
   (pfc/dict-seq (pfc/to-htfc blob)))
 
+(def floatarray (Class/forName "[F"))
+
+; XXX might also need to handle 2d data
+(defn cvt-float [f]
+  (fn [& args]
+    (let [nargs (map #(if (instance? floatarray %) (double-array %) %) args)]
+      (apply f nargs))))
+
 (def functions
-  {'+ +
-   '/ /
-   '* emul
-   '> >
-   '< <
-   '>= >=
-   '<= <=
-   '- -
-   '= ==
+  {'+ (cvt-float +)
+   '/ (cvt-float /)
+   '* (cvt-float emul)
+   '> (cvt-float >)
+   '< (cvt-float <)
+   '>= (cvt-float >=)
+   '<= (cvt-float <=)
+   '- (cvt-float -)
+   '= (cvt-float ==)
    'map map
    'get get
    'assoc assoc
