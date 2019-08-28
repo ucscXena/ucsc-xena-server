@@ -138,53 +138,6 @@
         (conj! acc (subvec v (- c r) c))))
     (persistent! acc)))
 
-;(partition-all-v 3 [1 2 3 4 5 6 7 8 9 10])
-;(partition-all-v 3 [1 2 3 4 5 6 7 8 9 10 11])
-;(partition-all-v 3 [1 2 3 4 5 6 7 8 9 10 11 12])
-;(partition-all-v 3 [1 2 3 4 5 6 7 8 9 10 11 12 13])
-
-(require '[clojure.core.reducers :as r])
-(defn compress-htfc-sorted [ordered bin-size]
-  (let [out (java.io.ByteArrayOutputStream. 1000)
-        bins (partition-all-v bin-size (into [] ordered))
-        ; we reduce this multiple times, so compute it as foldable.
-        front-coded (r/foldcat (r/map compress-bin bins))
-
-        ht (huffman/make-hu-tucker (map #(:header %) front-coded))
-        ; XXX Does get-bytes make sense? Why do we need to do this?
-        compressed-headers (map #(get-bytes huffman/write ht (:header %))
-                                  front-coded)
-        huff (huffman/make-huffman (r/mapcat :inner front-coded))
-        compressed (r/foldcat (r/map #(get-bytes huffman/write huff (:inner %))
-                           front-coded))
-        sizes (map #(+ (count %1) (count %2)) compressed-headers compressed)
-        offsets (reductions + 0 (take (dec (count sizes)) sizes))]
-    {:length (count ordered)
-     :bin-size bin-size
-     :header-dict ht
-     :inner-dict huff
-     :offsets offsets
-     :headers compressed-headers
-     :inners compressed}))
-
-(defn compress-htfc [strings bin-size]
-  (compress-htfc-sorted (sort strings) bin-size))
-
-(defn compress-hfc [strings bin-size]
-  (let [out (java.io.ByteArrayOutputStream. 1000)
-        ordered (sort strings)
-        bins (partition-all-v bin-size (into [] ordered))
-        front-coded (r/foldcat (r/map front-code bins))
-        huff (huffman/make-huffman (r/mapcat identity front-coded))
-        compressed (r/foldcat (r/map #(get-bytes huffman/write huff %) front-coded))
-        sizes (map count compressed)
-        offsets (reductions + 0 (take (dec (count sizes)) sizes))]
-    {:length (count ordered)
-     :bin-size bin-size
-     :dict huff
-     :offsets offsets
-     :bins compressed}))
-
 (defn serialize-htfc [htfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         {:keys [length bin-size header-dict inner-dict offsets headers inners]} htfc]
@@ -205,6 +158,33 @@
         (.write out 0)))
     (.toByteArray out)))
 
+(require '[clojure.core.reducers :as r])
+(defn compress-htfc-sorted [ordered bin-size]
+  (let [out (java.io.ByteArrayOutputStream. 1000)
+        bins (partition-all-v bin-size (into [] ordered))
+        ; we reduce this multiple times, so compute it as foldable.
+        front-coded (r/foldcat (r/map compress-bin bins))
+
+        ht (huffman/make-hu-tucker (map #(:header %) front-coded))
+        ; XXX Does get-bytes make sense? Why do we need to do this?
+        compressed-headers (map #(get-bytes huffman/write ht (:header %))
+                                  front-coded)
+        huff (huffman/make-huffman (r/mapcat :inner front-coded))
+        compressed (r/foldcat (r/map #(get-bytes huffman/write huff (:inner %))
+                           front-coded))
+        sizes (map #(+ (count %1) (count %2)) compressed-headers compressed)
+        offsets (reductions + 0 (take (dec (count sizes)) sizes))]
+    (serialize-htfc {:length (count ordered)
+                     :bin-size bin-size
+                     :header-dict ht
+                     :inner-dict huff
+                     :offsets offsets
+                     :headers compressed-headers
+                     :inners compressed})))
+
+(defn compress-htfc [strings bin-size]
+  (compress-htfc-sorted (sort strings) bin-size))
+
 (defn serialize-hfc [hfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         {:keys [length bin-size dict offsets bins]} hfc]
@@ -220,6 +200,21 @@
       (dotimes [i (rem (- 4 (rem total 4)) 4)]
         (.write out 0)))
     (.toByteArray out)))
+
+(defn compress-hfc [strings bin-size]
+  (let [out (java.io.ByteArrayOutputStream. 1000)
+        ordered (sort strings)
+        bins (partition-all-v bin-size (into [] ordered))
+        front-coded (r/foldcat (r/map front-code bins))
+        huff (huffman/make-huffman (r/mapcat identity front-coded))
+        compressed (r/foldcat (r/map #(get-bytes huffman/write huff %) front-coded))
+        sizes (map count compressed)
+        offsets (reductions + 0 (take (dec (count sizes)) sizes))]
+    (serialize-hfc {:length (count ordered)
+                    :bin-size bin-size
+                    :dict huff
+                    :offsets offsets
+                    :bins compressed})))
 
 (defn index-of [^bytes arr start v]
   (loop [i start]
@@ -371,11 +366,11 @@
 ; XXX put bin size somewhere
 (defn merge-dicts [dict & dicts]
   (if (seq dicts)
-    (serialize-htfc (compress-htfc
-                      (reduce #(merge-sorted %1 (dict-seq (to-htfc %2)))
-                              (dict-seq (to-htfc dict))
-                              dicts)
-                      256))
+    (compress-htfc-sorted
+      (reduce #(merge-sorted %1 (dict-seq (to-htfc %2)))
+              (dict-seq (to-htfc dict))
+              dicts)
+      256)
     dict))
 
 ;
@@ -398,7 +393,7 @@
 
   (time
     (def buff2
-      (serialize-htfc (compress-htfc strings 256))))
+      (compress-htfc strings 256)))
 
   (defn spy [msg x]
     (println msg x)
@@ -421,19 +416,19 @@
   ; 3.6-4s, at 256 bin size. size 16 through 8192: basically no change.
   ; 1.3s, osx
   (def sample-codes
-    (let [a (serialize-htfc (compress-htfc strings-a 256))
-            b (serialize-htfc (compress-htfc strings-b 256))]
+    (let [a (compress-htfc strings-a 256)
+            b (compress-htfc strings-b 256)]
       (time (sampleID-codes a b))))
 
   (import 'cavm.HTFC)
   ; 300ms
   (def sample-codes
-    (let [a (HTFC. (serialize-htfc (compress-htfc strings-a 256)))
-          b (HTFC. (serialize-htfc (compress-htfc strings-b 256)))]
+    (let [a (HTFC. (compress-htfc strings-a 256))
+          b (HTFC. (compress-htfc strings-b 256))]
       (time (HTFC/join a b))))
 
-  (let [a (serialize-htfc (compress-htfc strings-a 256))
-        b (serialize-htfc (compress-htfc strings-b 256))
+  (let [a (compress-htfc strings-a 256)
+        b (compress-htfc strings-b 256)
         ha (HTFC. a)
         hb (HTFC. b)
         hj (HTFC/join ha hb)
@@ -452,8 +447,8 @@
     (def strings-b (subset-strings))
     (require '[cavm.h2 :refer [sampleID-codes]])
     (import 'cavm.PFC))
-  (let [a (serialize-hfc (compress-hfc strings-a 258))
-          b (serialize-hfc (compress-hfc strings-b 256))
+  (let [a (compress-hfc strings-a 258)
+          b (compress-hfc strings-b 256)
           ha (PFC. a)
           hb (PFC. b)
           hj (PFC/join ha hb)
@@ -462,14 +457,14 @@
 
   ; round trip hfc
   (let [strings strings
-        in (time (serialize-hfc (compress-hfc strings 256)))
+        in (time (compress-hfc strings 256))
         out (time (into [] (uncompress-dict-hfc (hfc-offsets (doto (ByteBuffer/wrap in)
                                                        (.order java.nio.ByteOrder/LITTLE_ENDIAN))))))]
     (= (sort strings) out))
 
   ; round trip
   (let [strings strings
-        in (time (serialize-htfc (compress-htfc strings 256)))
+        in (time (compress-htfc strings 256))
         out (time (into [] (uncompress-dict-htfc (htfc-offsets (doto (ByteBuffer/wrap in)
                                                     (.order java.nio.ByteOrder/LITTLE_ENDIAN))))))]
     (= (sort strings) out))

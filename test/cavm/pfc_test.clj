@@ -38,7 +38,7 @@
 (comment (deftest basic-test
            (testing "fixed set"
              (let [in ["one" "two" "three" "four" "five" "six"]
-                   dict (pfc/serialize-htfc (pfc/compress-htfc in 5))]
+                   dict (pfc/compress-htfc in 5)]
                (with-open [file (java.io.FileOutputStream. "test.bin")]
                  (.write file dict))
                (let [{out :out} (sh "node" "isomorphic.js" "test.bin")
@@ -48,7 +48,7 @@
                       ; check handling of zero-length front-coding, caused by
                       ; repeated string, in encode-bytes.
                       (let [in ["one" "one" "two" "three" "four" "five" "six"]
-                            dict (pfc/serialize-htfc (pfc/compress-htfc in 5))]
+                            dict (pfc/compress-htfc in 5)]
                         (with-open [file (java.io.FileOutputStream. "test.bin")]
                           (.write file dict))
                         (let [{out :out} (sh "node" "isomorphic.js" "test.bin")
@@ -56,7 +56,7 @@
                           (is (= (set in) (set res)))))))
            (comment (testing "toil"
               (let [in (json/read-str (slurp "toil.json"))
-                    dict (pfc/serialize-htfc (pfc/compress-htfc in 5))]
+                    dict (pfc/compress-htfc in 5)]
                 (with-open [file (java.io.FileOutputStream. "test.bin")]
                   (.write file dict))
                 (let [{out :out} (sh "node" "isomorphic.js" "test.bin")
@@ -71,26 +71,26 @@
 (deftest basic-test-clj
   (testing "fixed set"
     (let [in ["one" "two" "three" "four" "five" "six"]
-          dict (pfc/serialize-htfc (pfc/compress-htfc in 5))
+          dict (pfc/compress-htfc in 5)
           out (dict-to-vec dict)]
       (is (= (sort in) out))))
   (testing "fixed set 2"
     ; check handling of zero-length front-coding, caused by
     ; repeated string, in encode-bytes.
     (let [in ["one" "one" "two" "three" "four" "five" "six"]
-          dict (pfc/serialize-htfc (pfc/compress-htfc in 5))
+          dict (pfc/compress-htfc in 5)
           out (dict-to-vec dict)]
       (is (= (sort in) out))))
   ; where to get a large test set w/o committing all this garbage?
   ; maybe compress it? Or fetch & cache? Or compress with htfc?
   (comment (testing "toil"
      (let [in (json/read-str (slurp "toil.json"))
-           dict (pfc/serialize-htfc (pfc/compress-htfc in 256))
+           dict (pfc/compress-htfc in 256)
            out (dict-to-vec dict)]
        (is (= (sort in) out))))))
 
 (defn htfc [strings bin-size]
-  (pfc/to-htfc (pfc/serialize-htfc (pfc/compress-htfc strings bin-size))))
+  (pfc/to-htfc (pfc/compress-htfc strings bin-size)))
 
 (defn htfc-merge [a b]
   (pfc/merge-dicts a b))

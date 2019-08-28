@@ -49,13 +49,13 @@
    (distinct (concat only-db both))])
 
 (defn htfc [strings bin-size]
-  (HTFC. (pfc/serialize-htfc (pfc/compress-htfc strings bin-size))))
+  (HTFC. (pfc/compress-htfc strings bin-size)))
 
 (defn htfc-join [a b]
   (HTFC/join a b))
 
 (defn hfc [strings bin-size]
-  (HFC. (pfc/serialize-hfc (pfc/compress-hfc strings bin-size))))
+  (HFC. (pfc/compress-hfc strings bin-size)))
 
 (defn hfc-join [a b]
   (HFC/join a b))

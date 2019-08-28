@@ -516,7 +516,7 @@
 
 (defmethod load-field :sample-id [dataset-id field-id field feature-seq]
   (let [samples (:order (:feature field))
-        blob (pfc/serialize-htfc (pfc/compress-htfc-sorted samples 256))]
+        blob (pfc/compress-htfc-sorted samples 256)]
     (conj (load-probe-field dataset-id field-id field)
           [:insert-sample-id {:dataset_id dataset-id :samples blob}])))
 
