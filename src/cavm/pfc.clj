@@ -250,7 +250,7 @@
 
 (defn uncompress-bin-htfc [dict i]
   (let [out (ByteArrayOutputStream.)
-        {:keys [length bin-size bin-count first-bin bin-offsets header-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff jinner-dict]} dict
+        {:keys [length bin-size bin-count first-bin bin-offsets header-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff]} dict
         bin (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets i))))
         headerP (huffman/decode-to header-dict buff8 bin out 0)
         header (buff-to-string (.toByteArray out) 0)
@@ -267,7 +267,7 @@
 
 (defn uncompress-bin-hfc [dict i]
   (let [out (ByteArrayOutputStream.)
-        {:keys [length bin-size bin-count first-bin bin-offsets bin-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff jdict]} dict
+        {:keys [length bin-size bin-count first-bin bin-offsets bin-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff]} dict
         bin (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets i))))
         remainder (rem length bin-size)
         N (cond (= remainder 0) bin-size
@@ -297,6 +297,9 @@
         bin-count (.get buff32 ^long bin-count-offset) ; why store this, vs. length / bin-size?
         first-bin (+ bin-count-offset bin-count 1)
         jhuff (Huffman.)]
+
+    (.tree jhuff buff32 buff8 bin-dict-offset)
+
     {:buff8 buff8
      :buff32 buff32
      :length length
@@ -308,8 +311,7 @@
      :first-bin first-bin
      :header-dict (huffman/ht-tree buff32 buff8 8)
      :inner-dict (huffman/huff-tree buff32 buff8 bin-dict-offset); XXX deprecated
-     :jhuff jhuff
-     :jdict (.tree jhuff buff32 buff8 bin-dict-offset)}))
+     :jhuff jhuff}))
 
 (defrecord htfc [buff])
 
@@ -322,6 +324,9 @@
         bin-count (.get buff32 ^long bin-count-offset)
         first-bin (+ bin-count-offset bin-count 1)
         jhuff (Huffman.)]
+
+    (.tree jhuff buff32 buff8 bin-dict-offset)
+
     {:buff8 buff8
      :buff32 buff32
      :length length
@@ -332,8 +337,7 @@
      :bin-count bin-count
      :first-bin first-bin
      :bin-dict (huffman/huff-tree buff32 buff8 bin-dict-offset)
-     :jhuff jhuff
-     :jinner-dict (.tree jhuff buff32 buff8 bin-dict-offset)}))
+     :jhuff jhuff}))
 
 (defn unwrap-blob [^JdbcBlob blob]
   (let [len (.length blob)]

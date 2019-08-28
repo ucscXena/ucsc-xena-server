@@ -46,7 +46,6 @@ public class Huffman {
 		int len = buff32.get(offset32);
 		long code = 0;
 		int symbol8 = 4 * (offset32 + 1 + len);
-		Node tree = root;
 		for (int i = 1; i <= len; ++i) {
 			int N = buff32.get(offset32 + i);
 			long icode = code;
