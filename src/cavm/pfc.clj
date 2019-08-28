@@ -21,6 +21,7 @@
        (if (= 0 (bit-and b 0x80))
          (recur (inc i) (bit-shift-left (bit-or x b) 7))
          [(bit-or x (bit-and b 0x7f)) (inc i)]))))
+
 (defn vbyte0 [^ByteArrayOutputStream acc ^long i]
   (.write acc (bit-or 0x80 i)))
 
@@ -49,7 +50,7 @@
         :else (vbyte3 acc i)))
 
 ;
-; pfc
+; front-coding
 ;
 
 (defn common-prefix
@@ -61,32 +62,41 @@
          (recur a b (inc n))
          n)))
 
+(defn write-str-null [^ByteArrayOutputStream acc ^String string]
+  (let [ba (.getBytes string)]
+      (.write acc ba 0 (alength ba)))
+  (.write acc 0))
+
 (defn diff-rec [^ByteArrayOutputStream acc ^String a ^String b]
   (let [n (common-prefix a b)]
     (vbyte-encode acc n)
-    (let [ba (.getBytes (.substring b n))]
-      (.write acc ba 0 (alength ba)))
-    (.write acc 0)))
+    (write-str-null acc (.substring b n))))
 
-(defn compute-inner [strings]
+(defn compute-inner-baos [strings acc]
   (let [sv (into [] strings)
-        n (- (count sv) 1)
-        acc (ByteArrayOutputStream.)]
+        n (- (count sv) 1)]
     (loop [i 0]
       (if (< i n)
         (do
           (diff-rec acc (get sv i) (get sv (inc i)))
-          (recur (inc i)))
-        [(.toByteArray acc)])))) ; XXX why is this in a vector?
+          (recur (inc i)))))))
 
-(comment
-(defn decompress [[init diffs]]
-    (reductions (fn [^String prev [n suffix]] (str (.substring prev 0 n) suffix))
-                init diffs)))
+; front-code inner bin (no initial string)
+(defn front-code-rest [strings]
+  (let [acc (ByteArrayOutputStream.)]
+    (compute-inner-baos strings acc)
+    [(.toByteArray acc)]))
+
+; front-code bin (including initial string)
+(defn front-code [strings]
+  (let [acc (ByteArrayOutputStream.)]
+    (write-str-null acc (first strings))
+    (compute-inner-baos strings acc)
+    [(.toByteArray acc)]))
 
 (defn compress-bin [strings]
     {:header (into-array Byte/TYPE (concat (.getBytes ^String (first strings)) [0])) ; XXX eliminate concat. use implicit zero?
-     :inner (compute-inner strings)})
+     :inner (front-code-rest strings)})
 
 (defn compress-pfc [strings bin-size]
     (let [ordered (sort strings)
@@ -160,6 +170,21 @@
 (defn compress-htfc [strings bin-size]
   (compress-htfc-sorted (sort strings) bin-size))
 
+(defn compress-hfc [strings bin-size]
+  (let [out (java.io.ByteArrayOutputStream. 1000)
+        ordered (sort strings)
+        bins (partition-all-v bin-size (into [] ordered))
+        front-coded (r/foldcat (r/map front-code bins))
+        huff (huffman/make-huffman (r/mapcat identity front-coded))
+        compressed (r/foldcat (r/map #(get-bytes huffman/write huff %) front-coded))
+        sizes (map count compressed)
+        offsets (reductions + 0 (take (dec (count sizes)) sizes))]
+    {:length (count ordered)
+     :bin-size bin-size
+     :dict huff
+     :offsets offsets
+     :bins compressed}))
+
 (defn serialize-htfc [htfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         {:keys [length bin-size header-dict inner-dict offsets headers inners]} htfc]
@@ -180,6 +205,21 @@
         (.write out 0)))
     (.toByteArray out)))
 
+(defn serialize-hfc [hfc]
+  (let [out (java.io.ByteArrayOutputStream. 1000)
+        {:keys [length bin-size dict offsets bins]} hfc]
+    (huffman/write-int length out)
+    (huffman/write-int bin-size out)
+    (huffman/write-dictionary dict out)
+    (huffman/write-int (count offsets) out)
+    (doseq [s offsets]
+      (huffman/write-int s out))
+    (doseq [bin bins]
+      (.write out ^bytes bin))
+    (let [total (.size out)] ; align to word boundary
+      (dotimes [i (rem (- 4 (rem total 4)) 4)]
+        (.write out 0)))
+    (.toByteArray out)))
 
 (defn index-of [^bytes arr start v]
   (loop [i start]
@@ -196,16 +236,19 @@
         n (str (.substring ^String prev 0 plen) s)]
     [n (+ nxt (.length s))]))
 
-(defn uncompress-inner [header buff N]
-  (let [acc (transient [header])]
-    (loop [i 0 p 0 s header]
-      (if (< i N)
-        (let [[s p] (next-str buff p s)]
-          (conj! acc s)
-          (recur (inc i) (long p) s))
-        (persistent! acc)))))
+(defn uncompress-inner
+  ([header buff N]
+   (uncompress-inner header buff N 0))
+  ([header buff N start]
+   (let [acc (transient [header])]
+     (loop [i 0 p start s header]
+       (if (< i N)
+         (let [[s p] (next-str buff p s)]
+           (conj! acc s)
+           (recur (inc i) (long p) s))
+         (persistent! acc))))))
 
-(defn uncompress-bin [dict i]
+(defn uncompress-bin-htfc [dict i]
   (let [out (ByteArrayOutputStream.)
         {:keys [length bin-size bin-count first-bin bin-offsets header-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff jinner-dict]} dict
         bin (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets i))))
@@ -222,8 +265,27 @@
     (.decodeRange ^Huffman jhuff buff8 headerP upper out)
     (uncompress-inner header (.toByteArray out) (dec N)))) ; already have 1st string
 
-(defn uncompress-dict [dict]
-  (apply concat (for [i (range 0 (:bin-count dict))] (uncompress-bin dict i))))
+(defn uncompress-bin-hfc [dict i]
+  (let [out (ByteArrayOutputStream.)
+        {:keys [length bin-size bin-count first-bin bin-offsets bin-dict ^ByteBuffer buff8 ^ByteBufferAsIntBufferL buff32 jhuff jdict]} dict
+        bin (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets i))))
+        remainder (rem length bin-size)
+        N (cond (= remainder 0) bin-size
+                (= i (dec bin-count)) remainder
+                :else bin-size)
+        upper (if (= i (dec bin-count)) (.capacity buff8)
+                (+ (* 4 first-bin) (.get buff32 (long (+ bin-offsets 1 i)))))]
+
+    (.decodeRange ^Huffman jhuff buff8 bin upper out)
+    (let [ba (.toByteArray out)
+          header (buff-to-string ba 0)]
+      (uncompress-inner header ba (dec N) (inc (count header))))))
+
+(defn uncompress-dict-htfc [dict]
+  (apply concat (for [i (range 0 (:bin-count dict))] (uncompress-bin-htfc dict i))))
+
+(defn uncompress-dict-hfc [dict]
+  (apply concat (for [i (range 0 (:bin-count dict))] (uncompress-bin-hfc dict i))))
 
 (defn htfc-offsets [^ByteBuffer buff8]
   (let [buff8 (doto buff8 (.order java.nio.ByteOrder/LITTLE_ENDIAN))
@@ -247,10 +309,31 @@
      :header-dict (huffman/ht-tree buff32 buff8 8)
      :inner-dict (huffman/huff-tree buff32 buff8 bin-dict-offset); XXX deprecated
      :jhuff jhuff
-     :jinner-dict (.tree jhuff buff32 buff8 bin-dict-offset)}))
+     :jdict (.tree jhuff buff32 buff8 bin-dict-offset)}))
 
 (defrecord htfc [buff])
 
+(defn hfc-offsets [^ByteBuffer buff8]
+  (let [buff32 (.asIntBuffer buff8)
+        length (.get buff32 0)
+        bin-size (.get buff32 1)
+        bin-dict-offset 2
+        bin-count-offset (+ bin-dict-offset (huffman/huff-dict-len buff32 bin-dict-offset))
+        bin-count (.get buff32 ^long bin-count-offset)
+        first-bin (+ bin-count-offset bin-count 1)
+        jhuff (Huffman.)]
+    {:buff8 buff8
+     :buff32 buff32
+     :length length
+     :bin-size bin-size
+     :bin-dict-offset bin-dict-offset
+     :bin-count-offset bin-count-offset
+     :bin-offsets (inc bin-count-offset)
+     :bin-count bin-count
+     :first-bin first-bin
+     :bin-dict (huffman/huff-tree buff32 buff8 bin-dict-offset)
+     :jhuff jhuff
+     :jinner-dict (.tree jhuff buff32 buff8 bin-dict-offset)}))
 
 (defn unwrap-blob [^JdbcBlob blob]
   (let [len (.length blob)]
@@ -262,42 +345,13 @@
     (instance? JdbcBlob d) (htfc-offsets (ByteBuffer/wrap (unwrap-blob d)))
     :else d))
 
-; (to-htfc (ByteBuffer/wrap (byte-array [1 2 3 4])))
-;(:buff (->htfc (byte-array [1 2 3])))
-
-
 (defn dict-seq [dict]
-  (mapcat #(uncompress-bin dict %)
+  (mapcat #(uncompress-bin-htfc dict %)
           (range (:bin-count dict))))
 
 ;
-; sketching some routines for computing the union
+; computing union
 ;
-
-(defn diff-sorted [a b]
-  (let [acc (transient [])]
-    (loop [a a b b]
-      (if-let [n (first a)]
-        (if-let [m (first b)]
-          (if (= n m)
-            (recur (rest a) (rest b))
-            (if (< (compare n m) 0)
-              (recur (rest a) b)
-              (do
-                (conj! acc m)
-                (recur a (rest b)))))
-          (persistent! acc))
-        (into (persistent! acc) b)))))
-
-;(diff-sorted [] [])
-;(diff-sorted ["foo"] ["foo"])
-;(diff-sorted ["foo"] ["boo" "foo"])
-;(diff-sorted ["boo" "foo"] ["boo" "foo"])
-;(diff-sorted ["boo" "foo"] ["boo" "foo" "goo"])
-;(diff-sorted ["boo" "foo"] ["boo" "foo" "goo" "hoo"])
-;(diff-sorted ["boo" "foo"] ["boo" "bff" "foo" "goo" "hoo"])
-;(diff-sorted [] ["boo" "bff" "foo" "goo" "hoo"])
-;(diff-sorted ["boo" "foo"] [])
 
 (defn merge-sorted [a b]
   (if-let [n (first a)]
@@ -310,46 +364,6 @@
       a)
     b))
 
-;(merge-sorted [] [])
-;(merge-sorted ["foo"] ["foo"])
-;(merge-sorted ["foo"] ["boo" "foo"])
-;(merge-sorted ["boo" "foo"] ["boo" "foo"])
-;(merge-sorted ["boo" "foo"] ["boo" "foo" "goo"])
-;(merge-sorted ["boo" "foo"] ["boo" "foo" "goo" "hoo"])
-;(merge-sorted ["boo" "foo"] ["boo" "bff" "foo" "goo" "hoo"])
-;(merge-sorted [] ["boo" "bff" "foo" "goo" "hoo"])
-;(merge-sorted ["boo" "foo"] [])
-
-(defn merge-sorted-v [a b]
-  (let [acc (transient [])]
-    (loop [a a b b]
-      (if-let [n (first a)]
-        (if-let [m (first b)]
-          (if (= n m)
-            (do
-              (conj! acc n)
-              (recur (rest a) (rest b)))
-            (if (< (compare n m) 0)
-              (do
-                (conj! acc n)
-                (recur (rest a) b))
-              (do
-                (conj! acc m)
-                (recur a (rest b)))))
-         (into (persistent! acc) a))
-        (into (persistent! acc) b)))))
-
-;(merge-sorted-v [] [])
-;(merge-sorted-v ["foo"] ["foo"])
-;(merge-sorted-v ["foo"] ["boo" "foo"])
-;(merge-sorted-v ["boo" "foo"] ["boo" "foo"])
-;(merge-sorted-v ["boo" "foo"] ["boo" "foo" "goo"])
-;(merge-sorted-v ["boo" "foo"] ["boo" "foo" "goo" "hoo"])
-;(merge-sorted-v ["boo" "foo"] ["boo" "bff" "foo" "goo" "hoo"])
-;(merge-sorted-v [] ["boo" "bff" "foo" "goo" "hoo"])
-;(merge-sorted-v ["boo" "foo"] [])
-;(merge-sorted-v ["boo" "foo" "zoo"] ["boo" "foo" "goo" "hoo"])
-
 ; XXX put bin size somewhere
 (defn merge-dicts [dict & dicts]
   (if (seq dicts)
@@ -359,13 +373,6 @@
                               dicts)
                       256))
     dict))
-
-(defn lookup-htfc [htfc i]
-  )
-
-(defn find-htfc [htfc s])
-
-(defn merge-htfc [a b])
 
 ;
 ;
@@ -381,6 +388,10 @@
     (def strings
       (json/read-str (slurp file))))
 
+  (let [file "toil.json"]
+    (def strings
+      (json/read-str (slurp file))))
+
   (time
     (def buff2
       (serialize-htfc (compress-htfc strings 256))))
@@ -389,19 +400,7 @@
     (println msg x)
     x)
 
-  (import '[javax.json Json])
-  (time (let [rdr (Json/createReader (clojure.java.io/reader "singlecell.json"))
-         rslt (.readArray rdr)]
-          (.size rslt)))
-
-  (defn front-coding [lst]
-    (let [ordered (sort lst)
-          bins (partition-all 256 ordered)]
-      (map compress-bin bins)))
-
   (time (do (front-coding strings) nil))
-
-
 
   (defn subset-strings []
     (let [to-drop (into #{} (repeatedly 100 #(rand-int (count strings))))]
@@ -413,56 +412,7 @@
   (count strings-b)
   (count strings)
 
-  (defn dict-from-coll [coll]
-    (let [buff (serialize-htfc (compress-htfc coll 256))]
-      (htfc-offsets
-        (doto (ByteBuffer/wrap buff)
-          (.order java.nio.ByteOrder/LITTLE_ENDIAN)))))
-
-  (def strings-b-dict (dict-from-coll strings-b))
-  (def strings-a-dict (dict-from-coll strings-a))
-  ;(take 100 (dict-seq strings-b-dict))
-  (print *e)
-  (def strings-a-b-dict
-    (let [sa (sort strings-a)]
-      (time
-        (let [merged (merge-sorted sa (dict-seq strings-b-dict))]
-          (serialize-htfc (compress-htfc merged 256))))))
-
-  (def strings-a-b-dict
-    (time
-      (let [merged (merge-sorted (dict-seq strings-a-dict) (dict-seq strings-b-dict))]
-        (serialize-htfc (compress-htfc merged 256)))))
-
-  (def strings-a-b-dict
-    (time
-      (let [sa (into [] (dict-seq strings-a-dict))
-            merged (merge-sorted sa (dict-seq strings-b-dict))]
-        (serialize-htfc (compress-htfc merged 256)))))
-
-  (def strings-a-b-dict
-    (time
-      (let [sa (into [] (dict-seq strings-a-dict))
-            sb (into [] (dict-seq strings-b-dict))
-            merged (merge-sorted sa sb)]
-        (serialize-htfc (compress-htfc merged 256)))))
-
-  (def strings-a-b-dict
-    (time
-      (let [sa (into [] (dict-seq strings-a-dict))
-            sb (into [] (dict-seq strings-b-dict))
-            merged (merge-sorted-v sa sb)]
-        (serialize-htfc (compress-htfc merged 256)))))
-
-  (uncompress-bin strings-a-dict 1)
-  ;
-
   (require '[cavm.h2 :refer [sampleID-codes]])
-  (require '[cavm.h2 :refer [sampleID-codes0]])
-  (def sample-codes
-    (let [a (dict-from-coll strings-a)
-          b (dict-from-coll strings-b)]
-      (time (sampleID-codes0 (uncompress-dict a) (uncompress-dict b)))))
 
   ; 3.6-4s, at 256 bin size. size 16 through 8192: basically no change.
   ; 1.3s, osx
@@ -475,7 +425,7 @@
   ; 300ms
   (def sample-codes
     (let [a (HTFC. (serialize-htfc (compress-htfc strings-a 256)))
-            b (HTFC. (serialize-htfc (compress-htfc strings-b 256)))]
+          b (HTFC. (serialize-htfc (compress-htfc strings-b 256)))]
       (time (HTFC/join a b))))
 
   (let [a (serialize-htfc (compress-htfc strings-a 256))
@@ -486,38 +436,43 @@
         sc (map #(if % (int %) nil) (sampleID-codes a b))]
     (= hj sc))
 
+  (do
+    (require '[clojure.data.json :as json])
+    (let [file "toil.json"]
+      (def strings
+        (json/read-str (slurp file))))
+    (defn subset-strings []
+      (let [to-drop (into #{} (repeatedly 100 #(rand-int (count strings))))]
+        (filter identity (map-indexed (fn [i s] (if (to-drop i) nil s)) strings))))
+    (def strings-a (subset-strings))
+    (def strings-b (subset-strings))
+    (require '[cavm.h2 :refer [sampleID-codes]])
+    (import 'cavm.PFC))
+  (let [a (serialize-hfc (compress-hfc strings-a 258))
+          b (serialize-hfc (compress-hfc strings-b 256))
+          ha (PFC. a)
+          hb (PFC. b)
+          hj (PFC/join ha hb)
+          sc (map #(if % (int %) nil) (sampleID-codes a b))]
+      (= hj sc))
 
-  (count strings-a-b-dict)
-  (count strings-a-b)
-  (= ordered strings-a-b)
-
-  (def dict (dict-from-coll strings))
-  (def ordered (sort strings))
-
-  (def dict (htfc-offsets
-              (doto (ByteBuffer/wrap buff2)
-                (.order java.nio.ByteOrder/LITTLE_ENDIAN))))
-
-  (= (take 3 (dict-seq dict))
-     (take 3 ordered))
-  (=
-   (take 257 (dict-seq dict))
-   (take 257 ordered))
-
-  (=
-   (take-last 5 (dict-seq dict))
-   (take-last 5 ordered))
+  ; round trip hfc
+  (let [strings strings
+        in (time (serialize-hfc (compress-hfc strings 256)))
+        out (time (into [] (uncompress-dict-hfc (hfc-offsets (doto (ByteBuffer/wrap in)
+                                                       (.order java.nio.ByteOrder/LITTLE_ENDIAN))))))]
+    (= (sort strings) out))
 
   ; round trip
   (let [strings strings
         in (time (serialize-htfc (compress-htfc strings 256)))
-        out (time (into [] (uncompress-dict (htfc-offsets (doto (ByteBuffer/wrap in)
+        out (time (into [] (uncompress-dict-htfc (htfc-offsets (doto (ByteBuffer/wrap in)
                                                     (.order java.nio.ByteOrder/LITTLE_ENDIAN))))))]
     (= (sort strings) out))
 
   (time
     (do
-      (into [] (uncompress-dict (htfc-offsets in)))
+      (into [] (uncompress-dict-htfc (htfc-offsets in)))
       nil))
 
   (use 'clojure.java.io)
@@ -594,6 +549,7 @@
 
 (defn reload []
   (virgil.compile/compile-all-java ["src-java/cavm"])
+  (import 'cavm.HFC)
   (import 'cavm.HTFC)
   (import 'cavm.Huffman)
   )
