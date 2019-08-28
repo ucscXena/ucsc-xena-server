@@ -138,7 +138,6 @@ public class HTFC {
 			ByteArrayOutputStream out2 = new ByteArrayOutputStream(4000);
 
 			binHuff.decodeRange(buff8, headerP, upper, out2);
-			byte[] x = out2.toByteArray();
 			inner = new Inner(ByteBuffer.wrap(out2.toByteArray()), header);
 			binIndex += 1;
 			index += 1;
