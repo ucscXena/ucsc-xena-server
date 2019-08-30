@@ -90,7 +90,7 @@
        (is (= (sort in) out))))))
 
 (defn htfc [strings bin-size]
-  (pfc/to-htfc (pfc/compress-htfc strings bin-size)))
+  (pfc/compress-htfc strings bin-size))
 
 (defn htfc-merge [a b]
   (pfc/merge-dicts a b))
