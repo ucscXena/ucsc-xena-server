@@ -6,7 +6,7 @@
   (:import [java.nio ByteBufferAsIntBufferL ByteBuffer])
   (:import [java.io ByteArrayOutputStream])
   (:import [org.h2.jdbc JdbcBlob])
-  (:import [cavm Huffman])
+  (:import [cavm Huffman HTFC])
   (:require [cavm.huffman :as huffman]))
 
 (set! *unchecked-math* true)
