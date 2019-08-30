@@ -414,7 +414,7 @@
   (let [htfc-a (compress-htfc strings-a 256)
         htfc-b (compress-htfc strings-b 256)
         htfc-c (time (merge-dicts htfc-a htfc-b))]
-    (count (dict-seq (to-htfc htfc-c))))
+    (count (seq (HTFC. htfc-c))))
 
   (require '[cavm.h2 :refer [sampleID-codes]])
 
