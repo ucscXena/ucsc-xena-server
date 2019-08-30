@@ -367,12 +367,11 @@
 (defn merge-dicts [dict & dicts]
   (if (seq dicts)
     (compress-htfc-sorted
-      (reduce #(merge-sorted %1 (dict-seq (to-htfc %2)))
-              (dict-seq (to-htfc dict))
+      (reduce #(merge-sorted %1 (HTFC. %2))
+              (HTFC. dict)
               dicts)
       256)
     dict))
-
 ;
 ;
 ;
@@ -410,6 +409,12 @@
   (count strings-a)
   (count strings-b)
   (count strings)
+
+  ; 2.1s merge
+  (let [htfc-a (compress-htfc strings-a 256)
+        htfc-b (compress-htfc strings-b 256)
+        htfc-c (time (merge-dicts htfc-a htfc-b))]
+    (count (dict-seq (to-htfc htfc-c))))
 
   (require '[cavm.h2 :refer [sampleID-codes]])
 

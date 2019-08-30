@@ -8,8 +8,10 @@ import java.lang.Math;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.lang.Iterable;
+import java.util.Iterator;
 
-public class HTFC {
+public class HTFC implements Iterable<String> {
 
 	public static class Buffer {
 		public int length;
@@ -77,10 +79,6 @@ public class HTFC {
 	Huffman binHuff;
 	Huffman headerHuff;
 
-	Inner inner;
-	int index;
-	int binIndex;
-
 	// using (x + n - 1) / n as integer ceil
 	public int htDictLen(int offset32) {
 		int len = buff32.get(offset32);
@@ -114,39 +112,68 @@ public class HTFC {
 		headerHuff = new Huffman();
 		headerHuff.htTree(buff32, buff8, 8);
 		binOffsets = binCountOffset + 1;
-
-		binIndex = 0;
-		index = 0;
 	}
 
-	public void next(Buffer b) {
-		if (index >= length) {
-			b.length = -1;
-			return;
-		}
-		if (index % binSize == 0) {
-			ByteArrayOutputStream out = new ByteArrayOutputStream(100);
-			int bin = 4 * firstBin + buff32.get(binOffsets + binIndex);
-			int headerP = headerHuff.decodeTo(buff8, bin, out);
-			byte[] header = out.toByteArray();
-			int rem = length % binSize;
-			int count = (rem == 0) ? binSize :
-				(binIndex == binCount - 1) ? rem :
-				binSize;
-			int upper = (binIndex == binCount - 1) ? buff8.capacity() // XXX capacity?
-				: 4 * firstBin + buff32.get(binOffsets + 1 + binIndex);
-			ByteArrayOutputStream out2 = new ByteArrayOutputStream(4000);
+	public class BIterator {
+	    int index = 0;
+	    int binIndex = 0;
+	    Inner inner;
 
-			binHuff.decodeRange(buff8, headerP, upper, out2);
-			inner = new Inner(ByteBuffer.wrap(out2.toByteArray()), header);
-			binIndex += 1;
-			index += 1;
-			b.b = header;
-			b.length = header.length - 1;
-		} else {
-			index += 1;
-			inner.next(b);
-		}
+	    public void next(Buffer b) {
+		    if (index >= length) {
+			    b.length = -1;
+			    return;
+		    }
+		    if (index % binSize == 0) {
+			    ByteArrayOutputStream out = new ByteArrayOutputStream(100);
+			    int bin = 4 * firstBin + buff32.get(binOffsets + binIndex);
+			    int headerP = headerHuff.decodeTo(buff8, bin, out);
+			    byte[] header = out.toByteArray();
+			    int rem = length % binSize;
+			    int count = (rem == 0) ? binSize :
+				    (binIndex == binCount - 1) ? rem :
+				    binSize;
+			    int upper = (binIndex == binCount - 1) ? buff8.capacity() // XXX capacity?
+				    : 4 * firstBin + buff32.get(binOffsets + 1 + binIndex);
+			    ByteArrayOutputStream out2 = new ByteArrayOutputStream(4000);
+
+			    binHuff.decodeRange(buff8, headerP, upper, out2);
+			    inner = new Inner(ByteBuffer.wrap(out2.toByteArray()), header);
+			    binIndex += 1;
+			    index += 1;
+			    b.b = header;
+			    b.length = header.length - 1;
+		    } else {
+			    index += 1;
+			    inner.next(b);
+		    }
+	    }
+
+	    public boolean hasNext() {
+		return index < length;
+	    }
+	}
+
+	public class HTFCIterator implements Iterator<String> {
+	    BIterator bIterator = new BIterator();
+	    Buffer b = new Buffer();
+	    public String next() {
+		bIterator.next(b);
+		byte[] bytes = new byte[b.length];
+		System.arraycopy(b.b, 0, bytes, 0, b.length);
+		return new String(bytes);
+	    }
+	    public boolean hasNext() {
+		return bIterator.hasNext();
+	    }
+	}
+
+	public Iterator<String> iterator() {
+	    return new HTFCIterator();
+	}
+
+	public BIterator biterator() {
+	    return new BIterator();
 	}
 
 	public static int cmp(byte[] a, int lena, byte[] b, int lenb) {
@@ -168,29 +195,31 @@ public class HTFC {
 		Buffer ba = new Buffer();
 		Buffer bb = new Buffer();
 		int i = 0;
+		BIterator ia = ha.biterator();
+		BIterator ib = hb.biterator();
 
-		ha.next(ba);
-		hb.next(bb);
+		ia.next(ba);
+		ib.next(bb);
 		while (true) {
 			if (ba.length < 0) {
 				break;
 			}
 			if (bb.length < 0) {
 				out.add(null);
-				ha.next(ba);
+				ia.next(ba);
 				continue;
 			}
 			int d = cmp(ba.b, ba.length, bb.b, bb.length);
 			if (d == 0) {
 				out.add(i);
-				ha.next(ba);
-				hb.next(bb);
+				ia.next(ba);
+				ib.next(bb);
 				i += 1;
 			} else if (d < 0) {
 				out.add(null);
-				ha.next(ba);
+				ia.next(ba);
 			} else {
-				hb.next(bb);
+				ib.next(bb);
 				i += 1;
 			}
 		}
