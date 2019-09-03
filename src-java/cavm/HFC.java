@@ -8,17 +8,14 @@ import java.lang.Math;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.lang.Iterable;
+import java.util.Iterator;
 
-public class HFC {
+public class HFC implements Iterable<String> {
 
 	public static class Buffer {
 		public int length;
 		public byte[] b;
-		public Buffer() {}
-	}
-
-	public static Buffer getBuffer() {
-		return new Buffer();
 	}
 
 	public static class Inner {
@@ -122,34 +119,66 @@ public class HFC {
 	    return out;
 	}
 
-	public void next(Buffer b) {
-		if (index >= length) {
-			b.length = -1;
-			return;
-		}
-		if (index % binSize == 0) {
-			int bin = 4 * firstBin + buff32.get(binOffsets + binIndex);
-			int rem = length % binSize;
-			int count = (rem == 0) ? binSize :
-				(binIndex == binCount - 1) ? rem :
-				binSize;
-			int upper = (binIndex == binCount - 1) ? buff8.capacity() // XXX capacity?
-				: 4 * firstBin + buff32.get(binOffsets + 1 + binIndex);
-			ByteArrayOutputStream out = new ByteArrayOutputStream(4000);
+	public class BIterator {
+		int index = 0;
+		int binIndex = 0;
+		Inner inner;
 
-			binHuff.decodeRange(buff8, bin, upper, out);
-			byte[] ba = out.toByteArray();
+		public void next(Buffer b) {
+			if (index >= length) {
+				b.length = -1;
+				return;
+			}
+			if (index % binSize == 0) {
+				int bin = 4 * firstBin + buff32.get(binOffsets + binIndex);
+				int rem = length % binSize;
+				int count = (rem == 0) ? binSize :
+					(binIndex == binCount - 1) ? rem :
+					binSize;
+				int upper = (binIndex == binCount - 1) ? buff8.capacity() // XXX capacity?
+					: 4 * firstBin + buff32.get(binOffsets + 1 + binIndex);
+				ByteArrayOutputStream out = new ByteArrayOutputStream(4000);
 
-			byte[] header = copyToNull(ba);
-			inner = new Inner(ByteBuffer.wrap(ba, header.length + 1, ba.length - header.length - 1), header);
-			binIndex += 1;
-			index += 1;
-			b.b = header;
-			b.length = header.length;
-		} else {
-			index += 1;
-			inner.next(b);
+				binHuff.decodeRange(buff8, bin, upper, out);
+				byte[] ba = out.toByteArray();
+
+				byte[] header = copyToNull(ba);
+				inner = new Inner(ByteBuffer.wrap(ba, header.length + 1, ba.length - header.length - 1), header);
+				binIndex += 1;
+				index += 1;
+				b.b = header;
+				b.length = header.length;
+			} else {
+				index += 1;
+				inner.next(b);
+			}
 		}
+
+		public boolean hasNext() {
+			return index < length;
+		}
+	}
+
+	public class HFCIterator implements Iterator<String> {
+		BIterator bIterator = new BIterator();
+		Buffer b = new Buffer();
+		public String next() {
+			bIterator.next(b);
+			byte[] bytes = new byte[b.length];
+			System.arraycopy(b.b, 0, bytes, 0, b.length);
+			return new String(bytes);
+		}
+		public boolean hasNext() {
+			return bIterator.hasNext();
+		}
+	}
+
+	public Iterator<String> iterator() {
+	    return new HFCIterator();
+	}
+
+	public BIterator biterator() {
+	    return new BIterator();
 	}
 
 	public static int cmp(byte[] a, int lena, byte[] b, int lenb) {
@@ -171,29 +200,31 @@ public class HFC {
 		Buffer ba = new Buffer();
 		Buffer bb = new Buffer();
 		int i = 0;
+		BIterator ia = ha.biterator();
+		BIterator ib = hb.biterator();
 
-		ha.next(ba);
-		hb.next(bb);
+		ia.next(ba);
+		ib.next(bb);
 		while (true) {
 			if (ba.length < 0) {
 				break;
 			}
 			if (bb.length < 0) {
 				out.add(null);
-				ha.next(ba);
+				ia.next(ba);
 				continue;
 			}
 			int d = cmp(ba.b, ba.length, bb.b, bb.length);
 			if (d == 0) {
 				out.add(i);
-				ha.next(ba);
-				hb.next(bb);
+				ia.next(ba);
+				ib.next(bb);
 				i += 1;
 			} else if (d < 0) {
 				out.add(null);
-				ha.next(ba);
+				ia.next(ba);
 			} else {
-				hb.next(bb);
+				ib.next(bb);
 				i += 1;
 			}
 		}
