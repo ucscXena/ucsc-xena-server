@@ -110,65 +110,65 @@ public class HTFC implements Iterable<String> {
 	}
 
 	public class BIterator {
-	    int index = 0;
-	    int binIndex = 0;
-	    Inner inner;
+		int index = 0;
+		int binIndex = 0;
+		Inner inner;
 
-	    public void next(Buffer b) {
-		    if (index >= length) {
-			    b.length = -1;
-			    return;
-		    }
-		    if (index % binSize == 0) {
-			    ByteArrayOutputStream out = new ByteArrayOutputStream(100);
-			    int bin = 4 * firstBin + buff32.get(binOffsets + binIndex);
-			    int headerP = headerHuff.decodeTo(buff8, bin, out);
-			    byte[] header = out.toByteArray();
-			    int rem = length % binSize;
-			    int count = (rem == 0) ? binSize :
-				    (binIndex == binCount - 1) ? rem :
-				    binSize;
-			    int upper = (binIndex == binCount - 1) ? buff8.capacity() // XXX capacity?
-				    : 4 * firstBin + buff32.get(binOffsets + 1 + binIndex);
-			    ByteArrayOutputStream out2 = new ByteArrayOutputStream(4000);
+		public void next(Buffer b) {
+			if (index >= length) {
+				b.length = -1;
+				return;
+			}
+			if (index % binSize == 0) {
+				ByteArrayOutputStream out = new ByteArrayOutputStream(100);
+				int bin = 4 * firstBin + buff32.get(binOffsets + binIndex);
+				int headerP = headerHuff.decodeTo(buff8, bin, out);
+				byte[] header = out.toByteArray();
+				int rem = length % binSize;
+				int count = (rem == 0) ? binSize :
+					(binIndex == binCount - 1) ? rem :
+					binSize;
+				int upper = (binIndex == binCount - 1) ? buff8.capacity() // XXX capacity?
+					: 4 * firstBin + buff32.get(binOffsets + 1 + binIndex);
+				ByteArrayOutputStream out2 = new ByteArrayOutputStream(4000);
 
-			    binHuff.decodeRange(buff8, headerP, upper, out2);
-			    inner = new Inner(ByteBuffer.wrap(out2.toByteArray()), header);
-			    binIndex += 1;
-			    index += 1;
-			    b.b = header;
-			    b.length = header.length - 1;
-		    } else {
-			    index += 1;
-			    inner.next(b);
-		    }
-	    }
+				binHuff.decodeRange(buff8, headerP, upper, out2);
+				inner = new Inner(ByteBuffer.wrap(out2.toByteArray()), header);
+				binIndex += 1;
+				index += 1;
+				b.b = header;
+				b.length = header.length - 1;
+			} else {
+				index += 1;
+				inner.next(b);
+			}
+		}
 
-	    public boolean hasNext() {
-		return index < length;
-	    }
+		public boolean hasNext() {
+			return index < length;
+		}
 	}
 
 	public class HTFCIterator implements Iterator<String> {
-	    BIterator bIterator = new BIterator();
-	    Buffer b = new Buffer();
-	    public String next() {
-		bIterator.next(b);
-		byte[] bytes = new byte[b.length];
-		System.arraycopy(b.b, 0, bytes, 0, b.length);
-		return new String(bytes);
-	    }
-	    public boolean hasNext() {
-		return bIterator.hasNext();
-	    }
+		BIterator bIterator = new BIterator();
+		Buffer b = new Buffer();
+		public String next() {
+			bIterator.next(b);
+			byte[] bytes = new byte[b.length];
+			System.arraycopy(b.b, 0, bytes, 0, b.length);
+			return new String(bytes);
+		}
+		public boolean hasNext() {
+			return bIterator.hasNext();
+		}
 	}
 
 	public Iterator<String> iterator() {
-	    return new HTFCIterator();
+		return new HTFCIterator();
 	}
 
 	public BIterator biterator() {
-	    return new BIterator();
+		return new BIterator();
 	}
 
 	public static int cmp(byte[] a, int lena, byte[] b, int lenb) {

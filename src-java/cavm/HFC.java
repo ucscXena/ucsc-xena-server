@@ -110,13 +110,13 @@ public class HFC implements Iterable<String> {
 	}
 
 	public static byte[] copyToNull(byte[] in) {
-	    int len = 0;
-	    while (in[len] != 0) {
-		++len;
-	    }
-	    byte[] out = new byte[len];
-	    System.arraycopy(in, 0, out, 0, len);
-	    return out;
+		int len = 0;
+		while (in[len] != 0) {
+			++len;
+		}
+		byte[] out = new byte[len];
+		System.arraycopy(in, 0, out, 0, len);
+		return out;
 	}
 
 	public class BIterator {
@@ -174,11 +174,11 @@ public class HFC implements Iterable<String> {
 	}
 
 	public Iterator<String> iterator() {
-	    return new HFCIterator();
+		return new HFCIterator();
 	}
 
 	public BIterator biterator() {
-	    return new BIterator();
+		return new BIterator();
 	}
 
 	public static int cmp(byte[] a, int lena, byte[] b, int lenb) {
