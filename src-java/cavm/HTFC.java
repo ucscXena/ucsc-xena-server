@@ -16,11 +16,6 @@ public class HTFC implements Iterable<String> {
 	public static class Buffer {
 		public int length;
 		public byte[] b;
-		public Buffer() {}
-	}
-
-	public static Buffer getBuffer() {
-		return new Buffer();
 	}
 
 	public static class Inner {
