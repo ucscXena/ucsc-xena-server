@@ -953,7 +953,7 @@
 (defn samples-to-seq [s]
   (if (instance? clojure.lang.Seqable s)
     (seq s)
-    (pfc/dict-seq (pfc/to-htfc s))))
+    (pfc/to-htfc s)))
 
 ; Return the codes for requested sampleIDs, in the order
 ; of the request, with nil for any unknown sampleIDs. And
@@ -961,7 +961,7 @@
 ; Deprecated in favor of camv.HTFC/join
 (defn sampleID-codes [h0 h1]
   (let [a (samples-to-seq h0)
-        b (pfc/dict-seq (pfc/to-htfc h1)) ; db
+        b (samples-to-seq h1)
         acc (transient [])]
     (loop [a a b b i 0]
       (if-let [n (first a)]

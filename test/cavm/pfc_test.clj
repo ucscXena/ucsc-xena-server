@@ -64,9 +64,7 @@
                   (is (= (set in) (set res)))))))))
 
 (defn dict-to-vec [dict]
-  (into []
-        (pfc/uncompress-dict-htfc (pfc/htfc-offsets (doto (ByteBuffer/wrap dict)
-                                         (.order java.nio.ByteOrder/LITTLE_ENDIAN))))))
+  (into [] (HTFC. dict)))
 
 (deftest basic-test-clj
   (testing "fixed set"
@@ -104,7 +102,7 @@
         expected (sort (set (concat coll-a coll-b)))
         hcoll-a (ctor coll-a bin-size)
         hdb (ctor coll-b bin-size)
-        result (pfc/dict-seq (pfc/to-htfc (merger hcoll-a hdb)))]
+        result (seq (pfc/to-htfc (merger hcoll-a hdb)))]
     (= expected result)))
 
 (defn combine [[both only-coll-a only-coll-b]]

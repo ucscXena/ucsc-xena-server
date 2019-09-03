@@ -38,7 +38,7 @@
   (meannan [m dim] (meannan-impl (matrix (map double-array m)) dim)))
 
 (defn seq-htfc [blob]
-  (pfc/dict-seq (pfc/to-htfc blob)))
+  (seq (pfc/to-htfc blob)))
 
 (def floatarray (Class/forName "[F"))
 

@@ -42,8 +42,7 @@
 ; sql on the way in to determine which return values will be
 ; htfc.
 (defn- write-pfc [x ^PrintWriter out]
-  (let [len (.length x)]
-    (json/-write (pfc/dict-seq (pfc/to-htfc x)) out)))
+  (json/-write (seq (pfc/to-htfc x)) out))
 
 (extend org.h2.jdbc.JdbcBlob json/JSONWriter {:-write write-pfc})
 

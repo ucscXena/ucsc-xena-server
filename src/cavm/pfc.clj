@@ -282,6 +282,8 @@
 (defn uncompress-dict-hfc [dict]
   (apply concat (for [i (range 0 (:bin-count dict))] (uncompress-bin-hfc dict i))))
 
+; constructor for use with clojure decompress methods.
+; deprecated in favor of cavm.HTFC class.
 (defn htfc-offsets [^ByteBuffer buff8]
   (let [buff8 (doto buff8 (.order java.nio.ByteOrder/LITTLE_ENDIAN))
         buff32 (.asIntBuffer buff8)
@@ -340,10 +342,12 @@
 
 (defn to-htfc [d]
   (cond
-    (.isArray (class d)) (htfc-offsets (ByteBuffer/wrap d))
-    (instance? JdbcBlob d) (htfc-offsets (ByteBuffer/wrap (unwrap-blob d)))
+    (.isArray (class d)) (HTFC. d)
+    (instance? JdbcBlob d) (HTFC. (unwrap-blob d))
     :else d))
 
+; use clojure decompress methods to return a seq
+; deprecated
 (defn dict-seq [dict]
   (mapcat #(uncompress-bin-htfc dict %)
           (range (:bin-count dict))))
@@ -450,14 +454,17 @@
         (filter identity (map-indexed (fn [i s] (if (to-drop i) nil s)) strings))))
     (def strings-a (subset-strings))
     (def strings-b (subset-strings))
-    (require '[cavm.h2 :refer [sampleID-codes]])
-    (import 'cavm.PFC))
+    (require '[cavm.h2 :refer [sampleID-codes0]])
+    (import 'cavm.HFC))
+
+  (def a (HFC. (compress-hfc strings-a 258)))
+  (take 10 a)
   (let [a (compress-hfc strings-a 258)
           b (compress-hfc strings-b 256)
-          ha (PFC. a)
-          hb (PFC. b)
-          hj (PFC/join ha hb)
-          sc (map #(if % (int %) nil) (sampleID-codes a b))]
+          ha (HFC. a)
+          hb (HFC. b)
+          hj (HFC/join ha hb)
+          sc (map #(if % (int %) nil) (sampleID-codes0 a b))]
       (= hj sc))
 
   ; round trip hfc

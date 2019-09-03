@@ -13,5 +13,5 @@
 ; htfc.
 
 (defmethod clojure.core/print-method JdbcBlob [this writer]
-  (clojure.core/print-method (pfc/dict-seq (pfc/to-htfc this)) writer))
+  (clojure.core/print-method (seq (pfc/to-htfc this)) writer))
 
