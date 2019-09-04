@@ -185,8 +185,6 @@
 
 (defn check-matrix [db id tsv]
   (let [{:keys [probes samples matrix]} tsv
-        trimmed-samples (map clojure.string/trim samples)
-        trimmed-probes (map clojure.string/trim probes)
         exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
         q-samples (cdb/run-query db
                                  {:select [:samples]
@@ -195,13 +193,13 @@
                                   :join [:dataset [:= :dataset.id :dataset_id]]})
         q-probes (cdb/run-query db {:select [:*] :from [:field]})
         q-data (cdb/fetch db [{:table id
-                               :columns trimmed-probes
-                               :samples (pfc/compress-htfc trimmed-samples 256)}])]
+                               :columns probes
+                               :samples (pfc/compress-htfc samples 256)}])]
     (and (is= exp [{:name id :status "loaded" :rows (count samples)}])
-         (is= (set (pfc/to-htfc (:samples (first q-samples)))) (set trimmed-samples))
-         (is= (map :name q-probes) (cons "sampleID" trimmed-probes))
+         (is= (set (pfc/to-htfc (:samples (first q-samples)))) (set samples))
+         (is= (map :name q-probes) (cons "sampleID" probes))
          (matrix-nearly=
-           (to-sample-order matrix (vec trimmed-samples))
+           (to-sample-order matrix (vec samples))
            (map #(into [] %) (first q-data))))))
 
 (defn tsv-to-text [tsv]
@@ -217,6 +215,15 @@
   ((:data-fn (cgdata.core/matrix-file "foo"))
    {:reader (fn [] (java.io.BufferedReader. (java.io.StringReader. data)))}))
 
+(defn trim-tsv
+  "Rewrite tsv with probes and samples trimmed of leading and trailing
+  whitespace. Useful for comparing with tsv read from files, which we
+  similarly trim."
+  [{:keys [probes samples] :as tsv}]
+  (assoc tsv
+         :probes (map s/trim probes)
+         :samples (map s/trim samples)))
+
 (defn genomic-matrix-memory-run
   "Run a generated genomic-matrix-loader test case. Useful for repeated failed
   cases. Run with *verbose* to print detailed test failures"
@@ -231,7 +238,7 @@
           :time (org.joda.time.DateTime. 2014 1 1 0 0 0 0)
           :hash "1234"}]
         {} (fn [] fields) nil false)
-      (check-matrix db id tsv))))
+      (check-matrix db id (trim-tsv tsv)))))
 
 (defspec genomic-matrix-memory
    *test-runs*
@@ -374,15 +381,6 @@
     (spit (io/file file)
           (s/join "\n"
                   (map #(s/join "\t" (map str-nan %)) (trans (cons header rows)))))))
-
-(defn trim-tsv
-  "Rewrite tsv with probes and samples trimmed of leading and trailing
-  whitespace. Useful for comparing with tsv read from files, which we
-  similarly trim."
-  [{:keys [probes samples] :as tsv}]
-  (assoc tsv
-         :probes (map s/trim probes)
-         :samples (map s/trim samples)))
 
 ; XXX duplicating loader code. This is, perhaps, more "obviously correct",
 ; but it would be nice not to duplicate the loader code. Perhaps generate
