@@ -3,6 +3,7 @@
   (:require [clojure.string :as s])
   (:require [cavm.h2 :as h2])
   (:require [cavm.db :as cdb])
+  (:require [cavm.pfc :as pfc])
   (:require [cavm.readers :as cr])
   (:require [cgdata.core :as cgdata])
   (:require [cavm.loader :refer [loader]])
@@ -12,9 +13,9 @@
   (:require [clojure.test.check :as tc])
   (:require [clojure.test.check.generators :as gen])
   (:require [clojure.test.check.clojure-test :as tcct :refer [defspec]])
-  (:require [clojure.test.check.properties :as prop]))
+  (:require [clojure.test.check.properties :as prop])
+  (:import [cavm HTFC]))
 
-; XXX fix nearly-equal-matrix to also log failures
 (def ^:dynamic *verbose* false)
 
 (defmacro is= [a b]
@@ -46,6 +47,20 @@
 (defn- nearly-equal-matrix [a b]
   (and (= (count a) (count b))
        (every? (fn [[a1 b1]] (nearly-equal a1 b1)) (map vector a b))))
+
+
+(defmacro matrix-nearly= [a b]
+  `(let [a# ~a
+         b# ~b
+         r#  (nearly-equal-matrix a# b#)]
+     (when (and (not r#) *verbose*)
+       (println "expected (matrix-nearly=" ~(str a) ~(str b) ")")
+       (print "actual (not (matrix-nearly=")
+       (clojure.pprint/write a#)
+       (print " ")
+       (clojure.pprint/write b#)
+       (println "))"))
+     r#))
 
 (def gen-mostly-ints
   (gen/frequency [[9 gen/int] [1 (gen/return Double/NaN)]]))
@@ -112,18 +127,22 @@
     #(= (count %) (count (set (map s/trim %))))
     gen-names))
 
+; XXX Note that we're requiring at least two distinct sample IDs, due to not handling
+; singletons in htfc.
 (def gen-tsv
   (gen/bind
-    (gen/tuple gen-names gen-distinct-names)
+    (gen/tuple (gen/such-that #(> (count (distinct %)) 1) gen-names) gen-distinct-names)
     (fn [[samples probes]]
       (gen/hash-map
         :probes (gen/return probes)
         :samples (gen/return samples)
         :matrix (gen-matrix (count samples) (count probes))))))
 
+; XXX Note that we're requiring at least two distinct sample IDs, due to not handling
+; singletons in htfc.
 (def gen-tsv-distinct
   (gen/bind
-    (gen/tuple gen-distinct-names gen-distinct-names)
+    (gen/tuple (gen/such-that #(> (count %) 1) gen-distinct-names) gen-distinct-names)
     (fn [[samples probes]]
       (gen/hash-map
         :probes (gen/return probes)
@@ -159,25 +178,44 @@
 
 (def ^:dynamic *test-runs* 40)
 
+(defn to-sample-order [m samples]
+  (let [i (range (count samples))
+        order (sort-by (fn [j] (samples j)) i)]
+    (map #(map % order) m)))
+
 (defn check-matrix [db id tsv]
   (let [{:keys [probes samples matrix]} tsv
+        trimmed-samples (map clojure.string/trim samples)
+        trimmed-probes (map clojure.string/trim probes)
         exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
         q-samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+                                 {:select [:samples]
+                                  :from [:sample]
+                                  :where [:= :dataset.name id]
+                                  :join [:dataset [:= :dataset.id :dataset_id]]})
         q-probes (cdb/run-query db {:select [:*] :from [:field]})
         q-data (cdb/fetch db [{:table id
-                               :columns probes
-                               :samples samples}])]
+                               :columns trimmed-probes
+                               :samples (pfc/compress-htfc trimmed-samples 256)}])]
     (and (is= exp [{:name id :status "loaded" :rows (count samples)}])
-         (is= (map :name q-samples) samples)
-         (is= (map :name q-probes) (cons "sampleID" probes))
-         (nearly-equal-matrix
-            matrix
-            (vec (map #(into [] %) (map ((first q-data) :data) probes)))))))
+         (is= (set (pfc/to-htfc (:samples (first q-samples)))) (set trimmed-samples))
+         (is= (map :name q-probes) (cons "sampleID" trimmed-probes))
+         (matrix-nearly=
+           (to-sample-order matrix (vec trimmed-samples))
+           (map #(into [] %) (first q-data))))))
+
+(defn tsv-to-text [tsv]
+  (let [{:keys [samples probes matrix]} tsv]
+    (clojure.string/join "\n"
+                         (map #(clojure.string/join "\t" %)
+                              (cons
+                                (cons "sampleID" samples)
+                                (map #(cons %1 %2) probes matrix))))))
+
+; call into cgdata to get field specs
+(defn fields-from-data [data]
+  ((:data-fn (cgdata.core/matrix-file "foo"))
+   {:reader (fn [] (java.io.BufferedReader. (java.io.StringReader. data)))}))
 
 (defn genomic-matrix-memory-run
   "Run a generated genomic-matrix-loader test case. Useful for repeated failed
@@ -185,7 +223,8 @@
   [tsv id]
   (db-disk-fixture
     db
-    (let [fields (fields-from-tsv tsv)]
+    (let [text (tsv-to-text tsv)
+          fields (fields-from-data text)]
       (cdb/write-matrix
         db id
         [{:name id
@@ -194,12 +233,12 @@
         {} (fn [] fields) nil false)
       (check-matrix db id tsv))))
 
-(comment (defspec genomic-matrix-memory
+(defspec genomic-matrix-memory
    *test-runs*
    (prop/for-all
      [tsv gen-tsv-distinct
       id (gen/such-that not-empty gen/string-ascii)]
-     (genomic-matrix-memory-run tsv id))))
+     (genomic-matrix-memory-run tsv id)))
 
 (defn matrix1 [db]
   (ct/testing "tsv matrix from memory"
@@ -374,13 +413,13 @@
                  (:out (apply clojure.java.shell/sh (clojure.string/split "git rev-parse --abbrev-ref HEAD" #" "))))]
     (ct/is (not= branch "master") "FIXME: enable tests commented out during development")))
 
-(comment (defspec genomic-matrix-loader
+(defspec genomic-matrix-loader
    *test-runs*
    (prop/for-all
      [tsv gen-tsv
       id (gen/such-that not-empty gen/string-alpha-numeric)
       clinical gen/boolean]
-     (genomic-matrix-loader-run tsv id clinical))))
+     (genomic-matrix-loader-run tsv id clinical)))
 
 (defn matrix2 [db]
   (ct/testing "tsv matrix from file"
