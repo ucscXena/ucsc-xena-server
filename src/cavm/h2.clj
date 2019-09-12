@@ -515,7 +515,7 @@
 ; XXX put 256 bin size somewhere
 
 (defmethod load-field :sample-id [dataset-id field-id field feature-seq]
-  (let [samples (:order (:feature field))
+  (let [samples (:order (force (:feature field)))
         blob (pfc/compress-htfc-sorted samples 256)]
     (conj (load-probe-field dataset-id field-id field)
           [:insert-sample-id {:dataset_id dataset-id :samples blob}])))
@@ -933,6 +933,12 @@
     (jdbcd/with-query-results rows (vec (concat [q c dataset-id] i))
       (vec rows))))
 
+; 'values' is a list of values in a column whose rows we wish to select.
+; may be null, if we need a placeholder to match the request.
+; We pass in 'order' from the sample join, which works because the coded values
+; of the sample IDs matches their order in the collection.
+;
+; Returns mapping of row -> output-row, for each bin in the column.
 (defn bin-mappings [dataset-id column-name values]
   (let [all (int-array ((all-rows dataset-id [column-name]) column-name))]
     (H2/binMappings bin-size (int-array values) all)))
@@ -988,15 +994,15 @@
   (let [{:keys [samples table columns]} req
         dataset-id (dataset-id-by-name table)
         ds-samples (dataset-samples dataset-id)
+        ; 'order' is index in ds-samples for each value in 'sample'.
+        ; Note that this index will be the same as the code value
+        ; for the sampleID column, since we assign them in sorted order.
         order (HTFC/join (HTFC. samples) (HTFC. ds-samples))
         bin-map (bin-mappings dataset-id "sampleID" order)]
 
     (-> (select-scores-full dataset-id columns (keys bin-map))
         (#(mapv cvt-scores %))
         ; build-score-arrays consumes output bins (i, scores, field)
-        ; with (bfns i). We don't really need to create functions, here.
-        ; A map would do.
-        ; Then we want to change the fn to consume a list of pairs
         (build-score-arrays bin-map (col-arrays columns (count order)))
         (map columns))))
 
@@ -1293,11 +1299,12 @@
         cache (atom {})
         fetch (fn [rows field]
                 (if (not-empty rows)
+                  ; need to inject the code cache method, using the dataset sample list.
                   (fetch-rows cache rows (fields field))
                   {}))]
-  (evaluate (set-of-all-cache N) {:fetch fetch
-                                          :fetch-indexed (partial fetch-indexed fields)
-                                          :indexed? (partial has-index? fields)} exp)))
+    (evaluate (set-of-all-cache N) {:fetch fetch
+                                    :fetch-indexed (partial fetch-indexed fields)
+                                    :indexed? (partial has-index? fields)} exp)))
 
 ;(jdbcd/with-connection @(:db cavm.core/testdb)
 ;   (eval-sql {:select ["sampleID"] :from ["BRCA1"] :where [:in "sampleID"
