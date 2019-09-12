@@ -183,20 +183,31 @@
         order (sort-by (fn [j] (samples j)) i)]
     (map #(map % order) m)))
 
+(defn samples-for-dataset [dataset]
+  {:select [:samples]
+   :from [:sample]
+   :where [:= :dataset.name dataset]
+   :join [:dataset [:= :dataset.id :dataset_id]]})
+
+; XXX wrap the db return values in h2.clj, so we don't
+; have to do these conversions.
+(defn fetch-samples-for-dataset [db dataset]
+  (seq (pfc/to-htfc (:samples (first (cdb/run-query db (samples-for-dataset dataset)))))))
+
+; XXX Should consider making the API polymorphic, to deal with this.
+(defn encode-samples [samples]
+  (pfc/compress-htfc samples 256))
+
 (defn check-matrix [db id tsv]
   (let [{:keys [probes samples matrix]} tsv
         exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
-        q-samples (cdb/run-query db
-                                 {:select [:samples]
-                                  :from [:sample]
-                                  :where [:= :dataset.name id]
-                                  :join [:dataset [:= :dataset.id :dataset_id]]})
+        q-samples (fetch-samples-for-dataset db id)
         q-probes (cdb/run-query db {:select [:*] :from [:field]})
         q-data (cdb/fetch db [{:table id
                                :columns probes
-                               :samples (pfc/compress-htfc samples 256)}])]
+                               :samples (encode-samples samples)}])]
     (and (is= exp [{:name id :status "loaded" :rows (count samples)}])
-         (is= (set (pfc/to-htfc (:samples (first q-samples)))) (set samples))
+         (is= q-samples (sort samples))
          (is= (map :name q-probes) (cons "sampleID" probes))
          (matrix-nearly=
            (to-sample-order matrix (vec samples))
@@ -257,8 +268,7 @@
       (fn [] [{:rows [0 1]
                :field "sampleID"
                :valueType "category"
-               :feature {:state ["sample1" "sample2"]
-                         :order {"sample1" 0 "sample2" 1}}}
+               :feature {:order ["sample1" "sample2"]}}
               {:field "position"
                :valueType "position"
                :rows [{:chrom "chr1"
@@ -280,25 +290,19 @@
       false)
 
     (let [exp (cdb/run-query db {:select [:name :status :rows] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "id1")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           positions (cdb/run-query db {:select [:*] :from [:field_position]})
           genes (cdb/run-query db {:select [:*] :from [:field_gene]})
           data (cdb/fetch db [{:table "id1"
                                :columns ["probe1" "probe2"]
-                               :samples ["sample2" "sample1"]}])
-          data2 (cdb/fetch db [{:table "id1"
+                               :samples (encode-samples ["sample2" "sample1"])}])
+          data2  (cdb/fetch db [{:table "id1"
                                 :columns ["probe1" "probe2"]
-                                :samples ["sample1" "sample3"]}])]
+                                :samples (encode-samples ["sample1" "sample3"])}])
+          ]
       (ct/is (= exp [{:name "id1" :status "loaded" :rows 2}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}]))
+      (ct/is (= samples ["sample1" "sample2"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "position" :id 2 :dataset_id 1}
@@ -326,11 +330,11 @@
                  {:field_id 3 :row 1 :gene "ACK"}
                  {:field_id 3 :row 1 :gene "BLAH"}]))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal probe1 [1.2 1.1]))
-        (ct/is (nearly-equal probe2 [2.2 2.1])))
+            (map #(into [] %) (first data))]
+        (ct/is (nearly-equal probe1 [1.1 1.2]))
+        (ct/is (nearly-equal probe2 [2.1 2.2])))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data2) :data) ["probe1" "probe2"])))]
+            (map #(into [] %) (first data2))]
         (ct/is (nearly-equal probe1 [1.1 Double/NaN]))
         (ct/is (nearly-equal probe2 [2.1 Double/NaN]))))))
 
@@ -423,22 +427,13 @@
   (ct/testing "tsv matrix from file"
     (loader db detector docroot "test/cavm/test_inputs/matrix") ; odd that loader & detector both require docroot
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "matrix")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{:table "matrix"
                                :columns ["probe1" "probe2"]
-                               :samples ["sample2" "sample1"]}])]
+                               :samples (encode-samples ["sample2" "sample1"])}])]
       (ct/is (= exp [{:name "matrix"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -447,31 +442,22 @@
                  {:name "probe4" :id 5 :dataset_id 1}
                  {:name "probe5" :id 6 :dataset_id 1} ]))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal probe1 [2.1 1.1]))
-        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
+            (map #(into [] %) (first data))]
+        (ct/is (nearly-equal probe1 [1.1 2.1]))
+        (ct/is (nearly-equal probe2 [1.2 2.2]))))))
 
 (defn matrix2-reload [db]
   (ct/testing "reload tsv matrix from file"
     (loader db detector docroot "test/cavm/test_inputs/matrix")
     (loader db detector docroot "test/cavm/test_inputs/matrix" true)
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "matrix")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{:table "matrix"
                                :columns ["probe1" "probe2"]
-                               :samples ["sample2" "sample1"]}])]
+                               :samples (encode-samples ["sample2" "sample1"])}])]
       (ct/is (= exp [{:name "matrix"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 7 :dataset_id 1}
                  {:name "probe1" :id 8 :dataset_id 1}
@@ -480,30 +466,21 @@
                  {:name "probe4" :id 11 :dataset_id 1}
                  {:name "probe5" :id 12 :dataset_id 1} ]))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal probe1 [2.1 1.1]))
-        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
+            (map #(into [] %) (first data))]
+        (ct/is (nearly-equal probe1 [1.1 2.1]))
+        (ct/is (nearly-equal probe2 [1.2 2.2]))))))
 
 (defn matrix-dup [db]
   (ct/testing "tsv matrix from file with duplicate probe"
     (loader db detector docroot "test/cavm/test_inputs/matrix2") ; odd that loader & detector both require docroot
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "matrix2")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{:table "matrix2"
                                :columns ["probe1" "probe2"]
-                               :samples ["sample2" "sample1"]}])]
+                               :samples (encode-samples ["sample2" "sample1"])}])]
       (ct/is (= exp [{:name "matrix2"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -512,30 +489,21 @@
                  {:name "probe4" :id 5 :dataset_id 1}
                  {:name "probe5" :id 6 :dataset_id 1} ]))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal probe1 [2.1 1.1]))
-        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
+            (map #(into [] %) (first data))]
+        (ct/is (nearly-equal probe1 [1.1 2.1]))
+        (ct/is (nearly-equal probe2 [1.2 2.2]))))))
 
 (defn matrix-bad-probe [db]
   (ct/testing "tsv matrix from file with too long probe"
     (loader db detector docroot "test/cavm/test_inputs/matrix3") ; odd that loader & detector both require docroot
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "matrix3")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/fetch db [{:table "matrix3"
                                :columns ["probe1" "probe2"]
-                               :samples ["sample2" "sample1"]}])]
+                               :samples (encode-samples ["sample2" "sample1"])}])]
       (ct/is (= exp [{:name "matrix3"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -544,9 +512,9 @@
                  {:name "probe4" :id 5 :dataset_id 1}
                  {:name "probe5" :id 6 :dataset_id 1} ]))
       (let [[probe1 probe2]
-            (vec (map #(into [] %) (map ((first data) :data) ["probe1" "probe2"])))]
-        (ct/is (nearly-equal probe1 [2.1 1.1]))
-        (ct/is (nearly-equal probe2 [2.2 1.2]))))))
+            (map #(into [] %) (first data))]
+        (ct/is (nearly-equal probe1 [1.1 2.1]))
+        (ct/is (nearly-equal probe2 [1.2 2.2]))))))
 
 (defn detect-cgdata-genomic [db]
   (ct/testing "detect cgdata genomic"
@@ -557,19 +525,10 @@
   (ct/testing "cgdata genomic matrix"
     (loader db detector docroot "test/cavm/test_inputs/cgdata_matrix")
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "cgdata_matrix")
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:name "cgdata_matrix"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -625,20 +584,10 @@
   (ct/testing "cgdata clinical matrix"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix")
     (let [exp (cdb/run-query db {:select [:name :type] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "clinical_matrix")
           probes (cdb/run-query db {:select [:*] :from [:field]})]
       (ct/is (= exp [{:name "clinical_matrix" :type "clinicalMatrix"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}
-                 {:name "sample5"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4" "sample5"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -650,21 +599,11 @@
   (ct/testing "cgdata clinical matrix2, clinical features"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix2")
     (let [exp (cdb/run-query db {:select [:name :type] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "clinical_matrix2")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           features (cdb/run-query db {:select [:longtitle :field_id] :from [:feature]})]
       (ct/is (= exp [{:name "clinical_matrix2" :type "clinicalMatrix"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}
-                 {:name "sample5"}]))
+      (ct/is (= samples ["sample1" "sample2" "sample3" "sample4" "sample5"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -672,29 +611,18 @@
                  {:name "probe3" :id 4 :dataset_id 1}
                  {:name "probe4" :id 5 :dataset_id 1}]))
       (ct/is (= features
-                [{:longtitle nil :field_id 1} ; sample name
-                 {:longtitle "A primary probe" :field_id 2}
+                [{:longtitle "A primary probe" :field_id 2}
                  {:longtitle "A secondary probe" :field_id 3}])))))
 
 (defn clinical3 [db]
   (ct/testing "cgdata clinical matrix3, numeric sample id"
     (loader db detector docroot "test/cavm/test_inputs/clinical_matrix3")
     (let [exp (cdb/run-query db {:select [:name :type] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
+          samples (fetch-samples-for-dataset db "clinical_matrix3")
           probes (cdb/run-query db {:select [:*] :from [:field]})
           features (cdb/run-query db {:select [:longtitle :field_id] :from [:feature]})]
       (ct/is (= exp [{:name "clinical_matrix3" :type "clinicalMatrix"}]))
-      (ct/is (= samples
-                [{:name "1"}
-                 {:name "2"}
-                 {:name "3"}
-                 {:name "4"}
-                 {:name "5"}]))
+      (ct/is (= samples ["1" "2" "3" "4" "5"]))
       (ct/is (= probes
                 [{:name "sampleID" :id 1 :dataset_id 1}
                  {:name "probe1" :id 2 :dataset_id 1}
@@ -702,8 +630,7 @@
                  {:name "probe3" :id 4 :dataset_id 1}
                  {:name "probe4" :id 5 :dataset_id 1}]))
       (ct/is (= features
-                [{:longtitle nil :field_id 1} ; sample name
-                 {:longtitle "A primary probe" :field_id 2}
+                [{:longtitle "A primary probe" :field_id 2}
                  {:longtitle "A secondary probe" :field_id 3}])))))
 
 (defn detect-cgdata-mutation [db]
@@ -728,15 +655,13 @@
                    (cdb/run-query db)
                    (#(for [{:keys [ordering value]} %] [ordering value]))
                    (into {}))]
-    (->> [{:table table
-           :columns [field]
-           :samples samples}]
-         (cdb/fetch db)
-         (first)
-         (#(% :data))
-         (#(% field))
-         (into [])
-         (map (comp codes int)))))
+    (let [data (cdb/fetch db [{:table table
+                               :columns [field]
+                               :samples (encode-samples samples)}])]
+      (first (to-sample-order [(mapv (comp codes int) (into [] (first (first data))))] (vec samples))))))
+
+(defn get-categorical [db table field samples]
+  (cdb/column-query db {:select [field] :from [table] :where [:in "sampleID" samples]}))
 
 (defn get-float [db table field samples]
   (let [field-id (->> {:select [:field.id]
@@ -748,14 +673,10 @@
                       (cdb/run-query db)
                       (first)
                       (:id))]
-    (->> [{:table table
-           :columns [field]
-           :samples samples}]
-         (cdb/fetch db)
-         (first)
-         (#(% :data))
-         (#(% field))
-         (into []))))
+    (let [data (cdb/fetch db [{:table table
+                               :columns [field]
+                               :samples (encode-samples samples)}])]
+      (map #(into [] %) (first data)))))
 
 (defn mutation1 [db]
   (ct/testing "cgdata mutation"
@@ -865,18 +786,18 @@
              matrix2-reload
              detect-cgdata-probemap probemap1
              detect-cgdata-clinical clinical1
-             detect-cgdata-mutation mutation1 mutation2
+             detect-cgdata-mutation ;mutation1 mutation2
              gene-pred1 matrix-dup matrix-bad-probe
-             clinical2 clinical3 segmented]]
+             clinical2 clinical3 ;segmented
+             ]]
     (fixture t)))
 
-(comment
 (ct/deftest test-h2
   (run-tests
     (fn [f]
       (let [db (h2/create-xenadb "test" {:subprotocol "h2:mem"})]
         (try (f db) ; 'finally' ensures our teardown always runs
-          (finally (cdb/close db))))))))
+          (finally (cdb/close db)))))))
 
 ;
 ;
