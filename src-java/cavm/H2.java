@@ -23,31 +23,33 @@ public class H2 {
 		return m;
 	}
 
-	static int[] getIndicies(int[] values) {
-		int m = max(values);
-		int[] indicies = new int[m + 1];
-		Arrays.fill(indicies, -1);
-		for (int i = 0; i < values.length; ++i) {
-			indicies[values[i]] = i;
+	// Invert column.
+	// We assume here that column is a shuffle of integers 0..(column.length - 1).
+	static int[] getIndicies(int[] column) {
+		int[] indicies = new int[column.length];
+		for (int i = 0; i < column.length; ++i) {
+			indicies[column[i]] = i;
 		}
 		return indicies;
 	}
 
-	public static HashMap<Integer, ArrayList<Pair>> binMappings(int binSize, int[] values, int[] row) {
-		int[] indicies = getIndicies(values);
+	// Invert column and walk over the values array to build mappings of bin -> row -> output-row
+	public static HashMap<Integer, ArrayList<Pair>> binMappings(int binSize, int[] values, int[] column) {
+		int[] indicies = getIndicies(column);
 		HashMap<Integer, ArrayList<Pair>> out = new HashMap<Integer, ArrayList<Pair>>();
 
-		for (int i = 0; i < row.length; ++i) {
-			int binI = i / binSize;
-			int offset = i % binSize;
-			int outRow = indicies[row[i]];
-			ArrayList<Pair> bin = out.get(binI);
-			if (outRow != -1) {
+		for (int j = 0; j < values.length; ++j) {
+			int v = values[j];
+			if (v != -1) {
+				int i = indicies[v];
+				int binI = i / binSize;
+				int offset = i % binSize;
+				ArrayList<Pair> bin = out.get(binI);
 				if (bin == null) {
 					bin = new ArrayList<Pair>();
 					out.put(binI, bin);
 				}
-				bin.add(new Pair(offset, outRow));
+				bin.add(new Pair(offset, j));
 			}
 		}
 
