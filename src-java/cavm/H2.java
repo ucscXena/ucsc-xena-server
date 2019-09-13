@@ -25,23 +25,23 @@ public class H2 {
 
 	// Invert column.
 	// We assume here that column is a shuffle of integers 0..(column.length - 1).
-	static int[] getIndicies(int[] column) {
-		int[] indicies = new int[column.length];
+	static int[] getIndices(int[] column) {
+		int[] indices = new int[column.length];
 		for (int i = 0; i < column.length; ++i) {
-			indicies[column[i]] = i;
+			indices[column[i]] = i;
 		}
-		return indicies;
+		return indices;
 	}
 
 	// Invert column and walk over the values array to build mappings of bin -> row -> output-row
 	public static HashMap<Integer, ArrayList<Pair>> binMappings(int binSize, int[] values, int[] column) {
-		int[] indicies = getIndicies(column);
+		int[] indices = getIndices(column);
 		HashMap<Integer, ArrayList<Pair>> out = new HashMap<Integer, ArrayList<Pair>>();
 
 		for (int j = 0; j < values.length; ++j) {
 			int v = values[j];
 			if (v != -1) {
-				int i = indicies[v];
+				int i = indices[v];
 				int binI = i / binSize;
 				int offset = i % binSize;
 				ArrayList<Pair> bin = out.get(binI);
