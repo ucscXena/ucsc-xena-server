@@ -31,15 +31,9 @@
   as a list of indices, and a map from values to the indices. Invert
   the map to perform lookups by index."
   [s]
-  (loop [s s
-         codes (sorted-map)
-         out (vector-of :int) ; XXX does this work with consume-vec?
-         i 0]
-    (if-let [v (first s)]
-      (if (contains? codes v)
-        (recur (rest s) codes (conj out (codes v)) i)
-        (recur (rest s) (assoc codes v i) (conj out i) (inc i)))
-      {:codes (keys codes) :values out})))
+  (let [codes (sort (distinct s))
+        idx (zipmap codes (range))]
+    {:codes codes :values (into (vector-of :int) (map idx s))}))
 
 (defn range-from [i]
   (range i Double/POSITIVE_INFINITY 1))
