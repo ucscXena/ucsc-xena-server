@@ -149,9 +149,9 @@
 
 (def ^:private sample-table
   ["CREATE TABLE IF NOT EXISTS `sample` (
-   `dataset_id` INT NOT NULL,
+   `field_id` INT NOT NULL,
    `samples` BLOB,
-   FOREIGN KEY (dataset_id) REFERENCES `dataset` (`id`) ON DELETE CASCADE)"])
+   FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
 
 (def ^:private dataset-columns
   #{:name
@@ -284,7 +284,7 @@
     field
     ["SELECT `id` FROM `field` WHERE `dataset_id` = ?" exp]
     (doseq [{id :id} field]
-      (doseq [table ["code" "feature" "field_gene" "field_position" "field_score"]]
+      (doseq [table ["code" "feature" "field_gene" "field_position" "field_score" "sample"]]
         (do-command-while-updates
           (delete-rows-by-field-cmd table id)))))
   (do-command-while-updates
@@ -297,7 +297,6 @@
 ; XXX Might want to add a "deleting" status to the dataset table?
 (defn- clear-by-exp [exp]
   (clear-fields exp)
-  (jdbcd/delete-rows :sample ["`dataset_id` = ?" exp])
   (jdbcd/delete-rows :field ["`dataset_id` = ?" exp]))
 
 ; Update meta entity record.
@@ -517,8 +516,8 @@
 (defmethod load-field :sample-id [dataset-id field-id field feature-seq]
   (let [samples (:order (force (:feature field)))
         blob (pfc/compress-htfc-sorted samples 256)]
-    (conj (load-probe-field dataset-id field-id field)
-          [:insert-sample-id {:dataset_id dataset-id :samples blob}])))
+    (concat (load-probe-field dataset-id field-id field)
+           [[:insert-sample-id {:field_id field-id :samples blob}]])))
 
 ; This should be lazy to avoid simultaneously instantiating all the rows as
 ; individual objects.
@@ -577,7 +576,7 @@
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
-              sample-id-stmt (insert-stmt :sample [:dataset_id :samples])
+              sample-id-stmt (insert-stmt :sample [:field_id :samples])
               position-stmt (insert-stmt :field_position
                                          [:field_id :row :bin :chrom :chromStart
                                           :chromEnd :strand])
@@ -813,7 +812,9 @@
   (jdbcd/with-query-results rows
       ["SELECT `samples`
         FROM `sample`
-        WHERE `dataset_id` = ?" ds-id]
+        JOIN `field` on `field`.`id` = `field_id`
+        JOIN `dataset` on `dataset`.`id` = `dataset_id`
+        WHERE `dataset`.`id` = ?" ds-id]
       (-> rows first :samples unwrap-blob)))
 
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
@@ -1082,6 +1083,24 @@
 
 ;
 
+(def ^:private has-samples-query
+  (cached-statement
+    "SELECT EXISTS(SELECT `samples` FROM `sample` WHERE `field_id` = ?) hassamples"
+    true))
+
+(defn has-samples? [field-id]
+  (-> (has-samples-query field-id) first :hassamples))
+
+(def ^:private samples-query
+  (cached-statement
+    "SELECT `samples` FROM `sample` WHERE `field_id` = ?"
+    true))
+
+(defn fetch-samples [field-id]
+  (-> (samples-query field-id) first :samples))
+
+;
+
 (defn update-codes-cache [codes field-id new-bins cache]
   (match [codes]
          [nil] (update-codes-cache (if (has-codes? field-id)
@@ -1095,7 +1114,21 @@
                 missing (filterv #(not (contains? code-cache %)) values)]
             (into code-cache (codes-for-values field-id missing)))]))
 
-(defn update-cache [cache field-id rows]
+; Note that this inflates the entire htfc. We usually try to avoid
+; this. For sparse data, we currently pass it as json, so it will
+; be inflated anyway. Further, the values may appear on multiple rows,
+; inflating it even more. So, this isn't adding substantially to
+; the memory pressure. We currently don't have sparse data over
+; very large cohorts, so it doesn't matter.
+; A longer-term solution would be to return sparse data as
+; binpack-json, in which case we would want to refactor sqleval, and
+; handle this differently.
+(defn update-htfc-cache [codes field-id new-bins cache]
+  (if codes
+    codes
+    [:yes (into [] (pfc/to-htfc (fetch-samples field-id)))]))
+
+(defn update-cache [cache code-updater field-id rows]
   (let [bins (distinct (map #(quot % bin-size) rows))
         missing (filterv #(not (contains? cache %)) bins)]
     (if (seq missing)
@@ -1103,7 +1136,7 @@
                            (fetch-bins field-id)
                            (map (juxt :i :scores))
                            (into (or cache {})))]
-        (update-in new-cache [:codes] update-codes-cache field-id missing new-cache))
+        (update-in new-cache [:codes] code-updater field-id missing new-cache))
        cache)))
 
 ;
@@ -1116,12 +1149,13 @@
     (cond
       (has-genes? field-id) :gene
       (has-position? field-id) :position
+      (has-samples? field-id) :htfc
       :else :binned)))
 
 ; binned fields
 
-(defmethod fetch-rows :binned [cache rows field-id]
-  (swap! cache update-in [field-id] update-cache field-id rows)
+(defn fetch-rows-binned [cache code-updater rows field-id]
+  (swap! cache update-in [field-id] update-cache code-updater field-id rows)
   (let [f (@cache field-id)
         getter (match [(:codes f)]
                       ; XXX cast to int here is pretty horrible.
@@ -1134,6 +1168,12 @@
                       [[:no]] (fn [bin off] (get (f bin) off)))]
     (fn [row]
       (apply getter (bin-offset row)))))
+
+(defmethod fetch-rows :binned [cache rows field-id]
+  (fetch-rows-binned cache update-codes-cache rows field-id))
+
+(defmethod fetch-rows :htfc [cache rows field-id]
+  (fetch-rows-binned cache update-htfc-cache rows field-id))
 
 (def ^:private field-genes-by-row-query
   (cached-statement
@@ -1299,7 +1339,6 @@
         cache (atom {})
         fetch (fn [rows field]
                 (if (not-empty rows)
-                  ; need to inject the code cache method, using the dataset sample list.
                   (fetch-rows cache rows (fields field))
                   {}))]
     (evaluate (set-of-all-cache N) {:fetch fetch
@@ -1370,12 +1409,12 @@
     (apply jdbcd/do-commands cohorts-table)
     (apply jdbcd/do-commands source-table)
     (apply jdbcd/do-commands dataset-table)
-    (apply jdbcd/do-commands sample-table)
     (apply jdbcd/do-commands dataset-source-table)
     (apply jdbcd/do-commands field-table)
     (apply jdbcd/do-commands field-score-table)
     (apply jdbcd/do-commands feature-table)
     (apply jdbcd/do-commands code-table)
+    (apply jdbcd/do-commands sample-table)
     (apply jdbcd/do-commands field-position-table)
     (apply jdbcd/do-commands field-gene-table))
   (migrate))

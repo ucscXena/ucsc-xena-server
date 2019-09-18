@@ -149,17 +149,6 @@
         :samples (gen/return samples)
         :matrix (gen-matrix (count samples) (count probes))))))
 
-(defn- fields-from-tsv [{:keys [probes samples matrix]}]
-  (cons {:rows (range (count samples))
-         :field "sampleID"
-         :valueType "category"
-         :feature {:state samples
-                   :order (zipmap samples (range))}}
-        (map (fn [id rows] {:rows rows
-                            :valueType "float"
-                            :feature {}
-                            :field id}) probes matrix)))
-
 (defmacro db-fixture [db & body]
   `(let [~db (h2/create-xenadb "test" {:subprotocol "h2:mem"})]
      (try
@@ -186,8 +175,9 @@
 (defn samples-for-dataset [dataset]
   {:select [:samples]
    :from [:sample]
-   :where [:= :dataset.name dataset]
-   :join [:dataset [:= :dataset.id :dataset_id]]})
+   :where [:and [:= :dataset.name dataset] [:= :field.name "sampleID"]]
+   :join [:dataset [:= :dataset.id :dataset_id]
+          :field [:= :field.id :field_id]]})
 
 ; XXX wrap the db return values in h2.clj, so we don't
 ; have to do these conversions.
@@ -299,36 +289,34 @@
                                :samples (encode-samples ["sample2" "sample1"])}])
           data2  (cdb/fetch db [{:table "id1"
                                 :columns ["probe1" "probe2"]
-                                :samples (encode-samples ["sample1" "sample3"])}])
-          ]
+                                :samples (encode-samples ["sample1" "sample3"])}])]
       (ct/is (= exp [{:name "id1" :status "loaded" :rows 2}]))
       (ct/is (= samples ["sample1" "sample2"]))
-      (ct/is (= probes
-                [{:name "sampleID" :id 1 :dataset_id 1}
-                 {:name "position" :id 2 :dataset_id 1}
-                 {:name "genes"    :id 3 :dataset_id 1}
-                 {:name "probe1"   :id 4 :dataset_id 1}
-                 {:name "probe2"   :id 5 :dataset_id 1}]))
-      (ct/is (= positions
-                [{:field_id 2
-                  :row 0
-                  :chrom "chr1"
-                  :chromstart 1200
-                  :chromend 1300
-                  :bin 4681
-                  :strand "-"}
-                 {:field_id 2
-                  :row 1
-                  :chrom "chr2"
-                  :chromstart 300
-                  :chromend 1200
-                  :bin 4681
-                  :strand "+"}]))
-      (ct/is (= genes
-                [{:field_id 3 :row 0 :gene "FOXM1"}
-                 {:field_id 3 :row 0 :gene "CUL2"}
-                 {:field_id 3 :row 1 :gene "ACK"}
-                 {:field_id 3 :row 1 :gene "BLAH"}]))
+      (ct/is (= (set (map :name probes)) #{"sampleID" "position" "genes" "probe1" "probe2"}))
+      (ct/is (= (map :dataset_id probes) [1 1 1 1 1]))
+      (ct/is (= (count (distinct (map :id probes))) 5))
+      (let [pos-id (:id (first (filter #(= (:name %) "position") probes)))]
+        (ct/is (= (set positions)
+                  #{{:field_id pos-id
+                     :row 0
+                     :chrom "chr1"
+                     :chromstart 1200
+                     :chromend 1300
+                     :bin 4681
+                     :strand "-"}
+                    {:field_id pos-id
+                     :row 1
+                     :chrom "chr2"
+                     :chromstart 300
+                     :chromend 1200
+                     :bin 4681
+                     :strand "+"}})))
+      (let [genes-id (:id (first (filter #(= (:name %) "genes") probes)))]
+        (ct/is (= genes
+                  [{:field_id genes-id :row 0 :gene "FOXM1"}
+                   {:field_id genes-id :row 0 :gene "CUL2"}
+                   {:field_id genes-id :row 1 :gene "ACK"}
+                   {:field_id genes-id :row 1 :gene "BLAH"}])))
       (let [[probe1 probe2]
             (map #(into [] %) (first data))]
         (ct/is (nearly-equal probe1 [1.1 1.2]))
@@ -678,71 +666,106 @@
                                :samples (encode-samples samples)}])]
       (map #(into [] %) (first data)))))
 
+
+(defn collate-fields [data]
+  (let [fields (keys data)]
+    (apply map (fn [& vs] (zipmap fields vs)) (vals data))))
+
 (defn mutation1 [db]
   (ct/testing "cgdata mutation"
     (loader db detector docroot "test/cavm/test_inputs/mutation")
-    (let [effect (get-categorical db "mutation" "effect" ["sample1" "sample2"])
-          reference (get-categorical db "mutation" "ref" ["sample1" "sample2"])
-          alt (get-categorical db "mutation" "alt" ["sample1" "sample2"])
-          amino-acid (get-categorical db "mutation" "amino-acid" ["sample1" "sample2"])
-          user-field (get-categorical db "mutation" "user-field" ["sample1" "sample2"])
-          user-field2 (get-float db "mutation" "user-field2" ["sample1" "sample2"])
-          dataset (first (cdb/run-query db {:select [:*] :from [:dataset]}))]
+    (let [data (cdb/column-query db {:select ["sampleID" "position" "effect" "ref" "alt" "amino-acid" "user-field" "user-field2"] :from ["mutation"]})
+          collated (set (collate-fields data))
+          dataset (first (cdb/run-query db {:select [:*] :from [:dataset]}))
+          expected #{{"sampleID" "sample1"
+                      "effect" "missense_variant"
+                      "ref" "G"
+                      "alt" "T"
+                      "amino-acid" "F1384L"
+                      "user-field" "red"
+                      "user-field2" (float 1.1)
+                      "position" {:strand "." :chrom "chr5" :chromstart 100 :chromend 102}}
+                     {"sampleID" "sample1"
+                      "effect" "frameshift_variant"
+                      "ref" "G"
+                      "alt" "A"
+                      "amino-acid" "R151W"
+                      "user-field" "blue"
+                      "user-field2" (float 2.2)
+                      "position" {:strand "." :chrom "chr3" :chromstart 200 :chromend 201}}
+                     {"sampleID" "sample2"
+                      "effect" "missense_variant"
+                      "ref" "C"
+                      "alt" "T"
+                      "amino-acid" "R1011K"
+                      "user-field" "green"
+                      "user-field2" (float 3.3)
+                      "position" {:strand "." :chrom "chr7" :chromstart 300 :chromend 303}}}]
 
-      (ct/is (= effect ["frameshift_variant"
-                        "missense_variant"
-                        "missense_variant"]))
-      (ct/is (= reference ["G" "G" "C"]))
-      (ct/is (= alt ["A" "T" "T"]))
-      (ct/is (= amino-acid ["R151W" "F1384L" "R1011K"]))
-      (ct/is (= user-field ["blue" "red" "green"]))
-      (ct/is (= user-field2 (map float [2.2 1.1 3.3])))
+      (ct/is (= collated expected))
       (ct/is (= (select-keys dataset [:name :datasubtype])
                 {:name "mutation" :datasubtype "somatic mutation"})))))
 
 (defn mutation2 [db]
   (ct/testing "cgdata mutation"
     (loader db detector docroot "test/cavm/test_inputs/mutation2")
-    (let [effect (get-categorical db "mutation2" "effect" ["TCGA-F2-6879-01"])
-          reference (get-categorical db "mutation2" "ref" ["TCGA-F2-6879-01"])
-          alt (get-categorical db "mutation2" "alt" ["TCGA-F2-6879-01"])
-          amino-acid (get-categorical db "mutation2" "amino-acid" ["TCGA-F2-6879-01"])]
+    (let [data (cdb/column-query db {:select ["sampleID" "effect" "ref" "alt"] :from ["mutation2"]})
+          collated (collate-fields data)
+          expected [{"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Missense_Mutation"
+                     "ref" "G"
+                     "alt" "A"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Missense_Mutation"
+                     "ref" "C"
+                     "alt" "A"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Missense_Mutation"
+                     "ref" "A"
+                     "alt" "T"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Missense_Mutation"
+                     "ref" "T"
+                     "alt" "C"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Silent"
+                     "ref" "C"
+                     "alt" "T"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Missense_Mutation"
+                     "ref" "G"
+                     "alt" "A"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "Splice_Site"
+                     "ref" "C"
+                     "alt" "T"}
+                    {"sampleID" "TCGA-F2-6879-01"
+                     "effect" "RNA"
+                     "ref" "T"
+                     "alt" "C"}
+                    {"sampleID" "TCGA-F2-6879-02"
+                     "effect" "RNA"
+                     "ref" "A"
+                     "alt" "G"}]]
 
-      (ct/is (= effect ["Splice_Site"
-                        "Missense_Mutation"
-                        "RNA"
-                        "Missense_Mutation"
-                        "Missense_Mutation"
-                        "Missense_Mutation"
-                        "RNA"
-                        "Silent"
-                        "Missense_Mutation"]))
-      (ct/is (= reference ["C" "A" "A" "G" "T" "C" "T" "C" "G"]))
-      (ct/is (= alt ["T" "T" "G" "A" "C" "A" "C" "T" "A"])))))
+      ; Since there can be duplicate rows, using a set comparison doesn't work here.
+      ; Instead, verify that the count is the same, and that all expected rows appear
+      ; in the result.
+      (ct/is (= (count collated) (count expected)))
+      (doseq [exp expected]
+        (ct/is (some #(= exp %) collated))))))
 
 (defn segmented [db]
   (ct/testing "tsv segmented from file"
     (loader db detector docroot "test/cavm/test_inputs/segmented") ; odd that loader & detector both require docroot
     (let [exp (cdb/run-query db {:select [:name] :from [:dataset]})
-          samples (cdb/run-query db
-                                 {:select [[:value :name]]
-                                  :from [:field]
-                                  :where [:= :name "sampleID"]
-                                  :left-join [:code [:= :field.id :field_id]]
-                                  :order-by [:ordering]})
           probes (cdb/run-query db {:select [:*] :from [:field]})
           data (cdb/column-query db {:select ["position" "sampleID"] :from ["segmented"]})]
 
       (ct/is (= exp [{:name "segmented"}]))
-      (ct/is (= samples
-                [{:name "sample1"}
-                 {:name "sample2"}
-                 {:name "sample3"}
-                 {:name "sample4"}]))
-      (ct/is (= probes
-                [{:name "position" :id 1 :dataset_id 1}
-                 {:name "sampleID" :id 2 :dataset_id 1}
-                 {:name "value" :id 3 :dataset_id 1}]))
+      (ct/is (= (set (map :name probes)) #{"position" "sampleID" "value"}))
+      (ct/is (= (map :dataset_id probes) [1 1 1]))
+      (ct/is (= (count (distinct (map :id probes))) 3))
       (ct/is (= data
                 {"sampleID" ["sample1" "sample1" "sample2" "sample3" "sample4"]
                  "position" [
@@ -786,10 +809,9 @@
              matrix2-reload
              detect-cgdata-probemap probemap1
              detect-cgdata-clinical clinical1
-             detect-cgdata-mutation ;mutation1 mutation2
+             detect-cgdata-mutation mutation1 mutation2
              gene-pred1 matrix-dup matrix-bad-probe
-             clinical2 clinical3 ;segmented
-             ]]
+             clinical2 clinical3 segmented]]
     (fixture t)))
 
 (ct/deftest test-h2
@@ -829,11 +851,9 @@
     {:rows (map nil-order values)
     :field name
     :valueType "category"
-    :feature {:state values
-              :order order}}))
+    :feature {:order not-nil}}))
 
 ; XXX haven't hooked up sparse queries, yet
-(comment 
 (ct/deftest gene-test
   (let [field0 (gene-field "genes"
                            [["a"]
@@ -868,8 +888,7 @@
                     {:select ["name"]
                      :from ["foo"]
                      :where [:in :any "genes" ["a"]]})
-                  {"name" ["probe0" nil]}))
-        )))))
+                  {"name" ["probe0" nil]}))))))
 
 ;
 ; Some experiments with generators for gene fields.
