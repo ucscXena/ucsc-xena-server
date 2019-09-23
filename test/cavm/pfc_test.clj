@@ -63,28 +63,25 @@
                       res (json/read-str out)]
                   (is (= (set in) (set res)))))))))
 
-(defn dict-to-vec [dict]
-  (into [] (HTFC. dict)))
-
 (deftest basic-test-clj
   (testing "fixed set"
     (let [in ["one" "two" "three" "four" "five" "six"]
           dict (pfc/compress-htfc in 5)
-          out (dict-to-vec dict)]
+          out (seq dict)]
       (is (= (sort in) out))))
   (testing "fixed set 2"
     ; check handling of zero-length front-coding, caused by
     ; repeated string, in encode-bytes.
     (let [in ["one" "one" "two" "three" "four" "five" "six"]
           dict (pfc/compress-htfc in 5)
-          out (dict-to-vec dict)]
+          out (seq dict)]
       (is (= (sort in) out))))
   ; where to get a large test set w/o committing all this garbage?
   ; maybe compress it? Or fetch & cache? Or compress with htfc?
   (comment (testing "toil"
      (let [in (json/read-str (slurp "toil.json"))
            dict (pfc/compress-htfc in 256)
-           out (dict-to-vec dict)]
+           out (seq dict)]
        (is (= (sort in) out))))))
 
 (defn htfc [strings bin-size]

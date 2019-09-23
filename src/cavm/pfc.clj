@@ -6,7 +6,7 @@
   (:import [java.nio ByteBufferAsIntBufferL ByteBuffer])
   (:import [java.io ByteArrayOutputStream])
   (:import [org.h2.jdbc JdbcBlob])
-  (:import [cavm Huffman HTFC])
+  (:import [cavm Huffman HTFC HFC])
   (:require [cavm.huffman :as huffman]))
 
 (set! *unchecked-math* true)
@@ -159,7 +159,7 @@
     (.toByteArray out)))
 
 (require '[clojure.core.reducers :as r])
-(defn compress-htfc-sorted [ordered bin-size]
+(defn compress-htfc-sorted ^HTFC [ordered bin-size]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         bins (partition-all-v bin-size (into [] ordered))
         ; we reduce this multiple times, so compute it as foldable.
@@ -168,19 +168,19 @@
         ht (huffman/make-hu-tucker (map #(:header %) front-coded))
         ; XXX Does get-bytes make sense? Why do we need to do this?
         compressed-headers (map #(get-bytes huffman/write ht (:header %))
-                                  front-coded)
+                                front-coded)
         huff (huffman/make-huffman (r/mapcat :inner front-coded))
         compressed (r/foldcat (r/map #(get-bytes huffman/write huff (:inner %))
-                           front-coded))
+                                     front-coded))
         sizes (map #(+ (count %1) (count %2)) compressed-headers compressed)
         offsets (reductions + 0 (take (dec (count sizes)) sizes))]
-    (serialize-htfc {:length (count ordered)
-                     :bin-size bin-size
-                     :header-dict ht
-                     :inner-dict huff
-                     :offsets offsets
-                     :headers compressed-headers
-                     :inners compressed})))
+    (HTFC. (serialize-htfc {:length (count ordered)
+                            :bin-size bin-size
+                            :header-dict ht
+                            :inner-dict huff
+                            :offsets offsets
+                            :headers compressed-headers
+                            :inners compressed}))))
 
 (defn compress-htfc [strings bin-size]
   (compress-htfc-sorted (sort strings) bin-size))
@@ -210,11 +210,11 @@
         compressed (r/foldcat (r/map #(get-bytes huffman/write huff %) front-coded))
         sizes (map count compressed)
         offsets (reductions + 0 (take (dec (count sizes)) sizes))]
-    (serialize-hfc {:length (count ordered)
-                    :bin-size bin-size
-                    :dict huff
-                    :offsets offsets
-                    :bins compressed})))
+    (HFC. (serialize-hfc {:length (count ordered)
+                          :bin-size bin-size
+                          :dict huff
+                          :offsets offsets
+                          :bins compressed}))))
 
 (defn index-of [^bytes arr start v]
   (loop [i start]
@@ -310,8 +310,6 @@
      :inner-dict (huffman/huff-tree buff32 buff8 bin-dict-offset); XXX deprecated
      :jhuff jhuff}))
 
-(defrecord htfc [buff])
-
 (defn hfc-offsets [^ByteBuffer buff8]
   (let [buff32 (.asIntBuffer buff8)
         length (.get buff32 0)
@@ -371,8 +369,8 @@
 (defn merge-dicts [dict & dicts]
   (if (seq dicts)
     (compress-htfc-sorted
-      (reduce #(merge-sorted %1 (HTFC. %2))
-              (HTFC. dict)
+      (reduce #(merge-sorted %1 (to-htfc %2))
+              (to-htfc dict)
               dicts)
       256)
     dict))

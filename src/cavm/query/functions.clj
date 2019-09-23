@@ -9,8 +9,8 @@
 
 (set-current-implementation :vectorz)
 
-(defn distinct-htfc [ & blobs ]
-  (pfc/->htfc (apply pfc/merge-dicts blobs)))
+(defn union [ & dicts ]
+  (apply pfc/merge-dicts dicts))
 
 (defn- meannan1d [m]
   (let [NaN Double/NaN
@@ -36,9 +36,6 @@
   (meannan [m dim] (meannan-impl m dim))
   clojure.lang.Seqable
   (meannan [m dim] (meannan-impl (matrix (map double-array m)) dim)))
-
-(defn seq-htfc [blob]
-  (seq (pfc/to-htfc blob)))
 
 (def floatarray (Class/forName "[F"))
 
@@ -69,7 +66,6 @@
    'group-by group-by
    'mean meannan
    'count count
-   'distinct-htfc distinct-htfc
-   'seq-htfc seq-htfc
+   'union union
    'distinct distinct
    'apply apply})

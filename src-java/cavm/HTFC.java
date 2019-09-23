@@ -109,6 +109,10 @@ public class HTFC implements Iterable<String> {
 		binOffsets = binCountOffset + 1;
 	}
 
+	public byte[] getBytes() {
+	    return buff8.array();
+	}
+
 	public class BIterator {
 		int index = 0;
 		int binIndex = 0;

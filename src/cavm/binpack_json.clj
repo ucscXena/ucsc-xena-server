@@ -3,7 +3,7 @@
     :doc "json with packed binary objects"}
   cavm.binpack-json
   (:import [java.io PrintWriter StringWriter ByteArrayOutputStream])
-  (:import [cavm.pfc htfc])
+  (:import [cavm HTFC])
   (:require [cavm.pfc :refer [index-of]]) ; maybe move this method
   (:import [org.h2.jdbc JdbcBlob])
   (:import [java.util Arrays])
@@ -99,8 +99,8 @@
 (defn- write-jdbc-blob [m buff ^PrintWriter out i]
   (write-bin (unwrap-blob m) buff out i))
 
-(defn- write-htfc [m buff ^PrintWriter out i]
-  (write-bin (:buff m) buff out i))
+(defn- write-htfc [^HTFC m buff ^PrintWriter out i]
+  (write-bin (.getBytes m) buff out i))
 
 ; ugh. java buffer support sucks. Two copies on the way out
 ; due to weird buffer APIs.
@@ -126,7 +126,7 @@
 (extend (Class/forName "[F") BinpackWriter {:-write write-float-bin})
 (extend (Class/forName "[D") BinpackWriter {:-write write-double-bin})
 (extend JdbcBlob BinpackWriter {:-write write-jdbc-blob})
-(extend htfc BinpackWriter {:-write write-htfc})
+(extend HTFC BinpackWriter {:-write write-htfc})
 
 (defn write-buff [x]
   (let [sw (StringWriter.)
@@ -153,13 +153,13 @@
                (if (< in-p len)
                  (let [bin-len (read-int in-p buff)]
                    (recur (conj out
-                                (Arrays/copyOfRange buff (+ in-p 4) (+ in-p 4 bin-len)))
+                                (Arrays/copyOfRange buff ^long (+ in-p 4) ^long (+ in-p 4 bin-len)))
                           (+ in-p 4 (align bin-len))))
                  out))
         link (fn [x] (if (= (get x "$type") "ref")
                        (bins (get-in x ["value" "$bin"]))
                        x))]
-    (clojure.walk/postwalk link (parser (String. (Arrays/copyOfRange buff 0 txt-len))))))
+    (clojure.walk/postwalk link (parser (String. ^bytes (Arrays/copyOfRange buff 0 ^long txt-len))))))
 
 (def parse-json (partial parse json/read-str))
 

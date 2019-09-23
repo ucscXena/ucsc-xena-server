@@ -515,7 +515,7 @@
 
 (defmethod load-field :sample-id [dataset-id field-id field feature-seq]
   (let [samples (:order (force (:feature field)))
-        blob (pfc/compress-htfc-sorted samples 256)]
+        blob (.getBytes (pfc/compress-htfc-sorted samples 256))]
     (concat (load-probe-field dataset-id field-id field)
            [[:insert-sample-id {:field_id field-id :samples blob}]])))
 
@@ -998,7 +998,7 @@
         ; 'order' is index in ds-samples for each value in 'sample'.
         ; Note that this index will be the same as the code value
         ; for the sampleID column, since we assign them in sorted order.
-        order (HTFC/join (HTFC. samples) (HTFC. ds-samples))
+        order (HTFC/join (pfc/to-htfc samples) (pfc/to-htfc ds-samples))
         bin-map (bin-mappings dataset-id "sampleID" order)]
 
     (-> (select-scores-full dataset-id columns (keys bin-map))

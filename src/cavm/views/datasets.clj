@@ -18,7 +18,7 @@
   (:require [cavm.fs-utils :refer [docroot-path]])
   (:require [honeysql.types :as hsqltypes])
   (:import [org.h2.jdbc JdbcBlob])
-  (:import [cavm.pfc htfc])
+  (:import [cavm HTFC])
   (:require [cavm.binpack-json :as bj]))
 
 ;
@@ -97,7 +97,7 @@
 (defn htfc-as-response [this ctx]
   (bytes-as-response (bj/write-buff (:buff this)) ctx))
 
-(extend htfc liberator.representation/Representation
+(extend HTFC liberator.representation/Representation
   {:as-response htfc-as-response})
 
 (extend (Class/forName "[F") liberator.representation/Representation
