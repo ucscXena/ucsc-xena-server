@@ -304,6 +304,7 @@
    [nil "--no-gui" "Don't start GUI" :id :gui :parse-fn not :default true]
    ["-h" "--help" "Show help"]
    ["-H" "--host HOST" "Set host for listening socket" :default "localhost"]
+   [nil "--h2" "Start h2 console" :default false]
    ["-r" "--root DIR" "Set document root directory" :default docroot-default]
    ["-D" "--localdev" "Allow CORS from localhost" :default false]
    ["-d" "--database FILE" "Database to use" :default db-default]
@@ -405,6 +406,7 @@
       (try
         (cond
           (:help options) (println summary)
+          (:h2 options) (org.h2.tools.Console/main (into-array String []))
           (:version options) (println (get pom-props "version"))
           (:json options) (cgdata/fix-json docroot)
           (:load options) (load-files port always arguments)
