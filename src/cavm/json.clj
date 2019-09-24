@@ -3,6 +3,7 @@
   (:import info.adams.ryu.RyuFloat)
   (:import info.adams.ryu.RoundingMode)
   (:import [java.nio ByteBuffer])
+  (:import [cavm HTFC])
   (:require [cavm.pfc :as pfc])
   (:require [clojure.data.json :as json]))
 
@@ -42,9 +43,9 @@
 ; sql on the way in to determine which return values will be
 ; htfc.
 (defn- write-pfc [x ^PrintWriter out]
-  (json/-write (seq (pfc/to-htfc x)) out))
+  (json/-write (seq x) out))
 
-(extend org.h2.jdbc.JdbcBlob json/JSONWriter {:-write write-pfc})
+(extend HTFC json/JSONWriter {:-write write-pfc})
 
 (defn write-str [s & args]
   (apply json/write-str s args))

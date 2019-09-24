@@ -17,7 +17,6 @@
   (:require [taoensso.timbre.profiling :as profiling :refer [p profile]])
   (:require [cavm.fs-utils :refer [docroot-path]])
   (:require [honeysql.types :as hsqltypes])
-  (:import [org.h2.jdbc JdbcBlob])
   (:import [cavm HTFC])
   (:require [cavm.binpack-json :as bj]))
 
@@ -91,11 +90,15 @@
 (defn blob-as-response [this ctx]
   (bytes-as-response (bj/write-buff this) ctx))
 
-(extend JdbcBlob liberator.representation/Representation
-  {:as-response blob-as-response})
-
+; XXX pretty sure this isn't the imagined use of liberator as-response protocol.
+; I think the media dispatch is supposed to be in the handler.
+; see http://clojure-liberator.github.io/liberator/tutorial/conneg.html
 (defn htfc-as-response [this ctx]
-  (bytes-as-response (bj/write-buff (:buff this)) ctx))
+  (let [media-type (get-in ctx [:representation :media-type])]
+    (condp = media-type
+      "application/binpack-json" (bytes-as-response (bj/write-buff (.getBytes this)) ctx)
+      "application/json" (liberator.representation/as-response (json/write-str (seq this)) ctx))))
+
 
 (extend HTFC liberator.representation/Representation
   {:as-response htfc-as-response})

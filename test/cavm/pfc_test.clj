@@ -99,7 +99,7 @@
         expected (sort (set (concat coll-a coll-b)))
         hcoll-a (ctor coll-a bin-size)
         hdb (ctor coll-b bin-size)
-        result (seq (pfc/to-htfc (merger hcoll-a hdb)))]
+        result (seq (merger hcoll-a hdb))]
     (= expected result)))
 
 (defn combine [[both only-coll-a only-coll-b]]

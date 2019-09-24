@@ -5,7 +5,6 @@
   (:import [java.io PrintWriter StringWriter ByteArrayOutputStream])
   (:import [cavm HTFC])
   (:require [cavm.pfc :refer [index-of]]) ; maybe move this method
-  (:import [org.h2.jdbc JdbcBlob])
   (:import [java.util Arrays])
   (:import [java.nio ByteBuffer ByteOrder])
   (:require clojure.walk)
@@ -92,12 +91,6 @@
             (recur nxt true)))))
     (.print out \})))
 
-(defn unwrap-blob [^JdbcBlob blob]
-  (let [len (.length blob)]
-    (.getBytes blob 0 len)))
-
-(defn- write-jdbc-blob [m buff ^PrintWriter out i]
-  (write-bin (unwrap-blob m) buff out i))
 
 (defn- write-htfc [^HTFC m buff ^PrintWriter out i]
   (write-bin (.getBytes m) buff out i))
@@ -125,7 +118,6 @@
 (extend (Class/forName "[B") BinpackWriter {:-write write-bin})
 (extend (Class/forName "[F") BinpackWriter {:-write write-float-bin})
 (extend (Class/forName "[D") BinpackWriter {:-write write-double-bin})
-(extend JdbcBlob BinpackWriter {:-write write-jdbc-blob})
 (extend HTFC BinpackWriter {:-write write-htfc})
 
 (defn write-buff [x]

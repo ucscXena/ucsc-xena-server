@@ -25,11 +25,17 @@
   (:require [cavm.sqleval :refer [evaluate]])
   (:require [clojure.data.int-map :as i])
   (:require [cavm.pfc :as pfc])
-  (:import [org.h2.jdbc JdbcBlob])
   (:import cavm.HTFC)
   (:import cavm.H2)
   (:import [org.h2.jdbc JdbcBatchUpdateException])
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
+
+; This setting allows us to return java objects from a function call. Without this,
+; h2 will attempt to serialize the object, which is undesirable. Another option might
+; be to override the serialization method via h2.javaObjectSerializer.
+; Also might be better to put this inside a method, however note that it needs to be
+; set before h2 starts loading classes.
+(System/setProperty "h2.serializeJavaObject" "false")
 
 (def h2-log-level
   (into {} (map vector [:off :error :info :debug :slf4j] (range))))
@@ -148,10 +154,27 @@
    `dataSubType` VARCHAR (255))"])
 
 (def ^:private sample-table
-  ["CREATE TABLE IF NOT EXISTS `sample` (
+  ["CREATE TABLE IF NOT EXISTS `sample_blob` (
    `field_id` INT NOT NULL,
    `samples` BLOB,
    FOREIGN KEY (`field_id`) REFERENCES `field` (`id`) ON DELETE CASCADE)"])
+
+;
+; This is a work-around to deserialize HTFC objects stored as blobs in h2. We
+; define a custom function that invokes the HTFC constructor, and a view over
+; the samples table that calls the constructor. It might be cleaner to use
+; h2.javaObjectSerializer, but this works for now.
+;
+
+(def ^:private htfc-fn
+  ["CREATE ALIAS IF NOT EXISTS HTFC FOR \"cavm.HTFC.getHTFC\""])
+
+(def ^:private sample-view
+  ["CREATE VIEW IF NOT EXISTS `sample` AS SELECT `field_id`, HTFC(`samples`) AS `samples` FROM  `sample_blob`"])
+
+;
+;
+;
 
 (def ^:private dataset-columns
   #{:name
@@ -284,7 +307,7 @@
     field
     ["SELECT `id` FROM `field` WHERE `dataset_id` = ?" exp]
     (doseq [{id :id} field]
-      (doseq [table ["code" "feature" "field_gene" "field_position" "field_score" "sample"]]
+      (doseq [table ["code" "feature" "field_gene" "field_position" "field_score" "sample_blob"]]
         (do-command-while-updates
           (delete-rows-by-field-cmd table id)))))
   (do-command-while-updates
@@ -576,7 +599,7 @@
 
 (defn- table-writer-default [dir dataset-id matrix-fn]
   (with-open [code-stmt (insert-stmt :code [:value :id :ordering :field_id])
-              sample-id-stmt (insert-stmt :sample [:field_id :samples])
+              sample-id-stmt (insert-stmt :sample_blob [:field_id :samples])
               position-stmt (insert-stmt :field_position
                                          [:field_id :row :bin :chrom :chromStart
                                           :chromEnd :strand])
@@ -804,10 +827,6 @@
           (format "DELETE FROM `dataset` WHERE `id` = %d" dataset-id)))
       (info "Did not delete unknown dataset" dataset))))
 
-(defn unwrap-blob [^JdbcBlob blob]
-  (let [len (.length blob)]
-    (.getBytes blob 0 len)))
-
 (defn dataset-samples [ds-id]
   (jdbcd/with-query-results rows
       ["SELECT `samples`
@@ -815,7 +834,7 @@
         JOIN `field` on `field`.`id` = `field_id`
         JOIN `dataset` on `dataset`.`id` = `dataset_id`
         WHERE `dataset`.`id` = ?" ds-id]
-      (-> rows first :samples unwrap-blob)))
+      (-> rows first :samples)))
 
 (defn create-db [file & [{:keys [classname subprotocol make-pool?]
                           :or {classname "org.h2.Driver"
@@ -955,20 +974,13 @@
 ; Run scores query
 ; Copy to output buffer
 
-; cheap polymorphism on the sampleID list, which can be
-; a vector or an htfc.
-(defn samples-to-seq [s]
-  (if (instance? clojure.lang.Seqable s)
-    (seq s)
-    (pfc/to-htfc s)))
-
 ; Return the codes for requested sampleIDs, in the order
 ; of the request, with nil for any unknown sampleIDs. And
 ; try to be fast about it.
 ; Deprecated in favor of camv.HTFC/join
 (defn sampleID-codes [h0 h1]
-  (let [a (samples-to-seq h0)
-        b (samples-to-seq h1)
+  (let [a (seq h0)
+        b (seq h1)
         acc (transient [])]
     (loop [a a b b i 0]
       (if-let [n (first a)]
@@ -985,7 +997,6 @@
                 (recur a (rest b) (inc i)))))
           (persistent! acc))
         (persistent! acc)))))
-
 ; XXX The float thing is bothersome. Would be nice to have integer
 ; bins for categorical.
 
@@ -998,7 +1009,7 @@
         ; 'order' is index in ds-samples for each value in 'sample'.
         ; Note that this index will be the same as the code value
         ; for the sampleID column, since we assign them in sorted order.
-        order (HTFC/join (pfc/to-htfc samples) (pfc/to-htfc ds-samples))
+        order (HTFC/join samples ds-samples)
         bin-map (bin-mappings dataset-id "sampleID" order)]
 
     (-> (select-scores-full dataset-id columns (keys bin-map))
@@ -1126,7 +1137,7 @@
 (defn update-htfc-cache [codes field-id new-bins cache]
   (if codes
     codes
-    [:yes (into [] (pfc/to-htfc (fetch-samples field-id)))]))
+    [:yes (into [] (fetch-samples field-id))]))
 
 (defn update-cache [cache code-updater field-id rows]
   (let [bins (distinct (map #(quot % bin-size) rows))
@@ -1415,6 +1426,8 @@
     (apply jdbcd/do-commands feature-table)
     (apply jdbcd/do-commands code-table)
     (apply jdbcd/do-commands sample-table)
+    (apply jdbcd/do-commands htfc-fn)
+    (apply jdbcd/do-commands sample-view)
     (apply jdbcd/do-commands field-position-table)
     (apply jdbcd/do-commands field-gene-table))
   (migrate))

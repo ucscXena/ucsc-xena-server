@@ -182,7 +182,7 @@
 ; XXX wrap the db return values in h2.clj, so we don't
 ; have to do these conversions.
 (defn fetch-samples-for-dataset [db dataset]
-  (seq (pfc/to-htfc (:samples (first (cdb/run-query db (samples-for-dataset dataset)))))))
+  (seq (:samples (first (cdb/run-query db (samples-for-dataset dataset))))))
 
 ; XXX Should consider making the API polymorphic, to deal with this.
 (defn encode-samples [samples]

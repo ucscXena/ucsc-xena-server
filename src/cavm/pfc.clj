@@ -5,7 +5,6 @@
   (:import [java.util.concurrent ArrayBlockingQueue])
   (:import [java.nio ByteBufferAsIntBufferL ByteBuffer])
   (:import [java.io ByteArrayOutputStream])
-  (:import [org.h2.jdbc JdbcBlob])
   (:import [cavm Huffman HTFC HFC])
   (:require [cavm.huffman :as huffman]))
 
@@ -334,16 +333,6 @@
      :bin-dict (huffman/huff-tree buff32 buff8 bin-dict-offset)
      :jhuff jhuff}))
 
-(defn unwrap-blob [^JdbcBlob blob]
-  (let [len (.length blob)]
-    (.getBytes blob 0 len)))
-
-(defn to-htfc [d]
-  (cond
-    (.isArray (class d)) (HTFC. d)
-    (instance? JdbcBlob d) (HTFC. (unwrap-blob d))
-    :else d))
-
 ; use clojure decompress methods to return a seq
 ; deprecated
 (defn dict-seq [dict]
@@ -369,10 +358,10 @@
 (defn merge-dicts [dict & dicts]
   (if (seq dicts)
     (compress-htfc-sorted
-      (reduce #(merge-sorted %1 (to-htfc %2))
-              (to-htfc dict)
-              dicts)
-      256)
+       (reduce #(merge-sorted %1 %2)
+               dict
+               dicts)
+       256)
     dict))
 ;
 ;

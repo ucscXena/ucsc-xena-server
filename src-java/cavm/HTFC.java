@@ -113,6 +113,10 @@ public class HTFC implements Iterable<String> {
 	    return buff8.array();
 	}
 
+	static public HTFC getHTFC(byte [] buff) {
+	    return new HTFC(buff);
+	}
+
 	public class BIterator {
 		int index = 0;
 		int binIndex = 0;
