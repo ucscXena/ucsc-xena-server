@@ -10,7 +10,7 @@
 (set-current-implementation :vectorz)
 
 (defn union [ & dicts ]
-  (apply pfc/merge-dicts dicts))
+  (apply pfc/union dicts))
 
 (defn- meannan1d [m]
   (let [NaN Double/NaN

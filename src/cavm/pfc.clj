@@ -121,7 +121,7 @@
 ; [concatenated bins]
 
 ; Is it worth trying to minimize byte copying?
-(defn get-bytes [method this & args]
+(defn get-bytes-baos [method this & args]
     (let [out (java.io.ByteArrayOutputStream. 1000)]
         (apply method this out args)
         (.toByteArray out)))
@@ -168,10 +168,10 @@
 
         ht (huffman/make-hu-tucker (map #(:header %) front-coded))
         ; XXX Does get-bytes make sense? Why do we need to do this?
-        compressed-headers (map #(get-bytes huffman/write ht (:header %))
+        compressed-headers (map #(get-bytes-baos huffman/write ht (:header %))
                                 front-coded)
         huff (huffman/make-huffman (r/mapcat :inner front-coded))
-        compressed (r/foldcat (r/map #(get-bytes huffman/write huff (:inner %))
+        compressed (r/foldcat (r/map #(get-bytes-baos huffman/write huff (:inner %))
                                      front-coded))
         sizes (map #(+ (count %1) (count %2)) compressed-headers compressed)
         offsets (reductions + 0 (take (dec (count sizes)) sizes))]
@@ -202,20 +202,22 @@
         (.write out 0)))
     (.toByteArray out)))
 
-(defn compress-hfc [strings bin-size]
+(defn compress-hfc [ordered]
   (let [out (java.io.ByteArrayOutputStream. 1000)
-        ordered (sort strings)
-        bins (partition-all-v bin-size (into [] ordered))
+        bins (partition-all-v *bin-size* (into [] ordered))
         front-coded (r/foldcat (r/map front-code bins))
         huff (huffman/make-huffman (r/mapcat identity front-coded))
-        compressed (r/foldcat (r/map #(get-bytes huffman/write huff %) front-coded))
+        compressed (r/foldcat (r/map #(get-bytes-baos huffman/write huff %) front-coded))
         sizes (map count compressed)
         offsets (reductions + 0 (take (dec (count sizes)) sizes))]
     (HFC. (serialize-hfc {:length (count ordered)
-                          :bin-size bin-size
+                          :bin-size *bin-size*
                           :dict huff
                           :offsets offsets
                           :bins compressed}))))
+
+(defn compress-hfc-sorted [strings]
+  (compress-hfc (sort strings)))
 
 (defn index-of [^bytes arr start v]
   (loop [i start]
@@ -341,10 +343,6 @@
   (mapcat #(uncompress-bin-htfc dict %)
           (range (:bin-count dict))))
 
-;
-; computing union
-;
-
 (defn merge-sorted [a b]
   (if-let [n (first a)]
     (if-let [m (first b)]
@@ -356,14 +354,41 @@
       a)
     b))
 
-; XXX put bin size somewhere
-(defn merge-dicts [dict & dicts]
-  (if (seq dicts)
-    (compress-htfc-sorted
-       (reduce #(merge-sorted %1 %2)
-               dict
-               dicts))
-    dict))
+(defn merge-dicts [this others ctor]
+  (if (seq others)
+    (ctor
+      (reduce #(merge-sorted %1 %2)
+              this
+              others))
+    this))
+
+(defprotocol CompDict
+  "Compressed dictionary"
+  (get-bytes [this] "Get a byte[] of compressed data")
+  (join [this other] "Return indices of 'other' that appear in 'this'")
+  (get-union [this others] "Return the union of this and other dictionaries"))
+
+(extend-protocol CompDict
+  HTFC
+  (get-bytes [this] (.getBytes this))
+  (join [this other] (HTFC/join this other))
+  (get-union [this others] (merge-dicts this others compress-htfc-sorted))
+  HFC
+  (get-bytes [this] (.getBytes this))
+  (join [this other] (HFC/join this other))
+  (get-union [this others] (merge-dicts this others compress-hfc-sorted)))
+
+(defn union [dict & dicts]
+  (get-union dict dicts))
+
+(def htfc
+  {:compress compress-htfc
+   :compress-sorted compress-htfc-sorted})
+
+(def hfc
+  {:compress compress-hfc
+   :compress-sorted compress-hfc-sorted})
+
 ;
 ;
 ;
@@ -405,7 +430,7 @@
   ; 2.1s merge
   (let [htfc-a (compress-htfc strings-a)
         htfc-b (compress-htfc strings-b)
-        htfc-c (time (merge-dicts htfc-a htfc-b))]
+        htfc-c (time (union htfc-a htfc-b))]
     (count (seq (HTFC. htfc-c))))
 
   (require '[cavm.h2 :refer [sampleID-codes]])

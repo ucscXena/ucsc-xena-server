@@ -25,7 +25,6 @@
   (:require [cavm.sqleval :refer [evaluate]])
   (:require [clojure.data.int-map :as i])
   (:require [cavm.pfc :as pfc])
-  (:import cavm.HTFC)
   (:import cavm.H2)
   (:import [org.h2.jdbc JdbcBatchUpdateException])
   (:import [com.mchange.v2.c3p0 ComboPooledDataSource]))
@@ -43,6 +42,8 @@
 ;
 
 (def ^:dynamic ^:private *tmp-dir* (System/getProperty "java.io.tmpdir"))
+
+(def ^:dynamic *dict-impl* pfc/htfc)
 
 (defn set-tmp-dir! [dir]
   (alter-var-root #'*tmp-dir* (constantly dir)))
@@ -517,7 +518,7 @@
 
 (defmethod load-field :sample-id [dataset-id field-id field feature-seq]
   (let [samples (:order (force (:feature field)))
-        blob (.getBytes (pfc/compress-htfc-sorted samples))]
+        blob (pfc/get-bytes ((*dict-impl* :compress-sorted) samples))]
     (concat (load-probe-field dataset-id field-id field)
            [[:insert-sample-id {:field_id field-id :samples blob}]])))
 
@@ -988,7 +989,7 @@
         ; 'order' is index in ds-samples for each value in 'sample'.
         ; Note that this index will be the same as the code value
         ; for the sampleID column, since we assign them in sorted order.
-        order (HTFC/join samples ds-samples)
+        order (pfc/join samples ds-samples)
         bin-map (bin-mappings dataset-id "sampleID" order)]
 
     (-> (select-scores-full dataset-id columns (keys bin-map))

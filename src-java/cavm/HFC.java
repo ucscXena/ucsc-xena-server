@@ -109,6 +109,10 @@ public class HFC implements Iterable<String> {
 		index = 0;
 	}
 
+	public byte[] getBytes() {
+	    return buff8.array();
+	}
+
 	public static byte[] copyToNull(byte[] in) {
 		int len = 0;
 		while (in[len] != 0) {

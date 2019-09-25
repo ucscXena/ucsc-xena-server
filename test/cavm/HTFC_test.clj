@@ -50,13 +50,14 @@
 
 (defn htfc [strings bin-size]
   (with-bindings {#'cavm.pfc/*bin-size* bin-size}
-    (pfc/compress-htfc strings )))
+    (pfc/compress-htfc strings)))
 
 (defn htfc-join [a b]
   (HTFC/join a b))
 
 (defn hfc [strings bin-size]
-  (pfc/compress-hfc strings bin-size))
+  (with-bindings {#'cavm.pfc/*bin-size* bin-size}
+    (pfc/compress-hfc strings)))
 
 (defn hfc-join [a b]
   (HFC/join a b))

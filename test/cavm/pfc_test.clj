@@ -88,7 +88,7 @@
   (with-bindings {#'cavm.pfc/*bin-size* bin-size} (pfc/compress-htfc strings)))
 
 (defn htfc-merge [a b]
-  (pfc/merge-dicts a b))
+  (pfc/union a b))
 
 (defn check-merge [ctor merger coll-a coll-b bin-size-1]
   (let [coll-a (sort coll-a)
