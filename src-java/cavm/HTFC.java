@@ -193,7 +193,7 @@ public class HTFC implements Iterable<String> {
 		return (lenb == i) ? 0 : -1;
 	}
 
-	// returns list of indicies of hb (or null) of values that appear in ha.
+	// returns list of indices of hb (or null) of values that appear in ha.
 	// Both are sorted, by definition.
 	public static ArrayList<Integer> join(HTFC ha, HTFC hb) {
 		ArrayList<Integer> out = new ArrayList<>(10000);
