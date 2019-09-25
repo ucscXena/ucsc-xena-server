@@ -517,7 +517,7 @@
 
 (defmethod load-field :sample-id [dataset-id field-id field feature-seq]
   (let [samples (:order (force (:feature field)))
-        blob (.getBytes (pfc/compress-htfc-sorted samples 256))]
+        blob (.getBytes (pfc/compress-htfc-sorted samples))]
     (concat (load-probe-field dataset-id field-id field)
            [[:insert-sample-id {:field_id field-id :samples blob}]])))
 

@@ -66,26 +66,26 @@
 (deftest basic-test-clj
   (testing "fixed set"
     (let [in ["one" "two" "three" "four" "five" "six"]
-          dict (pfc/compress-htfc in 5)
+          dict (with-bindings {#'cavm.pfc/*bin-size* 5} (pfc/compress-htfc in))
           out (seq dict)]
       (is (= (sort in) out))))
   (testing "fixed set 2"
     ; check handling of zero-length front-coding, caused by
     ; repeated string, in encode-bytes.
     (let [in ["one" "one" "two" "three" "four" "five" "six"]
-          dict (pfc/compress-htfc in 5)
+          dict (with-bindings {#'cavm.pfc/*bin-size* 5} (pfc/compress-htfc in))
           out (seq dict)]
       (is (= (sort in) out))))
   ; where to get a large test set w/o committing all this garbage?
   ; maybe compress it? Or fetch & cache? Or compress with htfc?
   (comment (testing "toil"
      (let [in (json/read-str (slurp "toil.json"))
-           dict (pfc/compress-htfc in 256)
+           dict (with-bindings {#'cavm.pfc/*bin-size* 256} (pfc/compress-htfc in))
            out (seq dict)]
        (is (= (sort in) out))))))
 
 (defn htfc [strings bin-size]
-  (pfc/compress-htfc strings bin-size))
+  (with-bindings {#'cavm.pfc/*bin-size* bin-size} (pfc/compress-htfc strings)))
 
 (defn htfc-merge [a b]
   (pfc/merge-dicts a b))

@@ -49,7 +49,8 @@
    (distinct (concat only-db both))])
 
 (defn htfc [strings bin-size]
-  (pfc/compress-htfc strings bin-size))
+  (with-bindings {#'cavm.pfc/*bin-size* bin-size}
+    (pfc/compress-htfc strings )))
 
 (defn htfc-join [a b]
   (HTFC/join a b))

@@ -48,6 +48,8 @@
         (< i 0x200000) (vbyte2 acc i)
         :else (vbyte3 acc i)))
 
+(def ^:dynamic *bin-size* 256)
+
 ;
 ; front-coding
 ;
@@ -97,9 +99,9 @@
     {:header (into-array Byte/TYPE (concat (.getBytes ^String (first strings)) [0])) ; XXX eliminate concat. use implicit zero?
      :inner (front-code-rest strings)})
 
-(defn compress-pfc [strings bin-size]
+(defn compress-pfc [strings]
     (let [ordered (sort strings)
-          bins (partition-all bin-size ordered)
+          bins (partition-all *bin-size* ordered)
           compressed (map compress-bin bins)
           sizes (map #(apply + (map count %)) compressed)]
         [sizes (into-array Byte/TYPE (apply concat (apply concat compressed)))]))
@@ -158,9 +160,9 @@
     (.toByteArray out)))
 
 (require '[clojure.core.reducers :as r])
-(defn compress-htfc-sorted ^HTFC [ordered bin-size]
+(defn compress-htfc-sorted ^HTFC [ordered]
   (let [out (java.io.ByteArrayOutputStream. 1000)
-        bins (partition-all-v bin-size (into [] ordered))
+        bins (partition-all-v *bin-size* (into [] ordered))
         ; we reduce this multiple times, so compute it as foldable.
         front-coded (r/foldcat (r/map compress-bin bins))
 
@@ -174,15 +176,15 @@
         sizes (map #(+ (count %1) (count %2)) compressed-headers compressed)
         offsets (reductions + 0 (take (dec (count sizes)) sizes))]
     (HTFC. (serialize-htfc {:length (count ordered)
-                            :bin-size bin-size
+                            :bin-size *bin-size*
                             :header-dict ht
                             :inner-dict huff
                             :offsets offsets
                             :headers compressed-headers
                             :inners compressed}))))
 
-(defn compress-htfc [strings bin-size]
-  (compress-htfc-sorted (sort strings) bin-size))
+(defn compress-htfc [strings]
+  (compress-htfc-sorted (sort strings)))
 
 (defn serialize-hfc [hfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
@@ -360,8 +362,7 @@
     (compress-htfc-sorted
        (reduce #(merge-sorted %1 %2)
                dict
-               dicts)
-       256)
+               dicts))
     dict))
 ;
 ;
@@ -383,7 +384,7 @@
 
   (time
     (def buff2
-      (compress-htfc strings 256)))
+      (compress-htfc strings)))
 
   (defn spy [msg x]
     (println msg x)
@@ -402,8 +403,8 @@
   (count strings)
 
   ; 2.1s merge
-  (let [htfc-a (compress-htfc strings-a 256)
-        htfc-b (compress-htfc strings-b 256)
+  (let [htfc-a (compress-htfc strings-a)
+        htfc-b (compress-htfc strings-b)
         htfc-c (time (merge-dicts htfc-a htfc-b))]
     (count (seq (HTFC. htfc-c))))
 
@@ -412,19 +413,19 @@
   ; 3.6-4s, at 256 bin size. size 16 through 8192: basically no change.
   ; 1.3s, osx
   (def sample-codes
-    (let [a (compress-htfc strings-a 256)
-            b (compress-htfc strings-b 256)]
+    (let [a (compress-htfc strings-a)
+            b (compress-htfc strings-b)]
       (time (sampleID-codes a b))))
 
   (import 'cavm.HTFC)
   ; 300ms
   (def sample-codes
-    (let [a (HTFC. (compress-htfc strings-a 256))
-          b (HTFC. (compress-htfc strings-b 256))]
+    (let [a (HTFC. (compress-htfc strings-a))
+          b (HTFC. (compress-htfc strings-b))]
       (time (HTFC/join a b))))
 
-  (let [a (compress-htfc strings-a 256)
-        b (compress-htfc strings-b 256)
+  (let [a (compress-htfc strings-a)
+        b (compress-htfc strings-b)
         ha (HTFC. a)
         hb (HTFC. b)
         hj (HTFC/join ha hb)
@@ -446,7 +447,7 @@
 
   (def a (HFC. (compress-hfc strings-a 258)))
   (take 10 a)
-  (let [a (compress-hfc strings-a 258)
+  (let [a (compress-hfc strings-a 256)
           b (compress-hfc strings-b 256)
           ha (HFC. a)
           hb (HFC. b)
@@ -456,7 +457,7 @@
 
   ; round trip hfc
   (let [strings strings
-        in (time (compress-hfc strings 256))
+        in (time (compress-hfc strings))
         out (time (into [] (uncompress-dict-hfc (hfc-offsets (doto (ByteBuffer/wrap in)
                                                        (.order java.nio.ByteOrder/LITTLE_ENDIAN))))))]
     (= (sort strings) out))
@@ -523,8 +524,6 @@
            (* 4 (count block-sizes))
            (apply + (map count headers)))]
     [total (float (/ total (count strings)))])
-
-  (time (compress-htfc strings 32))
 
   ; 1.3M 8,397,304 29%, at bin-size 100. At 32 it's 8.9M
   ;      orig is 28,988,248

@@ -186,7 +186,7 @@
 
 ; XXX Should consider making the API polymorphic, to deal with this.
 (defn encode-samples [samples]
-  (pfc/compress-htfc samples 256))
+  (pfc/compress-htfc samples))
 
 (defn check-matrix [db id tsv]
   (let [{:keys [probes samples matrix]} tsv
