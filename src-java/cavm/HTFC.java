@@ -96,16 +96,18 @@ public class HTFC implements Iterable<String> {
 		buff8 = ByteBuffer.wrap(buff);
 		buff8.order(ByteOrder.LITTLE_ENDIAN);
 		buff32 = buff8.asIntBuffer();
-		length = buff32.get(0);
-		binSize = buff32.get(1);
-		binDictOffset = 2 + htDictLen(2); // 32
+		// get(0) is the type id
+		length = buff32.get(1);
+		binSize = buff32.get(2);
+		int dictOffset = 3; // id, length, binSize
+		binDictOffset = dictOffset + htDictLen(dictOffset); // 32
 		int binCountOffset = binDictOffset + huffDictLen(binDictOffset); // 32
 		binCount = buff32.get(binCountOffset);
 		firstBin = binCountOffset + binCount + 1; // 32
 		binHuff = new Huffman();
 		binHuff.tree(buff32, buff8, binDictOffset);
 		headerHuff = new Huffman();
-		headerHuff.htTree(buff32, buff8, 8);
+		headerHuff.htTree(buff32, buff8, 4 * dictOffset);
 		binOffsets = binCountOffset + 1;
 	}
 

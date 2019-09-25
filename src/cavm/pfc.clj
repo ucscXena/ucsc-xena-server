@@ -142,6 +142,7 @@
 (defn serialize-htfc [htfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         {:keys [length bin-size header-dict inner-dict offsets headers inners]} htfc]
+    (.write out (byte-array [(int \h) (int \t) (int \f) (int \c)]) 0 4) ; 4 byte identifier
     (huffman/write-int length out)
     (huffman/write-int bin-size out)
     (huffman/write-dictionary header-dict out)
