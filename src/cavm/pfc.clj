@@ -147,7 +147,6 @@
     (huffman/write-int bin-size out)
     (huffman/write-dictionary header-dict out)
     (huffman/write-dictionary inner-dict out)
-    (huffman/write-int (count offsets) out)
     (doseq [s offsets]
       (huffman/write-int s out))
     (doseq [[header inner]  (map #(-> [%1 %2])

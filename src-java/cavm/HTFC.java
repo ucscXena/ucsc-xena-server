@@ -102,13 +102,13 @@ public class HTFC implements Iterable<String> {
 		int dictOffset = 3; // id, length, binSize
 		binDictOffset = dictOffset + htDictLen(dictOffset); // 32
 		int binCountOffset = binDictOffset + huffDictLen(binDictOffset); // 32
-		binCount = buff32.get(binCountOffset);
-		firstBin = binCountOffset + binCount + 1; // 32
+		binCount = (length + binSize - 1) / binSize;
+		firstBin = binCountOffset + binCount; // 32
 		binHuff = new Huffman();
 		binHuff.tree(buff32, buff8, binDictOffset);
 		headerHuff = new Huffman();
 		headerHuff.htTree(buff32, buff8, 4 * dictOffset);
-		binOffsets = binCountOffset + 1;
+		binOffsets = binCountOffset;
 	}
 
 	public byte[] getBytes() {
