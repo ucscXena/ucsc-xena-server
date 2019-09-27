@@ -1,6 +1,7 @@
 (ns cavm.views.datasets
   (:use [clojure.core.matrix])
   (:require [cavm.db :as cdb])
+  (:require cavm.file)
   (:require [cavm.query.expression :as expr])
   (:require [cavm.query.functions :as f])
   (:require [ring.util.codec :as codec])
@@ -126,8 +127,8 @@
   (POST ["/upload/"] [file append :as req]
         (let [{loader :loader docroot :docroot ip :remote-addr} req]
           (upload-files ip loader docroot file append)))
-  (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
-       (let [resp (response/file-response dataset {:root docroot :index-files? false})]
+  (GET ["/download/:dataset" :dataset #".+"] [dataset :as req]
+       (let [resp (cavm.file/file-response req dataset {:root (:docroot req) :index-files? false})]
          (if (re-find #"\.gz$" dataset)
            ; set Content-Encoding to coerce wrap-gzip to pass this w/o further compression.
            ; Otherwise .gz files are gzipped twice.
