@@ -13,8 +13,7 @@
   (:require [clojure.test.check :as tc])
   (:require [clojure.test.check.generators :as gen])
   (:require [clojure.test.check.clojure-test :as tcct :refer [defspec]])
-  (:require [clojure.test.check.properties :as prop])
-  (:import [cavm HTFC]))
+  (:require [clojure.test.check.properties :as prop]))
 
 (def ^:dynamic *verbose* false)
 
@@ -186,7 +185,7 @@
 
 ; XXX Should consider making the API polymorphic, to deal with this.
 (defn encode-samples [samples]
-  (pfc/compress-htfc samples))
+  ((h2/*dict-impl* :compress) samples))
 
 (defn check-matrix [db id tsv]
   (let [{:keys [probes samples matrix]} tsv
