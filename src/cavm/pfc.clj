@@ -202,7 +202,7 @@
         (.write out 0)))
     (.toByteArray out)))
 
-(defn compress-hfc [ordered]
+(defn compress-hfc-sorted [ordered]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         bins (partition-all-v *bin-size* (into [] ordered))
         front-coded (r/foldcat (r/map front-code bins))
@@ -216,8 +216,8 @@
                           :offsets offsets
                           :bins compressed}))))
 
-(defn compress-hfc-sorted [strings]
-  (compress-hfc (sort strings)))
+(defn compress-hfc [strings]
+  (compress-hfc-sorted (sort strings)))
 
 (defn index-of [^bytes arr start v]
   (loop [i start]
