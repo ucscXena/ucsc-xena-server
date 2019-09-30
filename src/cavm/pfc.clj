@@ -189,10 +189,10 @@
 (defn serialize-hfc [hfc]
   (let [out (java.io.ByteArrayOutputStream. 1000)
         {:keys [length bin-size dict offsets bins]} hfc]
+    (.write out (byte-array [(int \h) (int \f) (int \c) (int 0)]) 0 4) ; 4 byte identifier
     (huffman/write-int length out)
     (huffman/write-int bin-size out)
     (huffman/write-dictionary dict out)
-    (huffman/write-int (count offsets) out)
     (doseq [s offsets]
       (huffman/write-int s out))
     (doseq [bin bins]

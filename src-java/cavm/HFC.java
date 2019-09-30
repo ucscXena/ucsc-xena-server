@@ -69,14 +69,12 @@ public class HFC implements Iterable<String> {
 	int binSize;
 	int binDictOffset;
 	int binOffsets;
-	int binCount; // drop this?
+	int binCount;
 	int firstBin;
 	Huffman binHuff;
 	Huffman headerHuff;
 
 	Inner inner;
-	int index;
-	int binIndex;
 
 	// using (x + n - 1) / n as integer ceil
 	public int huffDictLen(int offset32) {
@@ -95,18 +93,16 @@ public class HFC implements Iterable<String> {
 		buff8 = ByteBuffer.wrap(buff);
 		buff8.order(ByteOrder.LITTLE_ENDIAN);
 		buff32 = buff8.asIntBuffer();
-		length = buff32.get(0);
-		binSize = buff32.get(1);
-		binDictOffset = 2; // 32
-		int binCountOffset = binDictOffset + huffDictLen(binDictOffset); // 32
-		binCount = buff32.get(binCountOffset);
-		firstBin = binCountOffset + binCount + 1; // 32
+		// get(0) is the type id
+		length = buff32.get(1);
+		binSize = buff32.get(2);
+		binDictOffset = 3; // 32
+		binOffsets = binDictOffset + huffDictLen(binDictOffset); // 32
+		binCount = (length + binSize - 1) / binSize;
+		firstBin = binOffsets + binCount; // 32
 		binHuff = new Huffman();
 		binHuff.tree(buff32, buff8, binDictOffset);
-		binOffsets = binCountOffset + 1;
 
-		binIndex = 0;
-		index = 0;
 	}
 
 	public byte[] getBytes() {
