@@ -10,8 +10,9 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.lang.Iterable;
 import java.util.Iterator;
+import cavm.GetBytes;
 
-public class HTFC implements Iterable<String> {
+public class HTFC implements Iterable<String>, GetBytes {
 
 	public static class Buffer {
 		public int length;
