@@ -43,7 +43,7 @@
 
 (def ^:dynamic ^:private *tmp-dir* (System/getProperty "java.io.tmpdir"))
 
-(def ^:dynamic *dict-impl* pfc/htfc)
+(def ^:dynamic *dict-impl* pfc/hfc)
 
 (defn set-tmp-dir! [dir]
   (alter-var-root #'*tmp-dir* (constantly dir)))
