@@ -1,6 +1,6 @@
 (ns cavm.edn
   (:require [cavm.pfc :as pfc])
-  (:import [cavm HTFC]))
+  (:import [cavm HTFC HFC]))
 
 ;
 ; Assume that jdbc blobs are htfc & allow printing.
@@ -15,3 +15,5 @@
 (defmethod clojure.core/print-method HTFC [this writer]
   (clojure.core/print-method (seq this) writer))
 
+(defmethod clojure.core/print-method HFC [this writer]
+  (clojure.core/print-method (seq this) writer))
