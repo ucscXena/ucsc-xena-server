@@ -214,7 +214,7 @@ public class HFC implements Iterable<String> {
 				break;
 			}
 			if (bb.length < 0) {
-				out.add(null);
+				out.add(-1);
 				ia.next(ba);
 				continue;
 			}
@@ -225,7 +225,7 @@ public class HFC implements Iterable<String> {
 				ib.next(bb);
 				i += 1;
 			} else if (d < 0) {
-				out.add(null);
+				out.add(-1);
 				ia.next(ba);
 			} else {
 				ib.next(bb);
