@@ -127,17 +127,18 @@
         (let [{loader :loader docroot :docroot ip :remote-addr} req]
           (upload-files ip loader docroot file append)))
   (GET ["/download/:dataset" :dataset #".+"] [dataset :as {docroot :docroot}]
-       (let [resp (-> (response/file-response dataset {:root docroot :index-files? false})
-                      ; "Vary: origin" is required so chrome will not cache headers
-                      ; during file download (no "origin" header), which otherwise will
-                      ; cause CORS failures later when we do a HEAD request from
-                      ; datapages.
-                      (assoc-in [:headers "Vary"] "origin"))]
-         (if (re-find #"\.gz$" dataset)
-           ; set Content-Encoding to coerce wrap-gzip to pass this w/o further compression.
-           ; Otherwise .gz files are gzipped twice.
-           (assoc-in resp [:headers "Content-Encoding"] "identity")
-           resp)))
+       (let [resp (response/file-response dataset {:root docroot :index-files? false})]
+         (when resp
+           ; "Vary: origin" is required so chrome will not cache headers
+           ; during file download (no "origin" header), which otherwise will
+           ; cause CORS failures later when we do a HEAD request from
+           ; datapages.
+           (let [resp (assoc-in resp [:headers "Vary"] "origin")]
+             (if (re-find #"\.gz$" dataset)
+               ; set Content-Encoding to coerce wrap-gzip to pass this w/o further compression.
+               ; Otherwise .gz files are gzipped twice.
+               (assoc-in resp [:headers "Content-Encoding"] "identity")
+               resp)))))
   (GET "/" [:as req] (response/redirect
                        (str "https://xenabrowser.net/datapages/?hub="
                             (name (:scheme req)) "://"
