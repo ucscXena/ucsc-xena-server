@@ -185,11 +185,11 @@
           e-tag    (str (.getName file) "_" length "_" last-modified)]
       (cond
        (cached? req e-tag last-modified)
-       (-> (ring-resp/response)
+       (-> (ring-resp/response nil)
            (status 304)
            (header "ETag" e-tag))
        (resume? req e-tag last-modified)
-       (-> (ring-resp/response)
+       (-> (ring-resp/response nil)
            (status 416))
        :else
        (let [range  (find-range req file e-tag)]
