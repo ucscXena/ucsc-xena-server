@@ -1,4 +1,4 @@
-(def version "0.25.0-SNAPSHOT")
+(def version "0.26.0-SNAPSHOT")
 
 (defproject cavm version
   :description "Cancer Analytics Virtual Machine"
