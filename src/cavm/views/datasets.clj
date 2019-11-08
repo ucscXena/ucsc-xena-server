@@ -64,59 +64,15 @@
 ; (json/json-str (matrix (double-array [1 Double/NaN 3])))
 ; (json/json-str (matrix [(double-array [1 Double/NaN 3])]))
 
-;
-; liberator handler for simple values
-;
 
-(defn- simple-as-response [this ctx]
-  (liberator.representation/as-response (str this) ctx))
-
-(extend Number liberator.representation/Representation
-  {:as-response simple-as-response})
-
+; Need this for binpack. Probably should be returning some sort of
+; writer type, instead of a byte array.
 (defn- bytes-as-response [this ctx]
   (liberator.representation/as-response (clojure.java.io/input-stream this) ctx))
 
 (extend (Class/forName "[B") liberator.representation/Representation
   {:as-response bytes-as-response})
 
-; XXX somehow liberator won't call the correct serialization method
-; on things that aren't map or vector. What is going on? Same problem
-; as simple types, but here we're assuming the return should be binpack.
-; See this:
-; https://groups.google.com/forum/#!searchin/clojure-liberator/from$3Ame%7Csort:date/clojure-liberator/TzhfJlml3Sw/GMbWEbRRxyEJ
-; There might be some way to dispatch to liberator serialization, instead of
-; repeating that here.
-(defn blob-as-response [this ctx]
-  (bytes-as-response (bj/write-buff this) ctx))
-
-; XXX pretty sure this isn't the imagined use of liberator as-response protocol.
-; I think the media dispatch is supposed to be in the handler.
-; see http://clojure-liberator.github.io/liberator/tutorial/conneg.html
-(defn htfc-as-response [this ctx]
-  (let [media-type (get-in ctx [:representation :media-type])]
-    (condp = media-type
-      "application/binpack-json" (bytes-as-response (bj/write-buff (.getBytes this)) ctx)
-      "application/json" (liberator.representation/as-response (json/write-str (seq this)) ctx))))
-
-
-(extend HTFC liberator.representation/Representation
-  {:as-response htfc-as-response})
-
-(extend (Class/forName "[F") liberator.representation/Representation
-  {:as-response blob-as-response})
-
-(extend (Class/forName "[D") liberator.representation/Representation
-  {:as-response blob-as-response})
-
-; (liberator.representation/as-response 1.0 {:representation {:media-type "application/json"}})
-; (liberator.representation/as-response 1.0 {:representation {:media-type "application/edn"}})
-; (liberator.representation/as-response 1 {:representation {:media-type "application/edn"}})
-; (liberator.representation/as-response (Integer. 1) {:representation {:media-type "application/edn"}})
-; (liberator.representation/as-response (Float. 1.0) {:representation {:media-type "application/edn"}})
-
-;
-;
 
 ; XXX map vec is being used to convert the [F so core.matrix can work on them.
 ; double-array might be a faster solution. Would really like core.matrix to
@@ -141,8 +97,13 @@
   :new? (fn [req] false)
   :respond-with-entity? (fn [req] true)
   :multiple-representations? (fn [req] false)
-  :handle-ok (fn [{{db :db headers :headers} :request}]
-               (profile :trace ::expression (expr/expression (parse-exp headers exp) f/functions (functions @db)))))
+  :handle-ok (fn [{{db :db headers :headers} :request {media-type :media-type} :representation :as req}]
+               (let [resp
+                     (profile :trace ::expression (expr/expression (parse-exp headers exp) f/functions (functions @db)))]
+                 (condp = media-type
+                   "application/json" (json/write-str resp)
+                   "application/edn" (pr-str resp)
+                   "application/binpack-json" (bj/write-buff resp)))))
 
 (defn- is-local? [ip]
   (or (= ip "0:0:0:0:0:0:0:1")
