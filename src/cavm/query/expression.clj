@@ -5,7 +5,8 @@
   (:require [clojure.edn :as edn])
   (:require [honeysql.types :as hsqltypes])
   (:require [clojure.tools.logging :refer [warn info]])
-  (:refer-clojure :exclude [eval letfn]))
+  (:refer-clojure :exclude [eval letfn])
+  (:import [cavm HFC HTFC]))
 
 (def ^:private eval)
 
@@ -43,7 +44,7 @@
       :else (apply func (map #(eval % scope) (rest node))))))
 
 (def ^:private as-is #{nil? keyword? string? #(contains? #{true false} %)
-                       #(when % (.isArray (class %)))})
+                       #(isa? (class %) HFC) #(isa? (class %) HTFC) #(when % (.isArray (class %)))})
 
 (defn- sqlcall-node [^honeysql.types.SqlCall node scope]
   (let [fname (.name node) args (.args node)]
