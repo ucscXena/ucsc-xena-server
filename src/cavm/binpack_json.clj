@@ -3,7 +3,7 @@
     :doc "json with packed binary objects"}
   cavm.binpack-json
   (:import [java.io PrintWriter StringWriter ByteArrayOutputStream])
-  (:import [cavm HTFC])
+  (:import [cavm HTFC HFC])
   (:require [cavm.pfc :refer [index-of]]) ; maybe move this method
   (:import [java.util Arrays])
   (:import [java.nio ByteBuffer ByteOrder])
@@ -95,6 +95,9 @@
 (defn- write-htfc [^HTFC m buff ^PrintWriter out i]
   (write-bin (.getBytes m) buff out i))
 
+(defn- write-hfc [^HFC m buff ^PrintWriter out i]
+  (write-bin (.getBytes m) buff out i))
+
 ; ugh. java buffer support sucks. Two copies on the way out
 ; due to weird buffer APIs.
 (defn- write-float-bin [^floats m buff ^PrintWriter out i]
@@ -119,6 +122,7 @@
 (extend (Class/forName "[F") BinpackWriter {:-write write-float-bin})
 (extend (Class/forName "[D") BinpackWriter {:-write write-double-bin})
 (extend HTFC BinpackWriter {:-write write-htfc})
+(extend HFC BinpackWriter {:-write write-hfc})
 
 (defn write-buff [x]
   (let [sw (StringWriter.)
@@ -137,6 +141,22 @@
 (defn align [p]
   (* 4 (quot (+ 3 p) 4)))
 
+(defn wrap [buff]
+  (cond
+    (and
+      (>= (alength buff) 4)
+      (= (aget buff 0) (int \h))
+      (= (aget buff 1) (int \t))
+      (= (aget buff 2) (int \f))
+      (= (aget buff 3) (int \c))) (HTFC. buff)
+    (and
+      (>= (alength buff) 4)
+      (= (aget buff 0) (int \h))
+      (= (aget buff 1) (int \f))
+      (= (aget buff 2) (int \c))
+      (= (aget buff 3) 0)) (HFC. buff)
+    :else nil))
+
 (defn parse [parser ^bytes buff]
   (let [len (alength buff)
         txt-len (index-of buff 0 0)
@@ -145,7 +165,7 @@
                (if (< in-p len)
                  (let [bin-len (read-int in-p buff)]
                    (recur (conj out
-                                (Arrays/copyOfRange buff ^long (+ in-p 4) ^long (+ in-p 4 bin-len)))
+                                (wrap (Arrays/copyOfRange buff ^long (+ in-p 4) ^long (+ in-p 4 bin-len))))
                           (+ in-p 4 (align bin-len))))
                  out))
         link (fn [x] (if (= (get x "$type") "ref")
