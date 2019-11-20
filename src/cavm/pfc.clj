@@ -209,7 +209,7 @@
         huff (huffman/make-huffman (r/mapcat identity front-coded))
         compressed (r/foldcat (r/map #(get-bytes-baos huffman/write huff %) front-coded))
         sizes (map count compressed)
-        offsets (reductions + 0 (take (dec (count sizes)) sizes))]
+        offsets (when (seq sizes) (reductions + 0 (take (dec (count sizes)) sizes)))]
     (HFC. (serialize-hfc {:length (count ordered)
                           :bin-size *bin-size*
                           :dict huff

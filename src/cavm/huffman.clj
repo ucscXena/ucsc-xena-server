@@ -48,18 +48,19 @@
 
 ; compute huffman tree from char freqs
 (defn- build-tree [freqs]
-  (let [c (count freqs)]
-    (if (= c 1) (zipmap [:symbol :priority] (first freqs))
-      (let [leaves (->> freqs
-                        (sort-by second)
-                        (map #(zipmap [:symbol :priority] %))
-                        (ArrayBlockingQueue. (count freqs) false))
-            nodes (ArrayBlockingQueue. (count freqs))]
-        (while (> (+ (.size leaves) (.size nodes)) 1)
-          (let [a (take-lowest leaves nodes) b (take-lowest leaves nodes)
-                new-node {:priority (+ (:priority a) (:priority b)) :left a :right b}]
-            (.add nodes new-node)))
-        (.take nodes)))))
+  (when (seq freqs)
+    (let [c (count freqs)]
+      (if (= c 1) (zipmap [:symbol :priority] (first freqs))
+        (let [leaves (->> freqs
+                          (sort-by second)
+                          (map #(zipmap [:symbol :priority] %))
+                          (ArrayBlockingQueue. (count freqs) false))
+              nodes (ArrayBlockingQueue. (count freqs))]
+          (while (> (+ (.size leaves) (.size nodes)) 1)
+            (let [a (take-lowest leaves nodes) b (take-lowest leaves nodes)
+                  new-node {:priority (+ (:priority a) (:priority b)) :left a :right b}]
+              (.add nodes new-node)))
+          (.take nodes))))))
 
 ;
 ; hu-tucker
@@ -140,7 +141,7 @@
 
 ; group huffman tree leaves by length from root
 (defn- find-depth
-    ([tree] (find-depth [tree] 0 []))
+    ([tree] (find-depth (when tree [tree]) 0 []))
     ([nodes depth acc]
      (if (seq nodes)
          (let [{terminals true inner false} (group-by #(contains? % :symbol) nodes)
