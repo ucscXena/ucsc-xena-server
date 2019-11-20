@@ -9,8 +9,12 @@
 
 (set-current-implementation :vectorz)
 
+(def empty-hfc (pfc/compress-hfc []))
+
 (defn union [ & dicts ]
-  (apply pfc/union dicts))
+  (if (seq dicts)
+    (apply pfc/union dicts)
+    empty-hfc))
 
 (defn- meannan1d [m]
   (let [NaN Double/NaN
