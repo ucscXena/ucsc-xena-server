@@ -16,6 +16,7 @@ Download from https://genome-cancer.ucsc.edu/download/public/get-xena/index.html
 Double-click, or select from the application menu. This will start UCSC Xena, and present a UI for importing local data files.
 
 ### Jar (server install)
+Please use JRE 8.
 
     $ java -jar cavm-0.10.0-standalone.jar [args]
 
