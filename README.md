@@ -38,6 +38,12 @@ example files linked in the help file (click "Help" in the UCSC Xena
 Client interface and scroll down to "Installing a local Xena Hub to view
 your data from your laptop").
 
+## Build jar from source
+
+lein needs to be installed: https://leiningen.org/
+
+run "lein uberjar"
+
 ## Acknowledgements
 
 UCSC Xena uses the YourKit profiler.
