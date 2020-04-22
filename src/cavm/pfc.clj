@@ -376,7 +376,11 @@
   HFC
   (get-bytes [this] (.getBytes this))
   (join [this other] (HFC/join this other))
-  (get-union [this others] (merge-dicts this others compress-hfc-sorted)))
+  (get-union [this others] (merge-dicts this others compress-hfc-sorted))
+  clojure.lang.Seqable
+  (get-bytes [this] (.getBytes (compress-hfc this)))
+  (join [this other] (HFC/join (compress-hfc this) other))
+  (get-union [this others] (merge-dicts (compress-hfc this) others compress-hfc-sorted)))
 
 (defn union [dict & dicts]
   (get-union dict dicts))
