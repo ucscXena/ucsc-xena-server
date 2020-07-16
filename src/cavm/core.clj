@@ -6,7 +6,7 @@
   (:require [cavm.h2 :as h2])
   (:require [cavm.auth :as auth])
   (:require [clojure.java.io :as io])
-  (:require [ring.adapter.jetty :refer [run-jetty]])
+  (:require [ring.adapter.jetty9 :refer [run-jetty]])
   (:require [clojure.data.json :as json])
   (:require [me.raynes.fs :as fs])
   (:require [clojure.tools.cli :refer [parse-opts]])
@@ -227,15 +227,16 @@
   (delay (max 80 (* 2 (.availableProcessors (Runtime/getRuntime))))))
 
 (defn- serv [app host port {:keys [keystore password]} ws-config]
-  (ring.adapter.jetty/run-jetty app {:configurator ws-config
-                                     :host host
-                                     :port port
-                                     :ssl? true
-                                     :max-threads @max-threads
-                                     :ssl-port (+ port 1)
-                                     :keystore keystore
-                                     :key-password password
-                                     :join? false}))
+  (run-jetty app {:websockets ws-config
+                  :allow-null-path-info true
+                  :host host
+                  :port port
+                  :ssl? true
+                  :max-threads @max-threads
+                  :ssl-port (+ port 1)
+                  :keystore keystore
+                  :key-password password
+                  :join? false}))
 
 ; XXX call clean-sources somewhere?? Should be automated.
 (comment (defn- loadfiles [load-fn root args]
@@ -496,5 +497,7 @@
     (.start server)
     )
 
-  (.stop server)
-  (cavm.db/close testdb))
+  (do (.stop server)
+      (events/jetty-config-dispose)
+      (cavm.db/close @testdb))
+  )

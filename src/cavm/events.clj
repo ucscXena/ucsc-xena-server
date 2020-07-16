@@ -1,28 +1,30 @@
 (ns cavm.events
   (:require [cavm.json :as json])
-  (:require [com.keminglabs.jetty7-websockets-async.core :refer [configurator]]
-            [clojure.core.async :refer [chan go >! <! >!! thread tap untap mult]]
-            [ring.adapter.jetty :refer [run-jetty]]))
+  (:require [clojure.tools.logging :as log :refer [warn]])
+  (:require [ring.adapter.jetty9 :refer [send! close!]]))
 
-(defn handle-client [notify {in :in}]
-  (let [ev (chan)]
-    (tap notify ev)
-    (go (loop []
-          (let [msg (<! ev)]
-            (if (>! in (json/write-str {:queue msg}))
-              (recur)
-              (untap notify ev)))))))
+(def listeners (atom #{}))
 
-(defn listen [queue notify c]
-  (go (loop []
-        (let [ws-req (<! c)]
-          (>! (:in ws-req) (json/write-str {:queue @queue}))
-          (handle-client notify ws-req)
-          (recur)))))
+(defn ws-handler [queue]
+  {:on-connect (fn [ws]
+                 (swap! listeners conj ws)
+                 (send! ws (json/write-str {:queue @queue})))
+   :on-error (fn [ws e]
+               (swap! listeners disj ws))
+   :on-close (fn [ws status-code reason]
+               (swap! listeners disj ws))
+   :on-text (fn [ws text-message]
+              (warn "Unexpected text message"))
+   :on-bytes (fn [ws bytes offset len]
+              (warn "Unexpected text message"))})
 
 (defn jetty-config [queue]
-  (let [c (chan)
-        n (chan)]
-    (add-watch queue :notify (fn [_ _ _ curr] (>!! n curr)))
-    (thread (listen queue (mult n) c))
-    (configurator c {:path "/load-events"})))
+  (add-watch queue :notify (fn [_ _ _ curr]
+                             (doseq [l @listeners]
+                               (send! l (json/write-str {:queue curr})))))
+  {"/load-events" (ws-handler queue)})
+
+(defn jetty-config-dispose [queue]
+  (doseq [l @listeners]
+    (close! l))
+  (reset! listeners #{}))

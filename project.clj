@@ -34,8 +34,7 @@
                  [hiccup "1.0.5"]
                  [ring/ring-core "1.2.2"]
                  [ring/ring-devel "1.2.2"] ; XXX only in dev
-                 [ring/ring-jetty-adapter "1.2.2"]
-                 [com.keminglabs/jetty7-websockets-async  "0.1.0"]
+                 [info.sunng/ring-jetty9-adapter "0.13.0"]
                  [amalloy/ring-gzip-middleware "0.1.3"]
                  [me.raynes/fs "1.4.2"]
                  [digest "1.4.3"]
