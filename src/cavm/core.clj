@@ -43,6 +43,7 @@
   (:import [com.google.api.client.json.gson GsonFactory])
   (:import [com.google.api.client.http.javanet NetHttpTransport])
   (:import [com.google.api.client.googleapis.auth.oauth2 GoogleIdToken GoogleIdToken$Payload GoogleIdTokenVerifier GoogleIdTokenVerifier$Builder])
+  (:import [org.eclipse.jetty.server HttpConnectionFactory])
   (:gen-class))
 
 (defn- in-data-path [root path]
@@ -225,8 +226,17 @@
 (def max-threads
   (delay (max 80 (* 2 (.availableProcessors (Runtime/getRuntime))))))
 
+(defn configurator [server]
+  ; disable Server header.
+  (doseq [conn (filter #(instance? HttpConnectionFactory %)
+                       (mapcat
+                         #(.getConnectionFactories %)
+                         (.getConnectors server)))]
+    (.setSendServerVersion (.getHttpConfiguration conn) false)))
+
 (defn- serv [app host port {:keys [keystore password]} ws-config]
-  (run-jetty app {:websockets ws-config
+  (run-jetty app {:configurator configurator
+                  :websockets ws-config
                   :allow-null-path-info true
                   :host host
                   :port port
