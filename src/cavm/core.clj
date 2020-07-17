@@ -122,9 +122,11 @@
             (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To"))
         response))))
 
-(defn- add-version-header [handler]
+(defn- add-headers [handler]
   (fn [request]
-    (assoc-in (handler request) [:headers "Xena-API"] version)))
+    (-> (handler request)
+        (assoc-in [:headers "Xena-API"] version)
+        (update-in [:headers "Vary"] #(if % (s/join ", " [% "Origin"]) "Origin")))))
 
 (defn- attr-middleware [app k v]
   (fn [req]
@@ -212,7 +214,7 @@
       (attr-middleware :db db)
       (wrap-access-control allow-hosts)
       (wrap-reload) ; XXX only in dev? Does this slow things down?
-      (add-version-header)))
+      (add-headers)))
 
 ; jetty default thread use is availableProcessors/4 acceptor threads,
 ; and selector threads equal to acceptor threads. For https + http, that
