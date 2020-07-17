@@ -57,11 +57,8 @@
 ;
 ; web services
 
-; XXX might want to disable http from xenabrowser.net, but currently we don't have
-; certs on dev & beta.
 (def trusted-hosts
-  ["https?://([-_A-Za-z0-9]+\\.)?xenabrowser\\.net(:[0-9]+)?"
-   "https://genome-cancer\\.ucsc\\.edu"])
+  ["https://([-_A-Za-z0-9]+\\.)?xenabrowser\\.net(:[0-9]+)?"])
 
 (def local-trusted-host "http://localhost(:[0-9]+)?")
 
