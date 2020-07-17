@@ -33,6 +33,7 @@
                  [compojure "1.1.3"]
                  [hiccup "1.0.5"]
                  [ring/ring-core "1.2.2"]
+                 [ring/ring-servlet "1.2.2"]
                  [ring/ring-devel "1.2.2"] ; XXX only in dev
                  [info.sunng/ring-jetty9-adapter "0.13.0"]
                  [amalloy/ring-gzip-middleware "0.1.3"]
