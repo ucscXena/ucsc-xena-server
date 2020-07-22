@@ -127,6 +127,7 @@
   (fn [request]
     (-> (handler request)
         (assoc-in [:headers "Xena-API"] version)
+        (assoc-in [:headers "X-Content-Type-Options"] "nosniff")
         (update-in [:headers "Vary"] #(if % (s/join ", " [% "Origin"]) "Origin")))))
 
 (defn- attr-middleware [app k v]
