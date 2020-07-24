@@ -92,7 +92,7 @@
                        ["schemaspy"]]}
   :jar-exclusions     [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs"]
   :uberjar-exclusions [#"schemaspy.clj" #"(?:^|/)\..*\.swp$" #"(?:^|/)\.nfs" #"\.(clj|java)$"]
-  :javac-options ["-target" "1.7" "-source" "1.7"]
+  :javac-options ["-target" "1.8" "-source" "1.8"]
   :aot [cavm.core cavm.conn-customizer]
   :global-vars {*warn-on-reflection* true}
   :plugins [[lein-sphinx "1.0.1"]
