@@ -52,6 +52,6 @@ innovative and intelligent tools for profiling Java and .NET applications.
 
 ## License
 
-Copyright © 2015 The Regents of the University of California
+Copyright © 2015-2021 The Regents of the University of California
 
 Distributed under the Apache License, version 2.0.
