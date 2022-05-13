@@ -120,7 +120,7 @@
             (assoc-in [:headers "Access-Control-Allow-Origin"] origin)
             (assoc-in [:headers "Access-Control-Expose-Headers"] "Location")
             (assoc-in [:headers "Access-Control-Allow-Credentials"] "true")
-            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To"))
+            (assoc-in [:headers "Access-Control-Allow-Headers"] "Cancer-Browser-Api, X-Redirect-To, Range, If-Range"))
         response))))
 
 (defn- add-headers [handler]

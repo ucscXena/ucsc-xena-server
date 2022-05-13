@@ -40,7 +40,8 @@
   (byte-range
     ^{:pre (and start end total)}
     [{:keys [start end total] :as this}]
-    (assoc this :length (inc (- end start))))
+    (let [max-end (min end (dec total))] ; clip end coord
+      (assoc this :end max-end :length (inc (- max-end start)))))
   java.io.File
   (byte-range [this]
     (let [length (.length this)]
@@ -187,7 +188,9 @@
        (cached? req e-tag last-modified)
        (-> (ring-resp/response nil)
            (status 304)
-           (header "ETag" e-tag))
+          ; etag handling is broken. Disable it.
+          ; (header "ETag" e-tag)
+           )
        (resume? req e-tag last-modified)
        (-> (ring-resp/response nil)
            (status 416))
@@ -195,7 +198,8 @@
        (let [range  (find-range req file e-tag)]
          (-> (range-response req file range)
              (header "Accept-Ranges" "bytes")
-             (header "ETag" e-tag)
+          ; etag handling is broken. Disable it.
+          ;   (header "ETag" e-tag)
              (date-header "Last-Modified" last-modified)))))))
 
 (defn file-request
