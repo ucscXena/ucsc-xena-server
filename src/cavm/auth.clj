@@ -11,6 +11,7 @@
   (:require hiccup.page)
   (:require crypto.equality)
   (:require crypto.random)
+  (:import [org.joda.time DateTime])
   (:import [com.google.api.client.auth.openidconnect IdTokenVerifier$Builder])
   (:import [com.google.api.client.json.gson GsonFactory])
   (:import [com.google.api.client.http.javanet NetHttpTransport])
@@ -19,14 +20,16 @@
 (def client-id)
 (def client-secret)
 
+(def epoch (DateTime. 0))
+
 (def google-openid-discovery-url "https://accounts.google.com/.well-known/openid-configuration")
 (def google-openid-discovery-document (delay (:body (client/get google-openid-discovery-url {:as :json}))))
 
 (defn valid-user-email? [user-email-whitelist email]
   (contains? user-email-whitelist email))
 
-(defn authenticated-user? [{{:keys [authenticated?]} :user}]
-  authenticated?)
+(defn authenticated-user? [{{:keys [authenticated? email]} :user} user-email-whitelist]
+  (and authenticated? (valid-user-email? user-email-whitelist email)))
 
 (defn google-authentication-request [{:keys [uri params session] :as request} endpoint-url]
   (let [state (or (:state session) (crypto.random/base64 60))
@@ -51,6 +54,7 @@
              [:p "You'll be redirected shortly to log in via Google. "
               [:a {:href location} "Otherwise please click here to log in."]]])
      :session (-> session
+                  (assoc-in [:user :authenticated?] false)
                   (assoc :redirect-to (or (response/get-header request "X-Redirect-To")
                                           {:uri uri :params params}))
                   (assoc :state state))}))
@@ -89,58 +93,76 @@
            [:h1 "Authentication failed!"]
            [:p content]])})
 
-(defn google-authentication-handler [{:keys [params session]}
+(defn google-authentication-handler [{:keys [params session headers]}
                                      user-email-whitelist
                                      server-address
                                      endpoint-url]
   (if (crypto.equality/eq? (:state session) (get params "state"))
-    (let [response (client/post
-                    (:token_endpoint @google-openid-discovery-document)
-                    {:form-params {:code (get params "code")
-                                   :client_id client-id
-                                   :client_secret client-secret
-                                   :redirect_uri endpoint-url
-                                   :grant_type "authorization_code"}
-                     :as :json})
+    (let [response (try (client/post
+                      (:token_endpoint @google-openid-discovery-document)
+                      {:throw-entire-message true
+                       :form-params {:code (get params "code")
+                                     :client_id client-id
+                                     :client_secret client-secret
+                                     :redirect_uri endpoint-url
+                                     :grant_type "authorization_code"}
+                       :as :json})
+                        (catch Exception e (warn e "google response")))
           ^GoogleIdToken$Payload payload (check-oauth-token (:id_token (:body response)))]
       (if payload
         (let [email (.get payload "email")]
           (if (valid-user-email? user-email-whitelist email)
             (do
               (info "Login:" email)
-              (-> (response/redirect
-                  (let [{:keys [redirect-to]} session]
-                    (if (string? redirect-to)
-                      redirect-to
-                      (let [{:keys [uri params]} redirect-to]
-                        (str server-address (subs uri 1)
-                             (and (seq params) (str "?" (client/generate-query-string params))))))))
-                 (assoc :session {:user {:authenticated? true
-                                         :email email}})))
+              (->
+                (if (= (headers "sec-fetch-mode") "cors")
+                  (response/response "login")
+                  (response/redirect
+                    (let [{:keys [redirect-to]} session]
+                      (if (string? redirect-to)
+                        redirect-to
+                        (let [{:keys [uri params]} redirect-to]
+                          (str server-address (subs uri 1)
+                               (and (seq params) (str "?" (client/generate-query-string params)))))))))
+                (assoc :session {:user {:authenticated? true
+                                        :email email}})))
             (login-failed-page (str "Invalid user email: " email "."))))
         (login-failed-page (str "Invalid Google ID token."))))
     (login-failed-page (str "Invalid state: " (get params "state") "."))))
 
-(defn logout-user [{:keys [user]} server-address]
+(defn logout-user [{:keys [user]} server-address is-cors]
   (info "Logout:" (:email user))
-  (-> (response/redirect server-address)
-      (assoc :session nil)))
+  (-> (if is-cors (response/response "logout") (response/redirect server-address))
+      (assoc :session-cookie-attrs {:expires epoch})))
 
-(defn wrap-google-authentication [handler server-address endpoint-query-string
+(defn logged-in [session user-email-whitelist]
+  (let [authenticated? (boolean (authenticated-user? session user-email-whitelist))]
+    (assoc (response/response (str authenticated?))
+           :session (assoc-in session [:user :authenticated?] authenticated?))))
+
+(defn wrap-google-authentication [handler endpoint-query-string
                                   user-email-whitelist configuration]
   (def client-id (:client-id configuration))
   (def client-secret (:client-secret configuration))
-  (let [endpoint-url (str server-address (subs endpoint-query-string 1))]
-    (fn [{:keys [params session] :as request}]
+  (fn [{:keys [params session headers server-name] :as request}]
+    (let [endpoint-url (str server-name (subs endpoint-query-string 1))]
+      ;(info "request cookie" (headers "cookie"))
+      ;(info "session for request" session)
+      ;(info "state in params" (get params "state"))
       (if (= (:uri request) endpoint-query-string)
-        (if (get params "logout")
-          (logout-user session server-address)
-          (google-authentication-handler request user-email-whitelist
-                                         server-address endpoint-url))
-        (if (authenticated-user? session)
+        (cond (get params "logout") (logout-user session server-name
+                                                 (= (headers "sec-fetch-mode") "cors"))
+              (get params "loggedin") (logged-in session user-email-whitelist)
+              :else (google-authentication-handler request user-email-whitelist
+                                                   server-name
+                                                   (or (headers "x-redirect-to")
+                                                       endpoint-url)))
+        (if (authenticated-user? session user-email-whitelist)
           (handler request)
-          (google-authentication-request request endpoint-url))))))
+          (google-authentication-request request
+                                         (or (headers "x-redirect-to")
+                                             endpoint-url)))))))
 
 (defn load-users [filename]
-  (with-open [f (io/reader (io/resource filename))]
+  (with-open [f (io/reader filename)]
     (into #{} (line-seq f))))

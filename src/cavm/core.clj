@@ -39,6 +39,7 @@
            ch.qos.logback.core.util.StatusPrinter)
   (:require crypto.equality)
   (:require ring.middleware.session)
+  (:require ring.middleware.session.cookie)
   (:require crypto.random)
   (:import [com.google.api.client.json.gson GsonFactory])
   (:import [com.google.api.client.http.javanet NetHttpTransport])
@@ -71,7 +72,6 @@
 (def toil-xena "https://toil.xenahubs.net")
 (def icgc-xena "https://icgc.xenahubs.net")
 (def ucscPublic-xena "https://ucscpublic.xenahubs.net")
-(defn local-url [port] (str "https://local.xena.ucsc.edu:" (inc port)))
 (defn local-xena [port] (str "http://local.xena.ucsc.edu:" port))
 
 ; clojure re-matches has polymorphic return type, which is broken.
@@ -153,20 +153,22 @@
 
 (defn load-edn-from
   [filename]
-  (with-open [reader (-> (io/resource filename)
+  (with-open [reader (-> filename
                          io/reader
                          java.io.PushbackReader.)]
     (clojure.edn/read reader)))
 
-(defn wrap-authentication [app userauth port]
-  (if userauth
+(defn wrap-authentication [app userfile authfile port]
+  (if authfile
     (auth/wrap-google-authentication
       app
-      (str (local-url port) "/") ; XXX local-url? Is this correct?
       "/code"
-      (auth/load-users "users.txt")
-      (load-edn-from "auth.config"))
+      (auth/load-users userfile)
+      (load-edn-from authfile))
     app))
+
+(defn session-secret [authfile]
+  (and authfile (:session-secret (load-edn-from authfile))))
 
 ; XXX Bug in clojure ring. May not be needed after upgrade.
 ; The bug is that :head requests from other handlers are clobbered.
@@ -187,16 +189,27 @@
 
 (defn wrap-ping [handler]
   (fn [request]
+    ;(info "<<< request keys" (keys request))
+    ;(info "<<< request" request)
     (if (= (path-info request) "/ping/")
       {:status 200
        :headers {}
        :body "pong"}
       (handler request))))
 
+; monkey-patch ring cookie to allow SameSite.
+(in-ns 'ring.middleware.cookies)
+(def ^{:private true
+       :doc "Attributes defined by RFC6265 that apply to the Set-Cookie header."}
+  set-cookie-attrs
+  {:domain "Domain", :max-age "Max-Age", :path "Path"
+   :secure "Secure", :expires "Expires", :http-only "HttpOnly" :same-site "SameSite"})
+(in-ns 'cavm.core)
+
 ; XXX add ring jsonp?
-(defn- get-app [docroot db loader load-queue port userauth allow-hosts]
+(defn- get-app [docroot db loader load-queue port userfile authfile allow-hosts]
   (-> cavm.views.datasets/routes
-      (wrap-authentication userauth port)
+      (wrap-authentication userfile authfile port)
       (wrap-trace :header :ui)
       (attr-middleware :docroot docroot)
       (attr-middleware :loader loader)
@@ -206,7 +219,10 @@
       (wrap-not-modified)
       (wrap-gzip)
       (log-middleware)
-      ring.middleware.session/wrap-session
+      (ring.middleware.session/wrap-session
+        {:cookie-attrs {:same-site "None" :secure true}
+         :store (ring.middleware.session.cookie/cookie-store
+                  {:key (session-secret authfile)})})
       (wrap-params)
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
@@ -313,7 +329,8 @@
    [nil "--certfile FILE" "Cert file to use (requires --keyfile)"]
    [nil "--version" "Print version and exit"]
    ["-j" "--json" "Fix json"]
-   [nil "--userauth" "Enable user-based authentication"]
+   [nil "--userfile FILE" "User authentication list (requires --authfile)"]
+   [nil "--authfile FILE" "User auth configuration (requires --userfile)"]
    ["-t" "--tmp DIR" "Set tmp dir" :default tmp-dir-default]])
 
 (defn- mkdir [dir]
@@ -393,7 +410,8 @@
         serve (:serve options)
         certfile (:certfile options)
         keyfile (:keyfile options)
-        userauth (:userauth options)
+        userfile (:userfile options)
+        authfile (:authfile options)
         keystore (if keyfile
                    {:keystore (ssl/key-store keyfile certfile)
                     :password (String. ^chars ssl/key-store-password)}
@@ -438,7 +456,7 @@
                             server
                             (when serve
                               (try
-                                (serv (get-app docroot db loader load-queue port userauth allow-hosts) host port keystore ws-config)
+                                (serv (get-app docroot db loader load-queue port userfile authfile allow-hosts) host port keystore ws-config)
                                 (catch org.eclipse.jetty.util.MultiException ex
                                   (let [ex0 (.getThrowable ex 0)]
                                     (if (instance? java.net.BindException ex0)
@@ -496,7 +514,7 @@
 
     (let [[loader load-queue] testloader]
       (def ws-config (events/jetty-config load-queue))
-      (def app (get-app docroot testdb loader load-queue 7222 nil
+      (def app (get-app docroot testdb loader load-queue 7222 nil nil
                         (re-pattern (s/join "|" (conj trusted-hosts local-trusted-host))))))
     (defonce server (serv #'app "localhost" 7222 keystore ws-config))
 
