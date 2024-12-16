@@ -144,10 +144,6 @@
            ; Otherwise .gz files are gzipped twice.
            (assoc-in resp [:headers "Content-Encoding"] "identity")
            resp)))
-  (GET "/" [:as req] (response/redirect
-                       (str "https://xenabrowser.net/datapages/?hub="
-                            (name (:scheme req)) "://"
-                            (:server-name req) ":" (:server-port req))))
   (GET "/data/:exp" [exp] (expression exp))
   (POST "/data/" r (expression (body-bytes r)))
   (POST "/update/" [file always delete :as {ip :remote-addr loader :loader}]

@@ -158,7 +158,7 @@
                          java.io.PushbackReader.)]
     (clojure.edn/read reader)))
 
-(defn wrap-authentication [app userfile authfile port]
+(defn wrap-authentication [app userfile authfile]
   (if authfile
     (auth/wrap-google-authentication
       app
@@ -189,27 +189,34 @@
 
 (defn wrap-ping [handler]
   (fn [request]
-    ;(info "<<< request keys" (keys request))
-    ;(info "<<< request" request)
     (if (= (path-info request) "/ping/")
       {:status 200
        :headers {}
        :body "pong"}
       (handler request))))
 
-; monkey-patch ring cookie to allow SameSite.
+(defn wrap-root [handler]
+  (fn [request]
+    (if (= (path-info request) "/")
+      (response/redirect
+        (str "https://xenabrowser.net/datapages/?hub="
+             (name (:scheme request)) "://"
+             (:server-name request) ":" (:server-port request)))
+      (handler request))))
+
+; monkey-patch ring cookie to allow SameSite and Partitioned.
 (in-ns 'ring.middleware.cookies)
 (def ^{:private true
        :doc "Attributes defined by RFC6265 that apply to the Set-Cookie header."}
   set-cookie-attrs
-  {:domain "Domain", :max-age "Max-Age", :path "Path"
+  {:domain "Domain", :max-age "Max-Age", :path "Path", :partitioned "Partitioned"
    :secure "Secure", :expires "Expires", :http-only "HttpOnly" :same-site "SameSite"})
 (in-ns 'cavm.core)
 
 ; XXX add ring jsonp?
 (defn- get-app [docroot db loader load-queue port userfile authfile allow-hosts]
   (-> cavm.views.datasets/routes
-      (wrap-authentication userfile authfile port)
+      (wrap-authentication userfile authfile)
       (wrap-trace :header :ui)
       (attr-middleware :docroot docroot)
       (attr-middleware :loader loader)
@@ -220,13 +227,14 @@
       (wrap-gzip)
       (log-middleware)
       (ring.middleware.session/wrap-session
-        {:cookie-attrs {:same-site "None" :secure true}
+        {:cookie-attrs {:same-site "None" :partitioned true :secure true}
          :store (ring.middleware.session.cookie/cookie-store
                   {:key (session-secret authfile)})})
       (wrap-params)
       (wrap-multipart-params {:store (byte-array-store)})
       (wrap-stacktrace-web)
       (wrap-ping)
+      (wrap-root)
       (wrap-db-loading db)
       (attr-middleware :db db)
       (wrap-access-control allow-hosts)

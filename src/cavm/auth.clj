@@ -39,6 +39,7 @@
                        {"client_id" client-id
                         "response_type" "code"
                         "scope" "email"
+                        "prompt" "consent"
                         "redirect_uri" endpoint-url
                         "state" state}))]
     {:status 403
@@ -117,13 +118,7 @@
               (->
                 (if (= (headers "sec-fetch-mode") "cors")
                   (response/response "login")
-                  (response/redirect
-                    (let [{:keys [redirect-to]} session]
-                      (if (string? redirect-to)
-                        redirect-to
-                        (let [{:keys [uri params]} redirect-to]
-                          (str server-address (subs uri 1)
-                               (and (seq params) (str "?" (client/generate-query-string params)))))))))
+                  (response/redirect (str server-address "/console.html")))
                 (assoc :session {:user {:authenticated? true
                                         :email email}})))
             (login-failed-page (str "Invalid user email: " email "."))))
@@ -140,21 +135,27 @@
     (assoc (response/response (str authenticated?))
            :session (assoc-in session [:user :authenticated?] authenticated?))))
 
+(def schemes {:http "http" :https "https"})
+
+(defn mkhost [scheme host] (str (schemes scheme) "://" host))
+(defn mkurl [host path] (str host "/" path))
+
 (defn wrap-google-authentication [handler endpoint-query-string
                                   user-email-whitelist configuration]
   (def client-id (:client-id configuration))
   (def client-secret (:client-secret configuration))
-  (fn [{:keys [params session headers server-name] :as request}]
-    (let [endpoint-url (str server-name (subs endpoint-query-string 1))]
+  (fn [{:keys [params session headers server-name scheme] :as request}]
+    (let [server-address (mkhost scheme (headers "host"))
+          endpoint-url (mkurl server-address (subs endpoint-query-string 1))]
       ;(info "request cookie" (headers "cookie"))
       ;(info "session for request" session)
       ;(info "state in params" (get params "state"))
       (if (= (:uri request) endpoint-query-string)
-        (cond (get params "logout") (logout-user session server-name
+        (cond (get params "logout") (logout-user session server-address
                                                  (= (headers "sec-fetch-mode") "cors"))
               (get params "loggedin") (logged-in session user-email-whitelist)
               :else (google-authentication-handler request user-email-whitelist
-                                                   server-name
+                                                   server-address
                                                    (or (headers "x-redirect-to")
                                                        endpoint-url)))
         (if (authenticated-user? session user-email-whitelist)
