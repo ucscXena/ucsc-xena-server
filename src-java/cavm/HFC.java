@@ -11,8 +11,9 @@ import java.util.ArrayList;
 import java.lang.Iterable;
 import java.util.Iterator;
 import cavm.GetBytes;
+import clojure.lang.Counted;
 
-public class HFC implements Iterable<String>, GetBytes {
+public class HFC implements Iterable<String>, GetBytes, Counted {
 
 	public static class Buffer {
 		public int length;
@@ -76,6 +77,11 @@ public class HFC implements Iterable<String>, GetBytes {
 	Huffman headerHuff;
 
 	Inner inner;
+
+	@Override
+	public int count() {
+		return length;
+	}
 
 	// using (x + n - 1) / n as integer ceil
 	public int huffDictLen(int offset32) {
